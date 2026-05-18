@@ -35,7 +35,7 @@ Issues within the same batch can be worked in parallel. Start the next batch onl
 
 ### 1.1 — Database schema and RLS
 
-**Status:** todo
+**Status:** done
 **Dependencies:** none
 
 Create all Supabase migration files. Apply RLS policies to enforce landlord isolation on every table.
@@ -234,7 +234,7 @@ Implement payment recording and status query.
 
 ### 1.10 — GPT configuration artifacts
 
-**Status:** todo
+**Status:** done
 **Dependencies:** none
 
 Write the GPT source-of-truth files. These are markdown files committed to the repo; the developer copies the content into the OpenAI Custom GPT configuration manually.

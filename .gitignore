@@ -14,6 +14,7 @@ out/
 .env
 .env.local
 .env.*.local
+supabase/.env.local
 
 # Logs
 logs/
@@ -43,3 +44,4 @@ coverage/
 # Misc
 *.tsbuildinfo
 .cache/
+NOTES.md
