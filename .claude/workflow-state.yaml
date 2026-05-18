@@ -1,7 +1,7 @@
 project:
-  name: lease-assistant
+  name: lease-bot
   type: web
-  mode: local
+  mode: github
   created: 2026-05-18
 
 current:
@@ -51,3 +51,8 @@ approved:
   templates: false
   issues: true
   batches: true
+  migration: true
+
+build:
+  current_milestone: "1C"
+  complete: false

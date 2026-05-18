@@ -1,0 +1,52 @@
+name: Nightly
+
+on:
+  schedule:
+    - cron: "0 6 * * *" # 03:00 BRT (UTC-3)
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Tier 3 — full e2e + coverage
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Start Supabase
+        run: supabase start
+
+      - name: Tier 3 — full e2e suite with coverage
+        run: deno test --allow-all supabase/functions/ --coverage=coverage
+
+      - name: Coverage report
+        run: |
+          deno coverage coverage --lcov > coverage/lcov.info
+          COVERED=$(grep -c "^DA:[0-9]*,[^0]" coverage/lcov.info || true)
+          TOTAL=$(grep -c "^DA:" coverage/lcov.info || true)
+          if [[ "$TOTAL" -gt 0 ]]; then
+            PCT=$(( COVERED * 100 / TOTAL ))
+            echo "Coverage: ${PCT}%"
+            if [[ "$PCT" -lt 80 ]]; then
+              echo "::error::Coverage ${PCT}% is below the 80% threshold"
+              exit 1
+            fi
+          fi
+
+      - name: Open bug issue on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --title "Nightly failure $(date +%Y-%m-%d)" \
+            --body "Nightly CI failed. See run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --label "bug"
