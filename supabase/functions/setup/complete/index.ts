@@ -11,13 +11,17 @@
 //      token (set during /auth/callback in auth user metadata).
 //   5. Verify the selected root folder exists in their Drive.
 //   6. Create (or reuse) the templates folder inside the root folder.
-//   7. Insert the landlord row via the service-role client.
+//   7. Insert the landlord row via the service-role client (see
+//      specs/SECURITY.md — "Approved Service-Role Key Usage").
 //
 // Returns: { templates_folder_id }
 // Errors follow { error: { code, message } } and never echo raw input back.
+//
+// CORS: uses strictCorsHeaders() — origin restricted to PUBLIC_FUNCTIONS_BASE_URL
+// (or SUPABASE_URL as fallback) to prevent cross-origin mutations from
+// arbitrary sites while still supporting the credential cookie.
 
-import { corsHeaders } from "../../_shared/cors.ts";
-import { errorResponse } from "../../_shared/errors.ts";
+import { strictCorsHeaders } from "../../_shared/cors.ts";
 import {
   createDriveFolder,
   getDriveFolder,
@@ -44,11 +48,33 @@ interface SetupCompleteBody {
 }
 
 export async function handleSetupComplete(req: Request): Promise<Response> {
+  // Compute once so all responses in this handler share consistent CORS headers.
+  const cors = strictCorsHeaders();
+
+  // Helpers scoped to this request so they inherit `cors`.
+  function errResp(
+    status: number,
+    code: string,
+    message: string,
+  ): Response {
+    return new Response(
+      JSON.stringify({ error: { code, message } }),
+      { status, headers: { ...cors, "Content-Type": "application/json" } },
+    );
+  }
+
+  function okResp(body: unknown): Response {
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { ...cors, "Content-Type": "application/json" },
+    });
+  }
+
   // 1. JWT verification — accept either Authorization: Bearer or session cookie.
   const cookies = parseCookies(req.headers.get("cookie"));
   const jwt = extractBearer(req) ?? cookies[COOKIE_SESSION];
   if (!jwt) {
-    return errorResponse(
+    return errResp(
       401,
       "UNAUTHORIZED",
       "Sessão não encontrada. Faça login novamente.",
@@ -56,7 +82,7 @@ export async function handleSetupComplete(req: Request): Promise<Response> {
   }
   const user = await getAuthenticatedUser(jwt);
   if (!user) {
-    return errorResponse(
+    return errResp(
       401,
       "UNAUTHORIZED",
       "Sessão inválida. Faça login novamente.",
@@ -68,7 +94,7 @@ export async function handleSetupComplete(req: Request): Promise<Response> {
   try {
     body = await req.json() as SetupCompleteBody;
   } catch {
-    return errorResponse(400, "INVALID_JSON", "Corpo da requisição inválido.");
+    return errResp(400, "INVALID_JSON", "Corpo da requisição inválido.");
   }
 
   const rootFolderId = body.root_folder_id;
@@ -76,33 +102,32 @@ export async function handleSetupComplete(req: Request): Promise<Response> {
     body.templates_folder_name,
   );
   const whatsapp = normalizeBrazilianWhatsapp(body.whatsapp);
-  const apiKey = typeof body.autentique_api_key === "string"
-    ? body.autentique_api_key.trim()
-    : "";
+  // sanitizeApiKey is defined below — validates bounds + encoding before use.
+  const apiKey = sanitizeApiKey(body.autentique_api_key);
 
   if (!looksLikeDriveId(rootFolderId)) {
-    return errorResponse(
+    return errResp(
       400,
       "INVALID_ROOT_FOLDER",
       "Selecione a pasta raiz do Google Drive.",
     );
   }
   if (!templatesFolderName) {
-    return errorResponse(
+    return errResp(
       400,
       "INVALID_TEMPLATES_FOLDER_NAME",
       "Nome da pasta de modelos inválido.",
     );
   }
   if (!whatsapp) {
-    return errorResponse(
+    return errResp(
       400,
       "INVALID_WHATSAPP",
       "Número de WhatsApp inválido. Use o formato +55 seguido do DDD e número.",
     );
   }
   if (!apiKey) {
-    return errorResponse(
+    return errResp(
       400,
       "MISSING_AUTENTIQUE_KEY",
       "Informe sua chave de API da Autentique.",
@@ -112,7 +137,7 @@ export async function handleSetupComplete(req: Request): Promise<Response> {
   // 3. Validate Autentique API key.
   const autentique = await validateAutentiqueApiKey(apiKey);
   if (!autentique.ok) {
-    return errorResponse(
+    return errResp(
       400,
       "INVALID_AUTENTIQUE_KEY",
       "Chave de API da Autentique inválida. Verifique em autentique.com.br → Configurações → Tokens de API.",
@@ -124,7 +149,7 @@ export async function handleSetupComplete(req: Request): Promise<Response> {
     (user.user_metadata.google_refresh_token as string | undefined) ??
       undefined;
   if (!refreshToken) {
-    return errorResponse(
+    return errResp(
       400,
       "MISSING_GOOGLE_TOKEN",
       "Conexão com o Google não encontrada. Refaça o login com o Google.",
@@ -134,7 +159,7 @@ export async function handleSetupComplete(req: Request): Promise<Response> {
   try {
     accessToken = await refreshGoogleAccessToken(refreshToken);
   } catch {
-    return errorResponse(
+    return errResp(
       502,
       "GOOGLE_TOKEN_REFRESH_FAILED",
       "Não foi possível renovar o acesso ao Google Drive. Tente novamente.",
@@ -149,14 +174,14 @@ export async function handleSetupComplete(req: Request): Promise<Response> {
       folderId: rootFolderId as string,
     });
   } catch {
-    return errorResponse(
+    return errResp(
       502,
       "DRIVE_LOOKUP_FAILED",
       "Não foi possível consultar o Google Drive. Tente novamente.",
     );
   }
   if (!rootFolder) {
-    return errorResponse(
+    return errResp(
       400,
       "ROOT_FOLDER_NOT_FOUND",
       "Pasta raiz não encontrada no seu Google Drive.",
@@ -172,16 +197,18 @@ export async function handleSetupComplete(req: Request): Promise<Response> {
       parentFolderId: rootFolderId as string,
     });
   } catch {
-    return errorResponse(
+    return errResp(
       502,
       "DRIVE_CREATE_FAILED",
       "Não foi possível criar a pasta de modelos no Google Drive.",
     );
   }
 
-  // 7. Insert landlord row. Uses service-role client to bypass RLS for the
-  //    first-time insert; landlord_id is bound to user.id (auth.uid()) so the
-  //    row is owned by the authenticated user from this point on.
+  // 7. Insert landlord row using the service-role client.
+  //    Rationale for service-role bypass: see specs/SECURITY.md §
+  //    "Approved Service-Role Key Usage" — the landlord row does not yet exist,
+  //    so RLS cannot grant the insert. We bind id = user.id (from the verified
+  //    JWT) so the row is owned by the authenticated user from this point on.
   const svc = serviceClient();
   const { error: insertError } = await svc.from("landlords").insert({
     id: user.id,
@@ -205,24 +232,43 @@ export async function handleSetupComplete(req: Request): Promise<Response> {
         .eq("id", user.id)
         .maybeSingle();
       if (existing) {
-        return jsonResponse(200, {
-          templates_folder_id: existing.templates_folder_id,
-        });
+        return okResp({ templates_folder_id: existing.templates_folder_id });
       }
     }
-    return errorResponse(
+    return errResp(
       500,
       "LANDLORD_INSERT_FAILED",
       "Não foi possível concluir o cadastro. Tente novamente.",
     );
   }
 
-  return jsonResponse(200, { templates_folder_id: templatesFolderId });
+  return okResp({ templates_folder_id: templatesFolderId });
 }
 
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
+// ─── Input sanitization helpers ────────────────────────────────────────────
+
+/**
+ * Sanitize an Autentique API key before any use.
+ *
+ * Rules (per reviewer item 6):
+ *   - Must be a non-empty string.
+ *   - Minimum 10 characters (as before).
+ *   - Maximum 256 characters (upper bound to prevent oversized inputs).
+ *   - No ASCII control characters (0x00–0x1F, 0x7F) — these could inject
+ *     CRLF sequences into HTTP headers (Bearer <key>).
+ *   - No internal whitespace — Autentique API keys are opaque tokens and
+ *     should never contain spaces or tabs.
+ *
+ * Returns the trimmed key on success, or null if any constraint fails.
+ */
+export function sanitizeApiKey(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  if (trimmed.length < 10 || trimmed.length > 256) return null;
+  // Reject ASCII control characters (covers CR, LF, TAB, NUL, etc.)
+  // deno-lint-ignore no-control-regex
+  if (/[\x00-\x1F\x7F]/.test(trimmed)) return null;
+  // Reject internal whitespace (space, non-breaking space, etc.)
+  if (/\s/.test(trimmed)) return null;
+  return trimmed;
 }

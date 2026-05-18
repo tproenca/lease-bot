@@ -8,14 +8,29 @@ export interface ApiError {
   message: string;
 }
 
+/**
+ * Build a structured JSON error response.
+ *
+ * @param status  HTTP status code.
+ * @param code    Machine-readable error code (e.g. "INVALID_WHATSAPP").
+ * @param message Human-readable Portuguese message shown to the user.
+ * @param extraHeaders Optional CORS / other headers to merge in. Callers that
+ *   require strict CORS (e.g. POST /setup/complete) should pass
+ *   `strictCorsHeaders()` here.
+ */
 export function errorResponse(
   status: number,
   code: string,
   message: string,
+  extraHeaders?: Record<string, string>,
 ): Response {
   const body: { error: ApiError } = { error: { code, message } };
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: {
+      ...corsHeaders,
+      ...(extraHeaders ?? {}),
+      "Content-Type": "application/json",
+    },
   });
 }

@@ -24,7 +24,7 @@
 **Mitigation:**
 - PII fields (CPF, WhatsApp) are never included in log output
 - Error responses never echo back raw input values
-- Google OAuth refresh tokens and Autentique API keys stored encrypted at rest via Supabase Vault
+- Google OAuth refresh tokens and Autentique API keys: Vault encryption is deferred (see ADR-0010); both columns are protected by infrastructure-level AES-256 encryption and are inaccessible to landlord JWTs via RLS
 - Environment variables hold all remaining secrets (webhook secret, Meta WhatsApp token, Supabase service key) — never hardcoded
 
 ### Broken Authentication
@@ -49,7 +49,7 @@
 **Risk:** Google OAuth refresh token stolen from the database gives attacker full Drive access for a landlord.
 
 **Mitigation:**
-- Refresh tokens stored via Supabase Vault (encrypted at rest)
+- Refresh tokens stored in `landlords.google_refresh_token` (plain text column). **Vault encryption is deferred — see ADR-0010.** Interim mitigations: Supabase PostgreSQL storage is AES-256 encrypted at rest at the infrastructure level; RLS prevents any landlord JWT from reading the column; the value is never logged or included in error responses.
 - RLS ensures refresh tokens are only readable by the service role, not by the landlord's own JWT
 - If a token is suspected compromised, the landlord can revoke it via Google Account settings
 
@@ -78,6 +78,19 @@
 | Autentique webhook | HMAC-SHA256 signature verification | `POST /webhooks/autentique` only |
 | pg_cron | Supabase service role (internal) | Payment reminder job only |
 | Tenant | None | No login; receives WhatsApp messages only |
+
+---
+
+## Approved Service-Role Key Usage in Edge Functions
+
+The Supabase service-role key bypasses Row Level Security and must only be used
+in narrowly justified cases. Every approved usage is listed here.
+
+| Endpoint | Reason | Scope |
+|----------|--------|-------|
+| `POST /setup/complete` | Initial insert of the `landlords` row. RLS cannot grant the insert because the row does not yet exist — `auth.uid()` has no matching `landlord_id` to satisfy `id = auth.uid()`. The Edge Function binds `id = user.id` from the verified JWT, so the new row is owned by the authenticated user from that point on. | Single `INSERT` into `landlords`; followed by a `SELECT` on the same row only in the idempotent retry branch. |
+| `GET /setup` (post-auth state check) | Checking whether the landlord row exists before the row is created. Same rationale as above — RLS returns no row for an unauthenticated landlord, so the service role is used to determine which page state to render. | Single `SELECT id, templates_folder_id FROM landlords WHERE id = $user_id`. |
+| `GET /auth/callback` (refresh-token persist) | Storing the Google refresh token in auth user metadata via `auth.admin.updateUserById`. Supabase's admin API requires the service role. | Single `updateUserById` targeting only the authenticated user's record. |
 
 ---
 

@@ -90,19 +90,32 @@ async function handleSetupPage(req: Request): Promise<Response> {
 function renderPreAuthPage(req: Request): Response {
   const baseUrl = publicFunctionsBaseUrl();
   const redirectUri = googleRedirectUri(baseUrl);
-  const state = crypto.randomUUID();
+
+  // Reuse the existing state nonce if the cookie is still present (i.e. the
+  // Max-Age has not expired on the client side). This prevents a second tab
+  // from invalidating the first tab's in-flight OAuth round-trip.
+  // We cannot verify the TTL server-side (we don't know when it was set), so
+  // we trust that the browser will have discarded an expired cookie already.
+  const cookies = parseCookies(req.headers.get("cookie"));
+  const existingState = cookies[COOKIE_OAUTH_STATE];
+  const state = existingState || crypto.randomUUID();
+
   const authUrl = buildGoogleAuthUrl({ redirectUri, state });
 
   const headers = new Headers({ "Content-Type": "text/html; charset=utf-8" });
-  headers.append(
-    "Set-Cookie",
-    serializeCookie(COOKIE_OAUTH_STATE, state, {
-      maxAge: OAUTH_STATE_TTL_SECONDS,
-      httpOnly: true,
-      secure: isHttpsRequest(req),
-      sameSite: "Lax",
-    }),
-  );
+  // Only emit a Set-Cookie when we generated a fresh nonce; avoid resetting
+  // the Max-Age clock on reloads where the old nonce is still valid.
+  if (!existingState) {
+    headers.append(
+      "Set-Cookie",
+      serializeCookie(COOKIE_OAUTH_STATE, state, {
+        maxAge: OAUTH_STATE_TTL_SECONDS,
+        httpOnly: true,
+        secure: isHttpsRequest(req),
+        sameSite: "Lax",
+      }),
+    );
+  }
   return new Response(renderPreAuthHtml(authUrl), { headers });
 }
 

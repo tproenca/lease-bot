@@ -10,20 +10,36 @@ export interface AutentiqueValidationResult {
   accountName?: string;
 }
 
+/**
+ * Validate an Autentique API key by making a real GraphQL test call.
+ *
+ * Input bounds enforced before any network call (defence-in-depth — callers
+ * should also validate before passing the key here):
+ *   - Non-empty string, 10–256 characters.
+ *   - No ASCII control characters (0x00–0x1F, 0x7F) — prevents HTTP header
+ *     injection when the key is used in `Authorization: Bearer <key>`.
+ *   - No internal whitespace — Autentique tokens are opaque and must not
+ *     contain spaces.
+ *
+ * Returns `{ ok: true }` only when the API returns a valid `me { name }` response.
+ */
 export async function validateAutentiqueApiKey(
   apiKey: string,
 ): Promise<AutentiqueValidationResult> {
-  // Sanity check before issuing any network call.
-  if (typeof apiKey !== "string" || apiKey.trim().length < 10) {
-    return { ok: false };
-  }
+  // Input bounds check — must pass before we put this string in an HTTP header.
+  if (typeof apiKey !== "string") return { ok: false };
+  const trimmed = apiKey.trim();
+  if (trimmed.length < 10 || trimmed.length > 256) return { ok: false };
+  // deno-lint-ignore no-control-regex
+  if (/[\x00-\x1F\x7F]/.test(trimmed)) return { ok: false };
+  if (/\s/.test(trimmed)) return { ok: false };
 
   let res: Response;
   try {
     res = await fetch(AUTENTIQUE_GRAPHQL_URL, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${trimmed}`,
         "Content-Type": "application/json",
         Accept: "application/json",
       },

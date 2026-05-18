@@ -16,7 +16,7 @@ Run the OAuth flow ourselves from `/auth/callback`:
 1. Build the consent URL with `access_type=offline` and `prompt=consent` so Google always returns a refresh token.
 2. Exchange the code at Google's token endpoint and capture `refresh_token` + `id_token`.
 3. Create the Supabase session by passing the `id_token` to `auth.signInWithIdToken({ provider: 'google', token })`. Supabase verifies the id_token signature/audience against its configured Google provider and issues a Supabase JWT.
-4. Store the Google `refresh_token` in the auth user's `user_metadata` via the service-role admin API. The token is encrypted at rest by Supabase Vault (see `specs/SECURITY.md`).
+4. Store the Google `refresh_token` in the auth user's `user_metadata` via the service-role admin API. The token is protected by infrastructure-level AES-256 encryption; column-level Vault encryption is deferred — see ADR-0010 and `specs/SECURITY.md`.
 
 ## Alternatives Considered
 - **Supabase's built-in Google provider:** simplest, but the refresh token never leaves Supabase Auth. Rejected because Drive access requires the refresh token in our Edge Functions.
