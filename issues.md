@@ -52,7 +52,7 @@ Create all Supabase migration files. Apply RLS policies to enforce landlord isol
 
 ### 1.2 — Onboarding flow
 
-**Status:** todo
+**Status:** done
 **Dependencies:** 1.1
 
 Three Edge Functions serving the first-time setup flow:
