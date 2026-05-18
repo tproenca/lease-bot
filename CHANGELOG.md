@@ -3,6 +3,14 @@
 ## Unreleased
 
 ### Added
+- `POST /tenants`, `GET /tenants/:id`, `PATCH /tenants/:id` Edge Function: tenant CRUD with
+  Drive folder lifecycle management — creates tenant folder inside the property folder, stars it,
+  unstars previous tenant folder (if any), and updates `properties.current_tenant_folder_id`
+  atomically. CPF validated as XXX.XXX.XXX-XX; WhatsApp validated as Brazilian E.164 (+55…).
+  `GET /tenants/:id` returns 404 if not found or belongs to another landlord. `PATCH /tenants/:id`
+  updates `whatsapp` only. (issue 7)
+- `starDriveFile` and `unstarDriveFile` utilities added to `_shared/google.ts` (issue 7)
+- Integration tests for all three tenant endpoints (issue 7)
 - `GET /templates/diff` Edge Function: fast-path diff (< 200 ms when no changes) comparing Drive
   `modifiedTime` against DB cache; slow path re-reads changed templates, extracts `{{placeholder}}`
   tokens, detects witness names from signature blocks, updates DB cache, and returns added/removed

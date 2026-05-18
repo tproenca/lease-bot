@@ -254,6 +254,56 @@ export async function listDriveFilesInFolder(params: {
 }
 
 /**
+ * Star a Google Drive file or folder (sets `starred = true`).
+ * Used to highlight the active tenant folder per property.
+ */
+export async function starDriveFile(params: {
+  accessToken: string;
+  fileId: string;
+}): Promise<void> {
+  const url = new URL(
+    `${DRIVE_FILES_URL}/${encodeURIComponent(params.fileId)}`,
+  );
+  url.searchParams.set("fields", "id");
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${params.accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ starred: true }),
+  });
+  if (!res.ok) {
+    throw new Error(`drive_star_file_failed_${res.status}`);
+  }
+}
+
+/**
+ * Unstar a Google Drive file or folder (sets `starred = false`).
+ * Used to de-highlight the previous tenant folder when a new tenant moves in.
+ */
+export async function unstarDriveFile(params: {
+  accessToken: string;
+  fileId: string;
+}): Promise<void> {
+  const url = new URL(
+    `${DRIVE_FILES_URL}/${encodeURIComponent(params.fileId)}`,
+  );
+  url.searchParams.set("fields", "id");
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${params.accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ starred: false }),
+  });
+  if (!res.ok) {
+    throw new Error(`drive_unstar_file_failed_${res.status}`);
+  }
+}
+
+/**
  * Export a Google Drive file as plain text.
  * For Google Docs (application/vnd.google-apps.document) this uses the
  * export endpoint. For other MIME types the file content is downloaded
