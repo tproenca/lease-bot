@@ -201,3 +201,78 @@ export async function findDriveFolderByName(params: {
 export function googleRedirectUri(baseUrl: string): string {
   return `${baseUrl.replace(/\/$/, "")}/auth/callback`;
 }
+
+export interface DriveFileMeta {
+  id: string;
+  name: string;
+  modifiedTime: string; // RFC 3339 datetime string
+}
+
+/**
+ * List all non-trashed files directly inside a Drive folder.
+ * Returns id, name, and modifiedTime for each file (not subfolders).
+ * Uses pageToken pagination to retrieve all results.
+ */
+export async function listDriveFilesInFolder(params: {
+  accessToken: string;
+  folderId: string;
+}): Promise<DriveFileMeta[]> {
+  const q = [
+    `'${params.folderId}' in parents`,
+    `mimeType != 'application/vnd.google-apps.folder'`,
+    `trashed = false`,
+  ].join(" and ");
+
+  const files: DriveFileMeta[] = [];
+  let pageToken: string | undefined;
+
+  do {
+    const url = new URL(DRIVE_FILES_URL);
+    url.searchParams.set("q", q);
+    url.searchParams.set("fields", "nextPageToken,files(id,name,modifiedTime)");
+    url.searchParams.set("pageSize", "100");
+    if (pageToken) url.searchParams.set("pageToken", pageToken);
+
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${params.accessToken}` },
+    });
+    if (!res.ok) {
+      throw new Error(`drive_list_files_failed_${res.status}`);
+    }
+    const json = await res.json() as {
+      nextPageToken?: string;
+      files: Array<{ id: string; name: string; modifiedTime: string }>;
+    };
+
+    for (const f of json.files ?? []) {
+      files.push({ id: f.id, name: f.name, modifiedTime: f.modifiedTime });
+    }
+    pageToken = json.nextPageToken;
+  } while (pageToken);
+
+  return files;
+}
+
+/**
+ * Export a Google Drive file as plain text.
+ * For Google Docs (application/vnd.google-apps.document) this uses the
+ * export endpoint. For other MIME types the file content is downloaded
+ * directly.
+ */
+export async function exportDriveFileAsText(params: {
+  accessToken: string;
+  fileId: string;
+}): Promise<string> {
+  const exportUrl = new URL(
+    `${DRIVE_FILES_URL}/${encodeURIComponent(params.fileId)}/export`,
+  );
+  exportUrl.searchParams.set("mimeType", "text/plain");
+
+  const res = await fetch(exportUrl, {
+    headers: { Authorization: `Bearer ${params.accessToken}` },
+  });
+  if (!res.ok) {
+    throw new Error(`drive_export_file_failed_${res.status}`);
+  }
+  return await res.text();
+}
