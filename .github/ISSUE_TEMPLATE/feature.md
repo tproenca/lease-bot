@@ -6,14 +6,26 @@ labels: ""
 assignees: ""
 ---
 
-## Summary
+## Description
+[What needs to be done and why]
 
-<!-- What does this add or change? -->
+## Acceptance Criteria
+- [ ]
+- [ ]
 
-## Acceptance criteria
-
-- [ ] ...
+## Technical Notes
+[Constraints, gotchas, or approach hints]
 
 ## Dependencies
+Blocked by: #N (or None)
 
-<!-- List any issues that must be closed before this one can start. -->
+## Agent Automation
+
+### Files in Scope
+- `src/`
+
+### Files Out of Scope
+-
+
+### Size Estimate
+Size: Medium (Small | Medium | Large — split if Large)

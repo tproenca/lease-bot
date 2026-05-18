@@ -1,21 +1,24 @@
 ## Summary
+[What was done and how]
 
-<!-- What does this PR do? 1-3 bullets. -->
-
-## Closes
-
+## Related Issue
 Fixes #
 
-## Test plan
+## Changes Made
+-
 
-- [ ] Tier 1 tests pass (`deno test --allow-all supabase/functions/ --filter "unit|integration"`)
-- [ ] Tier 2 smoke tests pass (`deno test --allow-all supabase/functions/ --filter "e2e:smoke"`)
-- [ ] No debug code or hardcoded secrets
-- [ ] CHANGELOG.md updated under `## Unreleased`
+## How to Test
+1.
+2.
 
-## Security checklist
+## Agent Review
+<!-- Filled by the lead before this PR is flagged to the human reviewer. -->
+- [ ] Pre-PR subagent checks passed (security, tests, scope, no debug code)
+- [ ] Reviewer Agent approved after autonomous review loop
 
-- [ ] All DB queries use parameterized queries — no raw SQL string concatenation
-- [ ] `landlord_id` is sourced from the verified JWT, never from the request body
-- [ ] No PII logged or echoed in error responses
-- [ ] New migrations are forward-only (no destructive DROP/ALTER without compensating migration)
+## Human Review Checklist
+- [ ] Implementation matches the intent of the linked issue
+- [ ] Approach makes sense given the overall architecture
+- [ ] No obvious logic errors or missing edge cases
+- [ ] Comfortable merging this to main
+- [ ] If a new technical decision was made, ADR created in adr/
