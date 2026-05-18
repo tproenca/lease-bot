@@ -3,6 +3,12 @@
 ## Unreleased
 
 ### Added
+- `POST /payments` Edge Function: records a received payment and computes `on_time` (paid on or
+  before the 5th of the reference month at 23:59:59 UTC). Accepts `reference_month` as `YYYY-MM`
+  or `YYYY-MM-DD`. Returns `{ id, on_time }`. (issue 9)
+- `GET /payments?month=YYYY-MM` Edge Function: returns paid tenants with amounts and overdue
+  active tenants with last reminder timestamp for the given month. (issue 9)
+- Integration tests for `POST /payments` and `GET /payments` endpoints (issue 9)
 - `POST /tenants`, `GET /tenants/:id`, `PATCH /tenants/:id` Edge Function: tenant CRUD with
   Drive folder lifecycle management — creates tenant folder inside the property folder, stars it,
   unstars previous tenant folder (if any), and updates `properties.current_tenant_folder_id`
