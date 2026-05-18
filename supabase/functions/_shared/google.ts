@@ -304,6 +304,99 @@ export async function unstarDriveFile(params: {
 }
 
 /**
+ * Upsert the "Guia de Placeholders" Google Doc in the landlord's Templates
+ * Drive folder. Creates it if absent; updates content if present.
+ *
+ * The document is a plain-text file (uploaded as text/plain; Google converts it
+ * to a Google Doc via the mimeType hint in the metadata part). Content is sorted
+ * alphabetically by placeholder name.
+ */
+export async function upsertGuiaDePlaceholders(params: {
+  accessToken: string;
+  templatesFolderId: string;
+  placeholders: Array<{
+    name: string;
+    required: boolean;
+    format: string;
+    case?: string | null;
+    default?: string | null;
+    derived_from?: string | null;
+    derived_formula?: string | null;
+  }>;
+}): Promise<void> {
+  const { accessToken, templatesFolderId, placeholders } = params;
+
+  // 1. List files in the Templates folder to find "Guia de Placeholders".
+  const driveFiles = await listDriveFilesInFolder({
+    accessToken,
+    folderId: templatesFolderId,
+  });
+  const guia = driveFiles.find((f) => f.name === "Guia de Placeholders");
+
+  // 2. Build plain-text content sorted by placeholder name.
+  const sorted = [...placeholders].sort((a, b) => a.name.localeCompare(b.name));
+  const lines: string[] = ["Guia de Placeholders", ""];
+  for (const p of sorted) {
+    let line = `{{${p.name}}} — format: ${p.format} | required: ${p.required ? "sim" : "não"}`;
+    if (p.case != null) line += ` | case: ${p.case}`;
+    if (p.default != null) line += ` | default: ${p.default}`;
+    if (p.derived_from != null) line += ` | derived_from: ${p.derived_from}`;
+    lines.push(line);
+  }
+  const content = lines.join("\n");
+
+  if (guia) {
+    // 3a. File exists — update content in-place via media upload PATCH.
+    const patchUrl =
+      `https://www.googleapis.com/upload/drive/v3/files/${encodeURIComponent(guia.id)}?uploadType=media`;
+    const res = await fetch(patchUrl, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "text/plain",
+      },
+      body: content,
+    });
+    if (!res.ok) {
+      throw new Error(`drive_guia_update_failed_${res.status}`);
+    }
+  } else {
+    // 3b. File not found — create via multipart upload.
+    const boundary = "guia_boundary_lease_assistant";
+    const metadata = JSON.stringify({
+      name: "Guia de Placeholders",
+      mimeType: "application/vnd.google-apps.document",
+      parents: [templatesFolderId],
+    });
+    const body = [
+      `--${boundary}`,
+      "Content-Type: application/json; charset=UTF-8",
+      "",
+      metadata,
+      `--${boundary}`,
+      "Content-Type: text/plain; charset=UTF-8",
+      "",
+      content,
+      `--${boundary}--`,
+    ].join("\r\n");
+
+    const createUrl =
+      `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
+    const res = await fetch(createUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": `multipart/related; boundary=${boundary}`,
+      },
+      body,
+    });
+    if (!res.ok) {
+      throw new Error(`drive_guia_create_failed_${res.status}`);
+    }
+  }
+}
+
+/**
  * Export a Google Drive file as plain text.
  * For Google Docs (application/vnd.google-apps.document) this uses the
  * export endpoint. For other MIME types the file content is downloaded
