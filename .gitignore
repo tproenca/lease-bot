@@ -45,3 +45,7 @@ coverage/
 *.tsbuildinfo
 .cache/
 NOTES.md
+
+# Claude Code local state (workflow tracking)
+.claude/workflow-state.yaml
+.claude/worktrees/
