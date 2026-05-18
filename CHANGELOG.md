@@ -3,6 +3,12 @@
 ## Unreleased
 
 ### Added
+- `POST /buildings` Edge Function: creates a Drive subfolder under Root/{BuildingName}/
+  and persists the building row with `drive_folder_id` (issue 5)
+- `POST /properties` Edge Function: creates a Drive folder (inside building folder for
+  apartments; under root for house/commercial) and persists the property row (issue 5)
+- `GET /properties` Edge Function: returns all properties for the authenticated landlord (issue 5)
+- Integration tests for all three buildings/properties endpoints (issue 5)
 - `GET /context` Edge Function: returns landlord info, properties, buildings,
   templates with property type mappings, placeholder definitions, witnesses,
   account config, and cron errors from the last 24 h (issue 4)
