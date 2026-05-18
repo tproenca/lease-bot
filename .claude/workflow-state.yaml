@@ -29,7 +29,7 @@ completed:
   - "4.4"
   - "4.5"
   - "4.6"
-  - "4.7-skipped"
+  - "4.7"
 
 setup_complete: true
 
@@ -48,7 +48,7 @@ approved:
   claude: true
   config: true
   ci: true
-  templates: false
+  templates: true
   issues: true
   batches: true
   migration: true
