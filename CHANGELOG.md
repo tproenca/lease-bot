@@ -3,6 +3,13 @@
 ## Unreleased
 
 ### Added
+- `GET /templates/diff` Edge Function: fast-path diff (< 200 ms when no changes) comparing Drive
+  `modifiedTime` against DB cache; slow path re-reads changed templates, extracts `{{placeholder}}`
+  tokens, detects witness names from signature blocks, updates DB cache, and returns added/removed
+  diffs. `Guia de Placeholders` excluded by exact name match (issue 6)
+- `listDriveFilesInFolder` and `exportDriveFileAsText` utilities added to `_shared/google.ts` (issue 6)
+- Unit and integration tests for `GET /templates/diff`: fast path, slow path, placeholder extraction,
+  witness detection, Guia exclusion, 401, 405, CORS, OPTIONS (issue 6)
 - `POST /buildings` Edge Function: creates a Drive subfolder under Root/{BuildingName}/
   and persists the building row with `drive_folder_id` (issue 5)
 - `POST /properties` Edge Function: creates a Drive folder (inside building folder for
