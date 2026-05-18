@@ -3,6 +3,9 @@
 ## Unreleased
 
 ### Added
+- `GET /context` Edge Function: returns landlord info, properties, buildings,
+  templates with property type mappings, placeholder definitions, witnesses,
+  account config, and cron errors from the last 24 h (issue 4)
 - Supabase project scaffolding (`supabase/`, `deno.json`)
 - Database migrations: full schema for all 11 tables with RLS policies (issue 1.1)
 - GPT system prompt and configuration artifacts in `gpt/` (issue 1.10)

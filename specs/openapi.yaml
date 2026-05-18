@@ -281,6 +281,21 @@ paths:
                       payment_reminder_frequency:
                         type: string
                         enum: [daily, weekly, disabled]
+                  cron_errors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        job_name:
+                          type: string
+                        error:
+                          type: string
+                        occurred_at:
+                          type: string
+                          format: date-time
 
   # ── Templates & Placeholders ──────────────────────────────
 
