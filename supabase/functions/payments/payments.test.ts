@@ -472,6 +472,82 @@ Deno.test("integration: POST /payments — 400 when paid_at is missing", async (
   }
 });
 
+// ─── 400 — invalid paid_at format ────────────────────────────────────────
+
+Deno.test("integration: POST /payments — 400 when paid_at is not a valid datetime", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({}) as typeof fetch;
+  try {
+    const res = await handlePayments(
+      makePostRequest(
+        {
+          tenant_id: MOCK_TENANT_ID,
+          amount: 1500.0,
+          reference_month: "2026-05",
+          paid_at: "not-a-date",
+        },
+        "valid.jwt",
+      ),
+    );
+    assertEquals(res.status, 400);
+    const body = await jsonBody(res) as Record<string, unknown>;
+    assertEquals(
+      (body.error as Record<string, string>).code,
+      "INVALID_PAID_AT",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// ─── 201 — on_time boundary tests ────────────────────────────────────────
+
+Deno.test("integration: POST /payments — on_time=true when paid exactly at boundary (5th 23:59:59Z)", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({ payments: [{ id: "pay-boundary", on_time: true }] }) as typeof fetch;
+  try {
+    const res = await handlePayments(
+      makePostRequest(
+        {
+          tenant_id: MOCK_TENANT_ID,
+          amount: 1500.0,
+          reference_month: "2026-05",
+          paid_at: "2026-05-05T23:59:59Z",
+        },
+        "valid.jwt",
+      ),
+    );
+    assertEquals(res.status, 201);
+    const body = await jsonBody(res) as Record<string, unknown>;
+    assertEquals(body.on_time, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("integration: POST /payments — on_time=false when paid one second after boundary (6th 00:00:00Z)", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({ payments: [{ id: "pay-late", on_time: false }] }) as typeof fetch;
+  try {
+    const res = await handlePayments(
+      makePostRequest(
+        {
+          tenant_id: MOCK_TENANT_ID,
+          amount: 1500.0,
+          reference_month: "2026-05",
+          paid_at: "2026-05-06T00:00:00Z",
+        },
+        "valid.jwt",
+      ),
+    );
+    assertEquals(res.status, 201);
+    const body = await jsonBody(res) as Record<string, unknown>;
+    assertEquals(body.on_time, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 // ─── CORS headers ─────────────────────────────────────────────────────────
 
 Deno.test("integration: POST /payments — success response includes CORS headers", async () => {

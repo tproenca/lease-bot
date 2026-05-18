@@ -119,9 +119,17 @@ async function handleRecordPayment(req: Request): Promise<Response> {
     );
   }
 
+  const paidDate = new Date(paid_at as string);
+  if (isNaN(paidDate.getTime())) {
+    return errorResponse(
+      400,
+      "INVALID_PAID_AT",
+      "O campo 'paid_at' deve ser uma data/hora ISO 8601 válida.",
+    );
+  }
+
   // 3. Compute on_time: paid on or before the 5th of the reference month.
   const dueDate = new Date(`${referenceMonth.substring(0, 7)}-05T23:59:59Z`);
-  const paidDate = new Date(paid_at);
   const on_time = paidDate <= dueDate;
 
   // 4. Insert into payments table using userClient (RLS enforces landlord isolation).
