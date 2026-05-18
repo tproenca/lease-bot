@@ -1,0 +1,880 @@
+openapi: 3.1.0
+info:
+  title: Lease Assistant API
+  version: 1.0.0
+  description: Backend API for the Lease Assistant Custom GPT. All endpoints require Bearer JWT authentication except the setup flow.
+
+servers:
+  - url: https://{project}.supabase.co/functions/v1
+    description: Production (Supabase Edge Functions)
+  - url: http://localhost:54321/functions/v1
+    description: Local development
+
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+
+    Landlord:
+      type: object
+      properties:
+        name:
+          type: string
+        whatsapp:
+          type: string
+
+    Property:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [apartment, house, commercial]
+        name:
+          type: string
+        address:
+          type: string
+        building_id:
+          type: string
+          format: uuid
+          nullable: true
+        current_tenant_folder_id:
+          type: string
+          nullable: true
+
+    Building:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        address:
+          type: string
+
+    Template:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        property_types:
+          type: array
+          items:
+            type: string
+            enum: [apartment, house, commercial]
+
+    Placeholder:
+      type: object
+      properties:
+        name:
+          type: string
+        required:
+          type: boolean
+        format:
+          type: string
+          enum: [text, date, cpf, integer, currency]
+        case:
+          type: string
+          enum: [maiúsculas, minúsculas, título, frase]
+          nullable: true
+        default:
+          type: string
+          nullable: true
+        derived_from:
+          type: string
+          nullable: true
+        derived_formula:
+          type: string
+          nullable: true
+
+    Witness:
+      type: object
+      properties:
+        name:
+          type: string
+        whatsapp:
+          type: string
+
+    Tenant:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        cpf:
+          type: string
+        whatsapp:
+          type: string
+          nullable: true
+        property_id:
+          type: string
+          format: uuid
+        drive_folder_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    Payment:
+      type: object
+      properties:
+        tenant_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        amount:
+          type: number
+        paid_at:
+          type: string
+          format: date-time
+        on_time:
+          type: boolean
+
+    OverdueTenant:
+      type: object
+      properties:
+        tenant_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        last_reminder_sent_at:
+          type: string
+          format: date-time
+          nullable: true
+
+paths:
+
+  # ── Setup & Auth ──────────────────────────────────────────
+
+  /setup:
+    get:
+      operationId: getSetupPage
+      summary: Serves onboarding HTML page
+      security: []
+      responses:
+        '200':
+          description: HTML page (pre-auth or post-auth state)
+
+  /auth/callback:
+    get:
+      operationId: authCallback
+      summary: Google OAuth redirect handler
+      security: []
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: state
+          in: query
+          schema:
+            type: string
+      responses:
+        '302':
+          description: Redirect to /setup with session established
+
+  /setup/complete:
+    post:
+      operationId: completeSetup
+      summary: Save root folder, templates folder name, and WhatsApp number
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [root_folder_id, templates_folder_name, whatsapp, autentique_api_key]
+              properties:
+                root_folder_id:
+                  type: string
+                templates_folder_name:
+                  type: string
+                  default: Templates/
+                whatsapp:
+                  type: string
+                autentique_api_key:
+                  type: string
+                  description: Landlord's personal Autentique API key (from autentique.com.br → Configurações → Tokens de API)
+      responses:
+        '200':
+          description: Setup complete
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  templates_folder_id:
+                    type: string
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /context:
+    get:
+      operationId: getContext
+      summary: Returns full landlord context for the GPT
+      responses:
+        '200':
+          description: Landlord context
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  landlord:
+                    $ref: '#/components/schemas/Landlord'
+                  properties:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Property'
+                  buildings:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Building'
+                  templates:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Template'
+                  placeholders:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Placeholder'
+                  witnesses:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Witness'
+                  account_config:
+                    type: object
+                    properties:
+                      payment_reminder_frequency:
+                        type: string
+                        enum: [daily, weekly, disabled]
+
+  # ── Templates & Placeholders ──────────────────────────────
+
+  /templates/diff:
+    get:
+      operationId: getTemplatesDiff
+      summary: Detect added/removed templates, placeholders, and witnesses since last sync
+      responses:
+        '200':
+          description: Diff result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  templates:
+                    type: object
+                    properties:
+                      added:
+                        type: array
+                        items:
+                          type: string
+                      removed:
+                        type: array
+                        items:
+                          type: string
+                  placeholders:
+                    type: object
+                    properties:
+                      added:
+                        type: array
+                        items:
+                          type: string
+                      removed:
+                        type: array
+                        items:
+                          type: string
+                  witnesses:
+                    type: object
+                    properties:
+                      added:
+                        type: array
+                        items:
+                          type: string
+
+  /templates:
+    post:
+      operationId: createTemplate
+      summary: Register a new template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [drive_file_id, name, placeholder_names, property_types]
+              properties:
+                drive_file_id:
+                  type: string
+                name:
+                  type: string
+                placeholder_names:
+                  type: array
+                  items:
+                    type: string
+                property_types:
+                  type: array
+                  items:
+                    type: string
+                    enum: [apartment, house, commercial]
+      responses:
+        '201':
+          description: Template created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+
+  /templates/{id}:
+    delete:
+      operationId: deleteTemplate
+      summary: Remove a template and its property type mappings
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /placeholders:
+    post:
+      operationId: createPlaceholder
+      summary: Add a placeholder definition
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Placeholder'
+      responses:
+        '201':
+          description: Placeholder created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+
+  /placeholders/{name}:
+    delete:
+      operationId: deletePlaceholder
+      summary: Remove a placeholder definition
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Deleted
+
+  # ── Properties & Buildings ────────────────────────────────
+
+  /buildings:
+    post:
+      operationId: createBuilding
+      summary: Create a new building
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, address]
+              properties:
+                name:
+                  type: string
+                address:
+                  type: string
+      responses:
+        '201':
+          description: Building created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  drive_folder_id:
+                    type: string
+
+  /properties:
+    get:
+      operationId: listProperties
+      summary: List all properties for the landlord
+      responses:
+        '200':
+          description: Property list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Property'
+    post:
+      operationId: createProperty
+      summary: Create a new property
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, name, address]
+              properties:
+                type:
+                  type: string
+                  enum: [apartment, house, commercial]
+                building_id:
+                  type: string
+                  format: uuid
+                  nullable: true
+                name:
+                  type: string
+                address:
+                  type: string
+      responses:
+        '201':
+          description: Property created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  drive_folder_id:
+                    type: string
+
+  # ── Tenants ───────────────────────────────────────────────
+
+  /tenants:
+    post:
+      operationId: createTenant
+      summary: Register a new tenant for a property
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [property_id, name, cpf]
+              properties:
+                property_id:
+                  type: string
+                  format: uuid
+                name:
+                  type: string
+                cpf:
+                  type: string
+                whatsapp:
+                  type: string
+                  nullable: true
+      responses:
+        '201':
+          description: Tenant registered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  drive_folder_id:
+                    type: string
+
+  /tenants/{id}:
+    get:
+      operationId: getTenant
+      summary: Get tenant details
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Tenant details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    patch:
+      operationId: updateTenant
+      summary: Update tenant details (e.g. add missing WhatsApp)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                whatsapp:
+                  type: string
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+
+  # ── Documents ─────────────────────────────────────────────
+
+  /documents/generate:
+    post:
+      operationId: generateDocuments
+      summary: Copy templates, substitute placeholders, save to Drive
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [property_id, tenant_id, placeholders]
+              properties:
+                property_id:
+                  type: string
+                  format: uuid
+                tenant_id:
+                  type: string
+                  format: uuid
+                placeholders:
+                  type: object
+                  additionalProperties:
+                    type: string
+      responses:
+        '200':
+          description: Documents generated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  documents:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        template_name:
+                          type: string
+                        drive_url:
+                          type: string
+        '400':
+          description: Missing required placeholders
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ── Signatures ────────────────────────────────────────────
+
+  /signatures/send:
+    post:
+      operationId: sendForSigning
+      summary: Export PDFs, merge, detect signature positions, submit to Autentique
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tenant_id]
+              properties:
+                tenant_id:
+                  type: string
+                  format: uuid
+      responses:
+        '201':
+          description: Signing request created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  autentique_document_id:
+                    type: string
+        '422':
+          description: Signature markers not found in PDF
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /signatures/{id}/status:
+    get:
+      operationId: getSignatureStatus
+      summary: Check signing status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Signature status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [pending, completed]
+                  created_at:
+                    type: string
+                    format: date-time
+                  completed_at:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  signers:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        signed_at:
+                          type: string
+                          format: date-time
+                          nullable: true
+
+  /signatures/{id}/reminder:
+    patch:
+      operationId: updateSigningReminder
+      summary: Update Autentique signing reminder frequency
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [frequency]
+              properties:
+                frequency:
+                  type: string
+                  enum: [DAILY, WEEKLY]
+      responses:
+        '200':
+          description: Updated
+
+  /webhooks/autentique:
+    post:
+      operationId: autentiqueWebhook
+      summary: Receive signed PDF from Autentique and save to Drive
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Acknowledged
+
+  # ── Payments ──────────────────────────────────────────────
+
+  /payments:
+    post:
+      operationId: recordPayment
+      summary: Record a received payment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tenant_id, amount, reference_month, paid_at]
+              properties:
+                tenant_id:
+                  type: string
+                  format: uuid
+                amount:
+                  type: number
+                reference_month:
+                  type: string
+                  format: date
+                  description: First day of the reference month (YYYY-MM-01)
+                paid_at:
+                  type: string
+                  format: date-time
+      responses:
+        '201':
+          description: Payment recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  on_time:
+                    type: boolean
+    get:
+      operationId: getPayments
+      summary: Query payments and overdue tenants for a given month
+      parameters:
+        - name: month
+          in: query
+          required: true
+          schema:
+            type: string
+            description: YYYY-MM
+      responses:
+        '200':
+          description: Payment status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  paid:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Payment'
+                  overdue:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/OverdueTenant'
+
+  /payments/remind:
+    post:
+      operationId: sendPaymentReminder
+      summary: Send ad-hoc WhatsApp payment reminder to a tenant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tenant_id, reference_month]
+              properties:
+                tenant_id:
+                  type: string
+                  format: uuid
+                reference_month:
+                  type: string
+                  format: date
+      responses:
+        '200':
+          description: Reminder sent
+
+  # ── Witnesses ─────────────────────────────────────────────
+
+  /witnesses:
+    post:
+      operationId: createWitness
+      summary: Add a witness with their WhatsApp number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, whatsapp]
+              properties:
+                name:
+                  type: string
+                whatsapp:
+                  type: string
+      responses:
+        '201':
+          description: Witness created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
