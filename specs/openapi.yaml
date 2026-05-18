@@ -420,6 +420,12 @@ paths:
                   id:
                     type: string
                     format: uuid
+        '409':
+          description: Placeholder name already exists for this landlord
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /placeholders/{name}:
     delete:
@@ -893,3 +899,9 @@ paths:
                   id:
                     type: string
                     format: uuid
+        '409':
+          description: Witness name already exists for this landlord
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
