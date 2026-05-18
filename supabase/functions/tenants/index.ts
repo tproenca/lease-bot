@@ -24,12 +24,6 @@
 
 import { corsHeaders as baseCorsHeaders } from "../_shared/cors.ts";
 import { errorResponse } from "../_shared/errors.ts";
-
-// Extend CORS headers to also allow PATCH (needed for PATCH /tenants/:id).
-const corsHeaders: Record<string, string> = {
-  ...baseCorsHeaders,
-  "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
-};
 import {
   extractBearer,
   getAuthenticatedUser,
@@ -45,6 +39,12 @@ import {
   isNonEmptyString,
   normalizeBrazilianWhatsapp,
 } from "../_shared/validation.ts";
+
+// Extend CORS headers to also allow PATCH (needed for PATCH /tenants/:id).
+const corsHeaders: Record<string, string> = {
+  ...baseCorsHeaders,
+  "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
+};
 
 // CPF format: XXX.XXX.XXX-XX
 const CPF_RE = /^\d{3}\.\d{3}\.\d{3}-\d{2}$/;
@@ -261,12 +261,20 @@ async function handleCreateTenant(req: Request): Promise<Response> {
   }
 
   // 9. Update properties.current_tenant_folder_id.
+  //    If this fails, roll back by deleting the just-inserted tenant row so
+  //    DB state remains consistent (no orphaned tenant without a linked property).
   const { error: updateError } = await db
     .from("properties")
     .update({ current_tenant_folder_id: driveFolderId })
     .eq("id", property_id as string);
 
   if (updateError) {
+    // Best-effort rollback of the tenant insert.
+    await db
+      .from("tenants")
+      .delete()
+      .eq("id", (tenant as Record<string, unknown>).id as string);
+
     return errorResponse(
       500,
       "DB_ERROR",

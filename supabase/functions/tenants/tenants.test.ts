@@ -188,6 +188,10 @@ function buildMockFetch(opts: MockFetchOpts) {
         }
         return new Response(JSON.stringify([]), { status: 200 });
       }
+      // DELETE — rollback of tenant insert on property update failure
+      if (method === "DELETE") {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
     }
 
     // Google token endpoint
