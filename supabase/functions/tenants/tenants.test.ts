@@ -572,6 +572,26 @@ Deno.test("integration: POST /tenants — 500 when DB insert fails", async () =>
   }
 });
 
+// ─── 500 — DB property update failure (rollback) ─────────────────────────
+
+Deno.test("integration: POST /tenants — 500 and rolls back tenant insert when property update fails", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({ dbUpdateFail: true }) as typeof fetch;
+  try {
+    const res = await handleTenants(
+      makePostRequest(
+        { property_id: MOCK_PROPERTY_ID, name: "João", cpf: "123.456.789-00" },
+        "valid.jwt",
+      ),
+    );
+    assertEquals(res.status, 500);
+    const body = await jsonBody(res) as Record<string, unknown>;
+    assertEquals((body.error as Record<string, string>).code, "DB_ERROR");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 // ─── 201 — happy path (house, no previous tenant) ────────────────────────
 
 Deno.test("integration: POST /tenants — 201 creates tenant folder and row for house property", async () => {
@@ -704,6 +724,21 @@ Deno.test("integration: GET /tenants/:id — 401 when no JWT provided", async ()
   assertEquals((body.error as Record<string, string>).code, "UNAUTHORIZED");
 });
 
+// ─── 401 — invalid JWT ────────────────────────────────────────────────────
+
+Deno.test("integration: GET /tenants/:id — 401 when JWT is invalid or expired", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({ authUser: null }) as typeof fetch;
+  try {
+    const res = await handleTenants(makeGetRequest("tenant-uuid-1", "expired.jwt"));
+    assertEquals(res.status, 401);
+    const body = await jsonBody(res) as Record<string, unknown>;
+    assertEquals((body.error as Record<string, string>).code, "UNAUTHORIZED");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 // ─── 404 — tenant not found ───────────────────────────────────────────────
 
 Deno.test("integration: GET /tenants/:id — 404 when tenant not found or belongs to another landlord", async () => {
@@ -775,6 +810,23 @@ Deno.test("integration: PATCH /tenants/:id — 401 when no JWT provided", async 
   assertEquals(res.status, 401);
   const body = await jsonBody(res) as Record<string, unknown>;
   assertEquals((body.error as Record<string, string>).code, "UNAUTHORIZED");
+});
+
+// ─── 401 — invalid JWT ────────────────────────────────────────────────────
+
+Deno.test("integration: PATCH /tenants/:id — 401 when JWT is invalid or expired", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({ authUser: null }) as typeof fetch;
+  try {
+    const res = await handleTenants(
+      makePatchRequest("tenant-uuid-1", { whatsapp: "+5511999990000" }, "expired.jwt"),
+    );
+    assertEquals(res.status, 401);
+    const body = await jsonBody(res) as Record<string, unknown>;
+    assertEquals((body.error as Record<string, string>).code, "UNAUTHORIZED");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 // ─── 400 — no updatable field ─────────────────────────────────────────────
