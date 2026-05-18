@@ -1,0 +1,32 @@
+project:
+  name: lease-assistant
+  type: web
+  mode: local
+  created: 2026-05-18
+
+current:
+  phase: 0
+  step: "0.1"
+
+completed: []
+
+setup_complete: false
+
+approved:
+  prd: false
+  architecture: false
+  openapi: false
+  design: false
+  security: false
+  testing: false
+  devops: false
+  adrs: false
+  readme: false
+  contributing: false
+  agents: false
+  claude: false
+  config: false
+  ci: false
+  templates: false
+  issues: false
+  batches: false
