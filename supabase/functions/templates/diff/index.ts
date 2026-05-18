@@ -159,6 +159,21 @@ export async function handleTemplatesDiff(req: Request): Promise<Response> {
   const allTemplates = (templatesResult.data ?? []) as TemplateRow[];
   const templates = allTemplates.filter((t) => t.name !== GUIA_EXACT_NAME);
 
+  // Fast path: no templates in DB — nothing to diff.
+  if (templates.length === 0) {
+    return new Response(
+      JSON.stringify({
+        templates: { added: [], removed: [] },
+        placeholders: { added: [], removed: [] },
+        witnesses: { added: [] },
+      }),
+      {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
+    );
+  }
+
   // 4. Obtain a fresh Google access token — needed to list Drive files.
   let accessToken: string;
   try {
@@ -186,23 +201,37 @@ export async function handleTemplatesDiff(req: Request): Promise<Response> {
     );
   }
 
-  // Build a lookup: drive_file_id → modifiedTime
+  // Build lookups for Drive vs DB comparison.
   const driveModifiedMap = new Map<string, string>(
     driveFiles.map((f) => [f.id, f.modifiedTime]),
   );
+  const driveFileIds = new Set(driveFiles.map((f) => f.id));
+  const dbFileIds = new Set(templates.map((t) => t.drive_file_id));
+
+  // Compute template-level diff (Drive files not in DB, and DB rows gone from Drive).
+  const addedTemplates = driveFiles
+    .filter((f) => !dbFileIds.has(f.id) && f.name !== GUIA_EXACT_NAME)
+    .map((f) => f.name)
+    .sort();
+  const removedTemplates = templates
+    .filter((t) => !driveFileIds.has(t.drive_file_id))
+    .map((t) => t.name)
+    .sort();
 
   // 6. Determine which DB templates have a changed modifiedTime.
-  //    A template is "changed" if its Drive modifiedTime differs from the
-  //    cached drive_last_modified_at (or is missing from Drive).
+  //    Skip templates whose Drive file is gone (they appear in removedTemplates).
   const changedTemplates = templates.filter((t) => {
     const driveTime = driveModifiedMap.get(t.drive_file_id);
-    if (!driveTime) return false; // file gone from Drive — not a "changed" template
-    // Compare as ISO strings; Drive returns RFC 3339 which is comparable as strings.
+    if (!driveTime) return false;
     return driveTime !== t.drive_last_modified_at;
   });
 
-  // Fast path: nothing changed.
-  if (changedTemplates.length === 0) {
+  // Fast path: no template-level changes and no content changes.
+  if (
+    addedTemplates.length === 0 &&
+    removedTemplates.length === 0 &&
+    changedTemplates.length === 0
+  ) {
     return new Response(
       JSON.stringify({
         templates: { added: [], removed: [] },
@@ -276,7 +305,7 @@ export async function handleTemplatesDiff(req: Request): Promise<Response> {
 
   return new Response(
     JSON.stringify({
-      templates: { added: [], removed: [] },
+      templates: { added: addedTemplates, removed: removedTemplates },
       placeholders: {
         added: [...allAddedPlaceholders].sort(),
         removed: [...allRemovedPlaceholders].sort(),
