@@ -7,8 +7,12 @@ info:
 servers:
   - url: https://{project}.supabase.co/functions/v1
     description: Production (Supabase Edge Functions)
-  - url: http://localhost:54321/functions/v1
-    description: Local development
+  - url: https://{ngrok_domain}.ngrok-free.dev/functions/v1
+    description: Local development (via ngrok static dev domain)
+    variables:
+      ngrok_domain:
+        default: your-domain
+        description: Your ngrok static dev domain subdomain (from ngrok.com → Static Domain)
 
 security:
   - bearerAuth: []

@@ -1,30 +1,36 @@
 # Lease Assistant
 
-Lease Assistant lets Brazilian landlords generate, sign, and track residential and commercial lease documents through a ChatGPT Custom GPT. The landlord has a conversation, confirms a summary, and the backend handles document substitution, Drive filing, and e-signature — all in under 10 minutes.
+Lease Assistant lets Brazilian landlords generate, sign, and track residential
+and commercial lease documents through a ChatGPT Custom GPT. The landlord has a
+conversation, confirms a summary, and the backend handles document substitution,
+Drive filing, and e-signature — all in under 10 minutes.
 
-All documents live in the landlord's own Google Drive. No proprietary file storage.
+All documents live in the landlord's own Google Drive. No proprietary file
+storage.
 
 ---
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Runtime | Supabase Edge Functions (Deno / TypeScript) |
-| Database | Supabase PostgreSQL + pg_cron |
-| Auth | Supabase Auth (Google OAuth) |
-| Document store | Google Drive API |
-| E-signature | Autentique (WhatsApp delivery) |
-| Notifications | Meta WhatsApp Business Cloud API |
-| Interface | ChatGPT Custom GPT (one deployment, shared by all landlords) |
+| Layer          | Technology                                                   |
+| -------------- | ------------------------------------------------------------ |
+| Runtime        | Supabase Edge Functions (Deno / TypeScript)                  |
+| Database       | Supabase PostgreSQL + pg_cron                                |
+| Auth           | Supabase Auth (Google OAuth)                                 |
+| Document store | Google Drive API                                             |
+| E-signature    | Autentique (WhatsApp delivery)                               |
+| Notifications  | Meta WhatsApp Business Cloud API                             |
+| Interface      | ChatGPT Custom GPT (one deployment, shared by all landlords) |
 
 ---
 
 ## Prerequisites
 
-- [Supabase CLI](https://supabase.com/docs/guides/cli) (`brew install supabase/tap/supabase`)
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (required by Supabase local dev)
-- [Deno](https://deno.land/) v1.40+
+- [Supabase CLI](https://supabase.com/docs/guides/cli)
+  (`brew install supabase/tap/supabase`)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (required by
+  Supabase local dev)
+- [Deno](https://deno.land/) v2.x
 - A Google Cloud project with Drive API enabled and OAuth credentials configured
 - An [Autentique](https://autentique.com.br) account and API key
 - A Meta WhatsApp Business Cloud account and approved message templates
@@ -42,25 +48,54 @@ cp .env.example .env.local
 
 # Deploy Edge Functions to the local Supabase instance
 supabase functions serve --env-file .env.local
+
+# Expose local functions to ChatGPT (required — ChatGPT cannot reach localhost)
+ngrok http 54321 --domain <your-static-dev-domain>.ngrok-free.dev
 ```
 
 The local API is available at `http://localhost:54321/functions/v1/`.
 
 The onboarding page is served at `http://localhost:54321/functions/v1/setup`.
 
+### Connecting the ChatGPT Custom GPT to your local backend
+
+ChatGPT's servers cannot reach `localhost`, so ngrok is required for local
+testing.
+
+1. **Get your free static domain** — sign up at [ngrok.com](https://ngrok.com),
+   go to Your Authtoken → Static Domain. Your domain (`abc.ngrok-free.dev`) is
+   permanent and never changes between restarts.
+2. **Start the tunnel** —
+   `ngrok http 54321 --domain <your-domain>.ngrok-free.dev`
+3. **Update the GPT action URL** — in the Custom GPT → Actions, set the server
+   URL to `https://<your-domain>.ngrok-free.dev/functions/v1`
+4. **Add the bypass header** — in the GPT action config, add a custom header:
+   `ngrok-skip-browser-warning: true` (skips the ngrok browser interstitial for
+   machine callers)
+
+Free tier limits: 1 static domain, 20k requests/month, 1 GB/month bandwidth.
+
 ---
 
 ## Run Tests
 
 ```bash
-# Tier 1 + Tier 2 (unit, integration, critical e2e — run before every merge)
-scripts/ci.sh
+# Static checks (format, lint, typecheck)
+scripts/check.sh
 
-# Tier 3 (full e2e suite — run nightly on main)
-scripts/nightly.sh
+# Fast tests, no local Supabase required
+scripts/test-unit.sh
+
+# Local Supabase-backed PR tests
+scripts/test-integration.sh
+scripts/test-smoke.sh
+
+# Regression tests + unit coverage — run nightly on main
+scripts/test-nightly.sh
 ```
 
-See [specs/TESTING.md](specs/TESTING.md) for the full testing strategy and coverage expectations.
+See [specs/TESTING.md](specs/TESTING.md) for the full testing strategy and
+coverage expectations.
 
 ---
 
@@ -77,8 +112,11 @@ See [specs/TESTING.md](specs/TESTING.md) for the full testing strategy and cover
 ├── specs/               — Design documents (PRD, architecture, API, security, testing, DevOps)
 ├── adr/                 — Architecture Decision Records
 └── scripts/
-    ├── ci.sh            — Tier 1 + Tier 2 tests
-    └── nightly.sh       — Tier 3 full e2e suite
+    ├── check.sh             — format, lint, explicit typecheck
+    ├── test-unit.sh         — unit tests
+    ├── test-integration.sh  — local Supabase integration tests
+    ├── test-smoke.sh        — PR e2e smoke tests
+    └── test-nightly.sh      — regression tests + unit coverage
 ```
 
 ---
@@ -86,7 +124,10 @@ See [specs/TESTING.md](specs/TESTING.md) for the full testing strategy and cover
 ## Deeper Context
 
 - [specs/PRD.md](specs/PRD.md) — product goals, features, phasing, and risks
-- [specs/ARCHITECTURE.md](specs/ARCHITECTURE.md) — system design and tech stack decisions
-- [specs/DESIGN.md](specs/DESIGN.md) — database schema, API contracts, and user flows
-- [specs/openapi.yaml](specs/openapi.yaml) — OpenAPI 3.1 action schema (uploaded to the Custom GPT)
+- [specs/ARCHITECTURE.md](specs/ARCHITECTURE.md) — system design and tech stack
+  decisions
+- [specs/DESIGN.md](specs/DESIGN.md) — database schema, API contracts, and user
+  flows
+- [specs/openapi.yaml](specs/openapi.yaml) — OpenAPI 3.1 action schema (uploaded
+  to the Custom GPT)
 - [adr/](adr/) — Architecture Decision Records
