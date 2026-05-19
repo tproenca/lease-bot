@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Política de Privacidade — Lease Assistant</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 48px auto; padding: 0 24px; color: #111; line-height: 1.7; }
+    h1 { font-size: 1.6rem; margin-bottom: 4px; }
+    h2 { font-size: 1.1rem; margin-top: 36px; }
+    p, li { font-size: 0.95rem; }
+    time { color: #555; font-size: 0.85rem; }
+    a { color: #0066cc; }
+  </style>
+</head>
+<body>
+
+<h1>Política de Privacidade</h1>
+<p><time datetime="2026-05-19">Última atualização: 19 de maio de 2026</time></p>
+
+<p>
+  O <strong>Lease Assistant</strong> é uma ferramenta conversacional que ajuda
+  proprietários brasileiros a gerar contratos de locação, coordenar assinaturas
+  eletrônicas e acompanhar pagamentos de aluguel por meio de um Custom GPT da OpenAI.
+</p>
+
+<h2>1. Dados coletados</h2>
+<p>Coletamos apenas os dados necessários para o funcionamento do serviço:</p>
+<ul>
+  <li><strong>Conta Google</strong> — nome e endereço de e-mail, obtidos via Google OAuth no momento do cadastro.</li>
+  <li><strong>Token de acesso ao Google Drive</strong> — armazenado de forma segura para que o sistema possa criar, editar e arquivar documentos na sua conta do Google Drive.</li>
+  <li><strong>Número de WhatsApp</strong> — utilizado para enviar notificações de assinatura e lembretes de pagamento.</li>
+  <li><strong>Chave de API do Autentique</strong> — armazenada de forma segura para envio de contratos para assinatura eletrônica.</li>
+  <li><strong>Dados de imóveis e inquilinos</strong> — nome, CPF, WhatsApp e identificadores de pasta no Google Drive; necessários para geração de contratos.</li>
+  <li><strong>Registros de pagamento</strong> — mês de referência, valor e data de pagamento; utilizados para identificar inadimplência e disparar lembretes.</li>
+</ul>
+<p>Não coletamos dados de inquilinos além do necessário para geração de documentos e notificações.</p>
+
+<h2>2. Como os dados são armazenados</h2>
+<ul>
+  <li><strong>Banco de dados</strong> — Supabase PostgreSQL hospedado na região <code>sa-east-1</code> (São Paulo). Todos os dados estão protegidos por criptografia em repouso (AES-256) e por políticas de segurança em nível de linha (Row Level Security), que garantem que cada proprietário acesse apenas seus próprios dados.</li>
+  <li><strong>Documentos</strong> — contratos gerados, PDFs exportados e documentos assinados são armazenados exclusivamente no Google Drive do próprio proprietário. O Lease Assistant não mantém cópias em armazenamento próprio.</li>
+  <li><strong>Tokens e chaves</strong> — o token de atualização do Google e a chave de API do Autentique são armazenados no banco de dados com criptografia em nível de infraestrutura e nunca são registrados em logs ou incluídos em respostas de erro.</li>
+</ul>
+
+<h2>3. Compartilhamento de dados</h2>
+<p>Os seus dados são compartilhados apenas com os seguintes serviços terceiros, estritamente necessários para o funcionamento do sistema:</p>
+<ul>
+  <li><strong>Google Drive API</strong> — para criação, edição e arquivamento de documentos na sua conta.</li>
+  <li><strong>Autentique</strong> — para envio de contratos para assinatura eletrônica e notificação dos signatários via WhatsApp.</li>
+  <li><strong>Meta WhatsApp Business Cloud API</strong> — para envio de lembretes de pagamento aos inquilinos.</li>
+  <li><strong>OpenAI</strong> — a interface do sistema é um Custom GPT; as conversas estão sujeitas à <a href="https://openai.com/policies/privacy-policy" target="_blank">política de privacidade da OpenAI</a>.</li>
+</ul>
+<p>Não vendemos, alugamos nem compartilhamos seus dados com terceiros para fins de marketing ou publicidade.</p>
+
+<h2>4. Retenção de dados</h2>
+<p>
+  Os dados são mantidos enquanto a sua conta estiver ativa. Você pode solicitar a
+  exclusão de todos os seus dados a qualquer momento entrando em contato pelo e-mail
+  abaixo. A exclusão é irreversível e remove todos os registros de imóveis, inquilinos
+  e pagamentos. Os documentos armazenados no seu Google Drive não são afetados.
+</p>
+
+<h2>5. Seus direitos (LGPD)</h2>
+<p>
+  Nos termos da Lei Geral de Proteção de Dados (Lei nº 13.709/2018), você tem direito a:
+</p>
+<ul>
+  <li>Confirmar a existência de tratamento de dados pessoais;</li>
+  <li>Acessar os dados que mantemos sobre você;</li>
+  <li>Corrigir dados incompletos, inexatos ou desatualizados;</li>
+  <li>Solicitar a eliminação dos dados pessoais tratados;</li>
+  <li>Revogar o consentimento a qualquer momento.</li>
+</ul>
+<p>Para exercer qualquer um desses direitos, entre em contato pelo e-mail abaixo.</p>
+
+<h2>6. Contato</h2>
+<p>
+  Dúvidas, solicitações ou reclamações relacionadas a esta política podem ser enviadas para:<br />
+  <a href="mailto:tproenca@gmail.com">tproenca@gmail.com</a>
+</p>
+
+<h2>7. Alterações a esta política</h2>
+<p>
+  Eventuais alterações serão publicadas nesta página com a data de atualização. O uso
+  continuado do serviço após a publicação das alterações implica aceitação da nova
+  versão da política.
+</p>
+
+</body>
+</html>

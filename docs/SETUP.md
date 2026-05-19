@@ -155,7 +155,39 @@ requires a Meta-approved message template.
 
 ---
 
-## 5. Put it all together
+## 5. Privacy policy (required for Custom GPT OAuth action)
+
+OpenAI requires a publicly accessible privacy policy URL when configuring OAuth on a
+Custom GPT action. The policy is served as a static file from Supabase Storage.
+
+### Upload the document
+
+After `supabase start` (local) or on production:
+
+```sh
+# Local
+supabase storage cp docs/privacy-policy.html ss://legal/privacy-policy.html
+
+# Production
+supabase storage cp docs/privacy-policy.html ss://legal/privacy-policy.html \
+  --project-ref <project-ref>
+```
+
+The public URL will be:
+```
+https://<project-ref>.supabase.co/storage/v1/object/public/legal/privacy-policy.html
+```
+
+Set this URL in the Custom GPT → Actions → Authentication → Privacy Policy URL field.
+See `gpt/GPT_CONFIG.md` for the full action configuration.
+
+### Updating the document
+
+Re-run the `supabase storage cp` command above — the URL stays the same.
+
+---
+
+## 6. Put it all together
 
 Once all services are set up, populate `supabase/.env.local` (see `.env.example` for the
 full list) and start the local stack:
