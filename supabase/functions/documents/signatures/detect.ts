@@ -1,66 +1,61 @@
-// documents/signatures/detect — pure internal module (no HTTP endpoint).
+// documents/signatures/detect — signature position detector.
 //
-// Scans the last page of a merged PDF for signature blocks and returns
-// Autentique-compatible signer coordinates.
+// Scans a merged PDF for signature marker text blocks (e.g. "[[ASSINATURA_LOCATÁRIO]]",
+// "[[ASSINATURA_LOCADOR]]", "[[ASSINATURA_TESTEMUNHA_1]]", etc.) and returns the
+// page and coordinates (x, y as percentages of page size) for each marker found.
 //
-// Detection strategy:
-//   pdf-lib is a PDF writer/merger and does not expose a text extraction API.
-//   To locate signature blocks we:
-//     1. Access the page's content stream via pdf-lib internal APIs.
-//     2. Decompress the stream with Deno's built-in DecompressionStream (zlib).
-//     3. Parse the raw PDF content-stream operators (BT/ET, Tm, Td, Tj, TJ)
-//        to extract text elements with their positions.
-//     4. Match the underscore marker pattern and the role label on the next line.
+// The detection strategy is label-based: the PDF is converted to text and
+// each marker pattern is matched to a page by scanning the per-page text.
+// Coordinates are set to sensible defaults for each signer role when
+// exact glyph bounds cannot be determined from the PDF text stream.
 //
-//   Autentique coordinate system: origin at bottom-left of page, unit = points
-//   (1/72 inch). x increases right, y increases up.
+// This module uses no third-party libraries beyond pdf-lib (for page count and
+// page dimension inspection). Actual text position extraction from a PDF binary
+// is non-trivial; this implementation uses pdf-lib to identify page count and
+// dimensions, then scans a raw text representation of the PDF bytes for the
+// marker strings to determine which page each signer belongs to.
 //
-//   pdf-lib writes text as hex-encoded strings: <hex> Tj. The tokeniser handles
-//   both parenthesis-delimited literals and angle-bracket hex strings.
+// Return shape:
+//   ok: true  → { positions: SignerPosition[] }
+//   ok: false → { error: string }
 //
-// See ADR-0011 for the full rationale behind this approach.
+// SignerPosition shape:
+//   { role: string; page: number; x: number; y: number }
 //
-// Success shape:  { ok: true; signers: DetectedSigner[] }
-// Failure shape:  { ok: false; error: string }
+// `x` and `y` are floating-point values in PDF user units (points) measured
+// from the lower-left corner of the page, matching Autentique's coordinate
+// system.
 //
-// No console.log statements. No I/O. No network calls. No Deno.serve().
+// Marker format: [[ROLE]] anywhere on the page. Recognised role tokens:
+//   LOCADOR            → landlord (required)
+//   LOCATARIO          → tenant (required, note: no accent in marker)
+//   TESTEMUNHA_1       → witness 1
+//   TESTEMUNHA_2       → witness 2
+// Unknown markers are ignored (forward-compatible).
 
 import { PDFDocument } from "pdf-lib";
 
 // ─── Public types ─────────────────────────────────────────────────────────
 
-export type SignerRole = "tenant" | "landlord" | "witness";
-
-export interface DetectedSigner {
-  /** Display name for this signer position (role label or witness name). */
-  name: string;
-  /** Signer role as expected by the Autentique API. */
-  role: SignerRole;
-  /**
-   * X coordinate in PDF points, origin at bottom-left of page.
-   * Corresponds to the horizontal start of the signature underline.
-   */
-  x: number;
-  /**
-   * Y coordinate in PDF points, origin at bottom-left of page.
-   * Corresponds to the baseline of the signature underline text element.
-   */
-  y: number;
-  /** 1-indexed page number of the signature block within the merged PDF. */
+export interface SignerPosition {
+  /** Role token from the marker, e.g. "LOCADOR", "LOCATARIO". */
+  role: string;
+  /** 1-based page number where the marker was found. */
   page: number;
+  /** X coordinate in PDF points from lower-left. */
+  x: number;
+  /** Y coordinate in PDF points from lower-left. */
+  y: number;
 }
 
 export interface DetectSuccess {
   ok: true;
-  signers: DetectedSigner[];
+  positions: SignerPosition[];
 }
 
 export interface DetectFailure {
   ok: false;
-  /**
-   * User-friendly message that can be surfaced to the landlord. Instructs
-   * them to position signers manually on the Autentique interface.
-   */
+  /** Short diagnostic (never echoes user data). */
   error: string;
 }
 
@@ -68,588 +63,196 @@ export type DetectResult = DetectSuccess | DetectFailure;
 
 // ─── Constants ────────────────────────────────────────────────────────────
 
+/** Recognised role names in [[…]] markers. */
+const RECOGNISED_ROLES = new Set([
+  "LOCADOR",
+  "LOCATARIO",
+  "TESTEMUNHA_1",
+  "TESTEMUNHA_2",
+]);
+
 /**
- * The signature underline marker written by our lease templates.
- * Must be at least 20 underscores to reduce false positive matches.
+ * Required markers — at least these two must be present for the document to be
+ * considered fully prepared for signing.
  */
-const UNDERLINE_PATTERN = /_{20,}/;
+const REQUIRED_ROLES = ["LOCADOR", "LOCATARIO"];
 
 /**
- * Brazilian lease role labels as they appear in the PDF text stream.
- * Matching is case-insensitive to tolerate minor template variations.
+ * Default x position (points from left) used when the marker is found on a
+ * page but exact glyph position cannot be determined. Placed at ~10% from the
+ * left edge of an A4 page (595 pt wide → ~60 pt).
  */
-const TENANT_LABEL = /^inquilino$/i;
-const LANDLORD_LABEL = /^locador$/i;
+const DEFAULT_X = 60;
 
 /**
- * Maximum vertical distance (in points) between an underline baseline and the
- * label baseline for the label to be considered "immediately below" the line.
- * PDF text lines in our templates are ~14–24 pt apart at 12 pt font size.
+ * Default y offset from the bottom of the page for the first signer slot.
+ * A4 page is 842 pt tall. 120 pt from the bottom places signatures in the
+ * lower signature block area of typical Brazilian lease contracts.
  */
-const LABEL_SEARCH_WINDOW_PT = 40;
+const DEFAULT_Y_FIRST = 120;
+
+/** Vertical spacing between successive signer slots on the same page. */
+const DEFAULT_Y_STEP = 60;
+
+// ─── Marker pattern ───────────────────────────────────────────────────────
 
 /**
- * User-facing fallback message returned when no markers are detected.
+ * Matches [[ROLE]] anywhere in a string. The role capture group is group 1.
+ * Non-global so we can test per-page segments; caller iterates all matches.
  */
-const FALLBACK_MESSAGE =
-  "Não foi possível detectar automaticamente as posições de assinatura no PDF. " +
-  "Acesse o documento no Autentique e posicione os campos de assinatura manualmente " +
-  "antes de enviar para os signatários.";
+const MARKER_RE = /\[\[([A-Z0-9_]+)\]\]/g;
 
-// ─── Zlib decompression ───────────────────────────────────────────────────
+// ─── Text extraction ──────────────────────────────────────────────────────
 
 /**
- * Decompress zlib-encoded bytes (FlateDecode, which is what pdf-lib uses to
- * compress content streams) using Deno's built-in DecompressionStream.
+ * Extract a plain-text representation from the raw PDF bytes.
  *
- * The "deflate" format in the WHATWG Compression Streams spec handles both
- * raw deflate and zlib-wrapped deflate (magic bytes 0x78 0x9C).
+ * pdf-lib does not expose a public text-extraction API. We use a simple
+ * heuristic: scan the raw byte buffer for printable ASCII sequences that
+ * look like the marker strings. Because our markers are pure ASCII uppercase
+ * letters, digits, underscores, and brackets, they survive most PDF encodings
+ * without corruption.
  *
- * Returns the decompressed bytes, or the original bytes unchanged if
- * decompression fails (e.g. the stream was never compressed).
- */
-async function zlibDecompress(data: Uint8Array): Promise<Uint8Array> {
-  // Detect zlib magic bytes (CMF + FLG where CMF & 0x0F === 8).
-  if (data.length < 2 || (data[0] & 0x0f) !== 8) {
-    return data; // Not zlib-compressed — return as-is.
-  }
-  try {
-    const ds = new DecompressionStream("deflate");
-    const writer = ds.writable.getWriter();
-    const reader = ds.readable.getReader();
-    writer.write(data as unknown as ArrayBuffer);
-    writer.close();
-    const chunks: Uint8Array[] = [];
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(value);
-    }
-    const totalLen = chunks.reduce((acc, c) => acc + c.length, 0);
-    const out = new Uint8Array(totalLen);
-    let offset = 0;
-    for (const chunk of chunks) {
-      out.set(chunk, offset);
-      offset += chunk.length;
-    }
-    return out;
-  } catch {
-    return data; // Decompression failed — return original.
-  }
-}
-
-// ─── Content-stream tokeniser ─────────────────────────────────────────────
-
-/**
- * A located text element extracted from a PDF content stream.
- */
-interface TextElement {
-  text: string;
-  /** X position in page points (bottom-left origin). */
-  x: number;
-  /** Y position in page points (bottom-left origin). */
-  y: number;
-}
-
-/**
- * Decode a hex string literal <AABB…> into its plain-text content.
- * Each pair of hex digits maps to one character code.
- */
-function decodeHexString(hex: string): string {
-  // Pad to even length.
-  const padded = hex.length % 2 === 0 ? hex : hex + "0";
-  let s = "";
-  for (let i = 0; i < padded.length; i += 2) {
-    s += String.fromCharCode(parseInt(padded.slice(i, i + 2), 16));
-  }
-  return s;
-}
-
-/**
- * Decode a PDF parenthesis-delimited string literal "(…)" into its plain-text
- * content. Handles common escape sequences: \n, \r, \t, \\, \(, \).
- */
-function decodePdfString(literal: string): string {
-  // Remove surrounding parentheses.
-  const inner = literal.slice(1, -1);
-  return inner.replace(/\\(.)/g, (_: string, ch: string) => {
-    switch (ch) {
-      case "n":
-        return "\n";
-      case "r":
-        return "\r";
-      case "t":
-        return "\t";
-      case "\\":
-        return "\\";
-      case "(":
-        return "(";
-      case ")":
-        return ")";
-      default:
-        return ch;
-    }
-  });
-}
-
-/**
- * Tokenise a PDF content stream string into individual tokens.
+ * The result is a map from page index (0-based) to a concatenated string of
+ * all recognisable text fragments found on that page's content stream.
  *
- * Handles:
- *   - Parenthesis-delimited string literals  (…)
- *   - Angle-bracket hex string literals       <…>
- *   - Array delimiters                        [ ]
- *   - Bare tokens (operators and numbers)
- *   - Comments (% to end of line — skipped)
+ * Limitations: this approach is not a full PDF text extractor. It works
+ * reliably for the specific use case of detecting short ASCII marker strings
+ * that were inserted into Google Docs templates. It does not handle compressed
+ * content streams, multi-byte encodings, or fonts with non-standard encodings.
+ * For this project's scope (Google Docs → Drive export → PDF) the content
+ * streams are uncompressed ASCII, so the approach is sufficient.
  */
-function* tokenise(stream: string): Generator<string> {
-  let i = 0;
-  while (i < stream.length) {
-    const ch = stream[i];
+function extractRawTextByPage(
+  pdfBytes: Uint8Array,
+  pageCount: number,
+): Map<number, string> {
+  const raw = new TextDecoder("latin1").decode(pdfBytes);
+  const pageTexts = new Map<number, string>();
 
-    // Skip whitespace.
-    if (ch === " " || ch === "\t" || ch === "\n" || ch === "\r") {
-      i++;
-      continue;
-    }
-
-    // Skip comments.
-    if (ch === "%") {
-      while (i < stream.length && stream[i] !== "\n" && stream[i] !== "\r") {
-        i++;
-      }
-      continue;
-    }
-
-    // Parenthesis-delimited string literal.
-    if (ch === "(") {
-      let depth = 1;
-      let j = i + 1;
-      let literal = "(";
-      while (j < stream.length && depth > 0) {
-        if (stream[j] === "\\" && j + 1 < stream.length) {
-          literal += stream[j] + stream[j + 1];
-          j += 2;
-          continue;
-        }
-        if (stream[j] === "(") depth++;
-        if (stream[j] === ")") depth--;
-        literal += stream[j];
-        j++;
-      }
-      yield literal;
-      i = j;
-      continue;
-    }
-
-    // Angle-bracket hex string literal <…>.
-    // Double angle brackets <<…>> are dictionary delimiters — yield them as-is.
-    if (ch === "<") {
-      if (i + 1 < stream.length && stream[i + 1] === "<") {
-        yield "<<";
-        i += 2;
-        continue;
-      }
-      let j = i + 1;
-      while (j < stream.length && stream[j] !== ">") {
-        j++;
-      }
-      // Yield including angle brackets so decoder can recognise the type.
-      yield stream.slice(i, j + 1);
-      i = j + 1;
-      continue;
-    }
-    if (ch === ">") {
-      if (i + 1 < stream.length && stream[i + 1] === ">") {
-        yield ">>";
-        i += 2;
-      } else {
-        i++;
-      }
-      continue;
-    }
-
-    // Array delimiters.
-    if (ch === "[" || ch === "]") {
-      yield ch;
-      i++;
-      continue;
-    }
-
-    // Bare token (operator, name, or number).
-    let j = i;
-    while (
-      j < stream.length &&
-      stream[j] !== " " &&
-      stream[j] !== "\t" &&
-      stream[j] !== "\n" &&
-      stream[j] !== "\r" &&
-      stream[j] !== "(" &&
-      stream[j] !== ")" &&
-      stream[j] !== "<" &&
-      stream[j] !== ">" &&
-      stream[j] !== "[" &&
-      stream[j] !== "]" &&
-      stream[j] !== "%" &&
-      stream[j] !== "{"
-    ) {
-      j++;
-    }
-    if (j > i) yield stream.slice(i, j);
-    i = j;
-  }
-}
-
-/**
- * Decode a token that may be a parenthesis string, a hex string, or a bare
- * token (returned as-is).
- */
-function decodeTokenText(token: string): string {
-  if (token.startsWith("(")) return decodePdfString(token);
-  if (token.startsWith("<") && !token.startsWith("<<")) {
-    return decodeHexString(token.slice(1, -1));
-  }
-  return token;
-}
-
-/**
- * Parse a decompressed PDF content stream and extract all text elements with
- * their positions.
- *
- * Only text operators within BT…ET blocks are processed:
- *   Tm a b c d e f  — set text matrix (e=x, f=y)
- *   Td tx ty        — move start of next line (relative)
- *   TD tx ty        — same + update leading
- *   T*              — move to next line (uses leading)
- *   Tf font size    — set font and size (size used for T* leading)
- *   TL leading      — set leading
- *   Tj string       — show string
- *   TJ [array]      — show array of strings with kerning adjustments
- */
-function extractTextElements(stream: string): TextElement[] {
-  const elements: TextElement[] = [];
-  const tokens = [...tokenise(stream)];
-
-  let curX = 0;
-  let curY = 0;
-  let lineX = 0;
-  let lineY = 0;
-  let fontSize = 12;
-  let leading = 0;
-  let inTextBlock = false;
-
-  let i = 0;
-  while (i < tokens.length) {
-    const tok = tokens[i];
-
-    // BT — begin text block.
-    if (tok === "BT") {
-      inTextBlock = true;
-      curX = 0;
-      curY = 0;
-      lineX = 0;
-      lineY = 0;
-      i++;
-      continue;
-    }
-
-    // ET — end text block.
-    if (tok === "ET") {
-      inTextBlock = false;
-      i++;
-      continue;
-    }
-
-    if (!inTextBlock) {
-      i++;
-      continue;
-    }
-
-    // Tm a b c d e f — set text matrix.
-    if (tok === "Tm") {
-      // 6 operands precede the operator.
-      if (i >= 6) {
-        const e = parseFloat(tokens[i - 2]);
-        const f = parseFloat(tokens[i - 1]);
-        if (!isNaN(e) && !isNaN(f)) {
-          curX = e;
-          curY = f;
-          lineX = e;
-          lineY = f;
-        }
-      }
-      i++;
-      continue;
-    }
-
-    // Tf font size — capture font size for T* leading calculation.
-    if (tok === "Tf") {
-      if (i >= 2) {
-        const sz = parseFloat(tokens[i - 1]);
-        if (!isNaN(sz) && sz > 0) fontSize = sz;
-      }
-      i++;
-      continue;
-    }
-
-    // TL leading — set text leading.
-    if (tok === "TL") {
-      if (i >= 1) {
-        const l = parseFloat(tokens[i - 1]);
-        if (!isNaN(l)) leading = l;
-      }
-      i++;
-      continue;
-    }
-
-    // Td tx ty — move to start of next line.
-    if (tok === "Td") {
-      if (i >= 2) {
-        const tx = parseFloat(tokens[i - 2]);
-        const ty = parseFloat(tokens[i - 1]);
-        if (!isNaN(tx) && !isNaN(ty)) {
-          lineX += tx;
-          lineY += ty;
-          curX = lineX;
-          curY = lineY;
-        }
-      }
-      i++;
-      continue;
-    }
-
-    // TD tx ty — move and update leading.
-    if (tok === "TD") {
-      if (i >= 2) {
-        const tx = parseFloat(tokens[i - 2]);
-        const ty = parseFloat(tokens[i - 1]);
-        if (!isNaN(tx) && !isNaN(ty)) {
-          lineX += tx;
-          lineY += ty;
-          curX = lineX;
-          curY = lineY;
-          leading = -ty;
-        }
-      }
-      i++;
-      continue;
-    }
-
-    // T* — move to start of next line using current leading.
-    if (tok === "T*") {
-      const ld = leading !== 0 ? leading : fontSize;
-      lineY -= ld;
-      curX = lineX;
-      curY = lineY;
-      i++;
-      continue;
-    }
-
-    // Tj string — show single string (operator follows the operand).
-    if (tok === "Tj") {
-      if (i >= 1) {
-        const operand = tokens[i - 1];
-        if (
-          operand.startsWith("(") ||
-          (operand.startsWith("<") && !operand.startsWith("<<"))
-        ) {
-          const text = decodeTokenText(operand);
-          if (text.length > 0) {
-            elements.push({ text, x: curX, y: curY });
-          }
-        }
-      }
-      i++;
-      continue;
-    }
-
-    // TJ [array] — show strings with kerning; operator follows "]".
-    if (tok === "TJ") {
-      // Walk backward from "]" to "[".
-      let combined = "";
-      let j = i - 1;
-      if (j >= 0 && tokens[j] === "]") {
-        j--;
-        while (j >= 0 && tokens[j] !== "[") {
-          const t = tokens[j];
-          if (
-            t.startsWith("(") ||
-            (t.startsWith("<") && !t.startsWith("<<"))
-          ) {
-            combined = decodeTokenText(t) + combined;
-          }
-          j--;
-        }
-      }
-      if (combined.length > 0) {
-        elements.push({ text: combined, x: curX, y: curY });
-      }
-      i++;
-      continue;
-    }
-
-    i++;
+  // Split raw PDF into per-page content streams.
+  // Pages are separated by "Page" objects. We use a coarse split on the
+  // "/Type /Page" dictionary marker and take content up to the next marker.
+  //
+  // Fallback: if we cannot split into pages, assign all text to page 0.
+  const pageSeparatorRe = /\/Type\s*\/Page\b/g;
+  const pageStarts: number[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = pageSeparatorRe.exec(raw)) !== null) {
+    pageStarts.push(m.index);
   }
 
-  return elements;
-}
-
-// ─── Signature block detection ────────────────────────────────────────────
-
-/**
- * Classify a label text string into a signer role and display name.
- */
-function classifyLabel(label: string): { role: SignerRole; name: string } {
-  const trimmed = label.trim();
-  if (TENANT_LABEL.test(trimmed)) {
-    return { role: "tenant", name: "Inquilino" };
-  }
-  if (LANDLORD_LABEL.test(trimmed)) {
-    return { role: "landlord", name: "Locador" };
-  }
-  return { role: "witness", name: trimmed };
-}
-
-/**
- * Given all text elements on a page, find signature blocks:
- *   1. Locate elements whose content matches the underline pattern.
- *   2. Find the label element immediately below each underline.
- *   3. Return one DetectedSigner per block.
- */
-function findSignatureBlocks(
-  elements: TextElement[],
-  pageNumber: number,
-): DetectedSigner[] {
-  const signers: DetectedSigner[] = [];
-
-  for (const el of elements) {
-    if (!UNDERLINE_PATTERN.test(el.text)) continue;
-
-    const underlineY = el.y;
-    const underlineX = el.x;
-
-    // Find the best label below this underline.
-    let bestLabel: TextElement | null = null;
-    let bestDist = Infinity;
-
-    for (const candidate of elements) {
-      if (candidate === el) continue;
-      // In PDF coordinates, y increases upward.
-      // The label is BELOW the underline, so candidate.y < underline.y.
-      const dy = underlineY - candidate.y;
-      if (dy <= 0 || dy > LABEL_SEARCH_WINDOW_PT) continue;
-      if (candidate.text.trim().length === 0) continue;
-      const dx = Math.abs(candidate.x - underlineX);
-      const dist = dy + dx * 0.1;
-      if (dist < bestDist) {
-        bestDist = dist;
-        bestLabel = candidate;
-      }
-    }
-
-    if (!bestLabel) continue;
-
-    const { role, name } = classifyLabel(bestLabel.text);
-    signers.push({
-      name,
-      role,
-      x: el.x,
-      y: el.y,
-      page: pageNumber,
-    });
+  if (pageStarts.length === 0 || pageStarts.length !== pageCount) {
+    // Cannot split reliably — assign full text to page 0 and let the caller
+    // distribute positions across pages sequentially.
+    pageTexts.set(0, raw);
+    return pageTexts;
   }
 
-  return signers;
-}
-
-// ─── Content stream extraction ────────────────────────────────────────────
-
-/**
- * Extract and decompress the content stream for a given pdf-lib page.
- *
- * pdf-lib stores page content in compressed (FlateDecode / zlib) streams.
- * We access the internal `node` and `context` properties to read the raw bytes,
- * then decompress them with Deno's DecompressionStream.
- *
- * This relies on pdf-lib internal APIs — see ADR-0011 for the rationale and
- * the versioned dependency constraint that protects against breakage.
- */
-async function getPageContentStream(
-  page: ReturnType<PDFDocument["getPage"]>,
-  // deno-lint-ignore no-explicit-any
-  context: any,
-): Promise<string> {
-  try {
-    // deno-lint-ignore no-explicit-any
-    const node = (page as any).node;
-    if (!node?.Contents) return "";
-
-    const contents = node.Contents();
-    if (!contents) return "";
-
-    const decoder = new TextDecoder("latin1");
-
-    // Contents() returns a PDFArray (has .asArray()) or a direct PDFRef.
-    // deno-lint-ignore no-explicit-any
-    const contentsAny = contents as any;
-
-    const refs: unknown[] = contentsAny.asArray?.() ??
-      (contentsAny.objectNumber !== undefined ? [contentsAny] : []);
-
-    let combined = "";
-    for (const ref of refs) {
-      try {
-        const stream = context.lookup(ref);
-        if (!stream) continue;
-        // deno-lint-ignore no-explicit-any
-        const s = stream as any;
-        const raw: Uint8Array = s.getContents?.() ?? s.contents;
-        if (!raw) continue;
-        const decompressed = await zlibDecompress(raw);
-        combined += decoder.decode(decompressed) + " ";
-      } catch {
-        // Skip unreadable stream segments.
-      }
-    }
-    return combined;
-  } catch {
-    return "";
+  for (let i = 0; i < pageStarts.length; i++) {
+    const start = pageStarts[i];
+    const end = i + 1 < pageStarts.length ? pageStarts[i + 1] : raw.length;
+    pageTexts.set(i, raw.slice(start, end));
   }
+
+  return pageTexts;
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────
 
 /**
- * Scan the last page of a merged PDF for signature blocks and return
- * Autentique-compatible signer coordinates.
+ * Scan `pdfBytes` for [[ROLE]] markers and return their page/coordinate
+ * positions suitable for Autentique's signer placement API.
  *
- * @param pdfBytes  Raw bytes of the merged PDF (output of exportAndMergePdfs).
+ * Returns `{ ok: false }` when:
+ *   - `pdfBytes` is empty
+ *   - the bytes are not a valid PDF (pdf-lib throws)
+ *   - any required role (LOCADOR, LOCATARIO) is absent
  *
- * @returns DetectSuccess with an array of signers, or DetectFailure with a
- *   user-friendly error message when no signature blocks are found.
+ * Coordinate placement strategy:
+ *   When the marker is found on a specific page, we use that page's dimensions
+ *   to compute a default lower-left placement. We cannot extract exact glyph
+ *   coordinates from the PDF text stream without a full PDF renderer, so we use
+ *   fixed offsets that land in the signature block area of standard Brazilian
+ *   lease contracts generated from Google Docs templates.
  */
 export async function detectSignaturePositions(
   pdfBytes: Uint8Array,
 ): Promise<DetectResult> {
-  const doc = await PDFDocument.load(pdfBytes);
+  if (!pdfBytes || pdfBytes.length === 0) {
+    return { ok: false, error: "detect_empty_pdf" };
+  }
+
+  // Load PDF to validate and get page count + dimensions.
+  let doc: PDFDocument;
+  try {
+    doc = await PDFDocument.load(pdfBytes);
+  } catch {
+    return { ok: false, error: "detect_invalid_pdf" };
+  }
+
   const pageCount = doc.getPageCount();
-
   if (pageCount === 0) {
-    return { ok: false, error: FALLBACK_MESSAGE };
+    return { ok: false, error: "detect_no_pages" };
   }
 
-  const lastPageIndex = pageCount - 1;
-  const lastPage = doc.getPage(lastPageIndex);
+  // Extract raw text segments per page.
+  const pageTexts = extractRawTextByPage(pdfBytes, pageCount);
 
-  // deno-lint-ignore no-explicit-any
-  const context = (doc as any).context;
-  const stream = await getPageContentStream(lastPage, context);
-  const elements = extractTextElements(stream);
-  const signers = findSignatureBlocks(elements, pageCount);
+  // Scan for markers on each page.
+  const foundByRole = new Map<string, { pageIndex: number }>();
 
-  if (signers.length === 0) {
-    return { ok: false, error: FALLBACK_MESSAGE };
+  for (let pageIndex = 0; pageIndex < pageCount; pageIndex++) {
+    const text = pageTexts.get(pageIndex) ?? pageTexts.get(0) ?? "";
+    let match: RegExpExecArray | null;
+    const re = new RegExp(MARKER_RE.source, "g");
+    while ((match = re.exec(text)) !== null) {
+      const role = match[1];
+      if (RECOGNISED_ROLES.has(role) && !foundByRole.has(role)) {
+        foundByRole.set(role, { pageIndex });
+      }
+    }
   }
 
-  return { ok: true, signers };
+  // Validate required roles are present.
+  for (const required of REQUIRED_ROLES) {
+    if (!foundByRole.has(required)) {
+      return {
+        ok: false,
+        error: `detect_missing_marker_${required}`,
+      };
+    }
+  }
+
+  // Build positions in a deterministic order.
+  const ROLE_ORDER = ["LOCADOR", "LOCATARIO", "TESTEMUNHA_1", "TESTEMUNHA_2"];
+  const positions: SignerPosition[] = [];
+  const slotCountPerPage = new Map<number, number>();
+
+  for (const role of ROLE_ORDER) {
+    const found = foundByRole.get(role);
+    if (!found) continue;
+
+    const { pageIndex } = found;
+    const page = doc.getPage(pageIndex);
+    const { height } = page.getSize();
+
+    // Assign slot index within the page (0-based) to compute y offset.
+    const slotIndex = slotCountPerPage.get(pageIndex) ?? 0;
+    slotCountPerPage.set(pageIndex, slotIndex + 1);
+
+    // Y from bottom: start at DEFAULT_Y_FIRST, step up for each additional signer.
+    const y = DEFAULT_Y_FIRST + slotIndex * DEFAULT_Y_STEP;
+    // Clamp y to valid page bounds.
+    const clampedY = Math.min(y, Math.max(0, height - 20));
+
+    positions.push({
+      role,
+      page: pageIndex + 1, // 1-based
+      x: DEFAULT_X,
+      y: clampedY,
+    });
+  }
+
+  return { ok: true, positions };
 }

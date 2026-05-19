@@ -1,17 +1,17 @@
 // unit: documents/signatures/detect
 //
-// Unit tests for detectSignaturePositions.
+// Unit tests for detectSignaturePositions (marker-based, [[ROLE]] approach).
 // All PDFs are constructed synthetically in-memory using pdf-lib — no disk I/O.
 //
 // Test naming follows the ci.sh filter: "unit|integration".
 //
 // Strategy:
-//   pdf-lib's text-drawing API produces a real PDF content stream that our
-//   parser reads back.  We construct minimal PDFs with known signature blocks,
-//   run detection, and assert the returned signer shapes.
+//   We embed [[ROLE]] marker strings into PDF text content streams using
+//   pdf-lib's drawText API, which produces real content streams that the
+//   raw-text extractor can scan.  We then assert on the returned positions
+//   array shape.
 //
-//   For fallback (no markers) tests we use plain PDFs without any text, or
-//   PDFs whose text does not match the underscore pattern.
+//   For failure cases we use blank PDFs or PDFs missing required role markers.
 
 import {
   assertEquals,
@@ -19,56 +19,44 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { PDFDocument, StandardFonts } from "pdf-lib";
 import {
-  DetectedSigner,
   DetectResult,
   detectSignaturePositions,
+  SignerPosition,
 } from "./detect.ts";
 
 // ─── Fixture helpers ──────────────────────────────────────────────────────
 
-const UNDERLINE = "_____________________________"; // 29 underscores (≥ 20)
-
 /**
- * Build a minimal 1-page PDF with a Helvetica font, drawing `lines` as text
- * elements at fixed positions.  Each entry in `lines` is placed on the page
- * using a simple y-offset layout, top-to-bottom.
- *
- * The drawing positions ensure that labels fall below their underlines in the
- * same way as a Google-Docs-exported lease PDF.
+ * Build a minimal PDF with the given text lines drawn on the specified page.
+ * `pageLines` is a map from page index (0-based) to an array of text strings
+ * to draw on that page.  Pages without an entry are left blank.
  */
-async function buildPdfWithText(
-  pageLines: Array<{ text: string; x: number; y: number }>,
-  pageCount = 1,
+async function buildPdfWithMarkers(
+  pageLines: Map<number, string[]>,
+  totalPages = 1,
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
 
-  for (let p = 0; p < pageCount; p++) {
-    const page = doc.addPage([595, 842]); // A4 in points
-    // Only draw text on the LAST page (simulate signature on last page only).
-    if (p === pageCount - 1) {
-      for (const { text, x, y } of pageLines) {
-        page.drawText(text, { x, y, size: 12, font });
-      }
+  for (let p = 0; p < totalPages; p++) {
+    const page = doc.addPage([595, 842]); // A4
+    const lines = pageLines.get(p) ?? [];
+    let y = 700;
+    for (const text of lines) {
+      page.drawText(text, { x: 60, y, size: 12, font });
+      y -= 20;
     }
   }
 
   return doc.save();
 }
 
-/** Convenience: build a single-page PDF with the standard 3-signer layout. */
-async function buildStandard3SignerPdf(): Promise<Uint8Array> {
-  // Layout (y increases upward in PDF coordinates, 842pt page height):
-  //   Landlord block at y≈200, Tenant at y≈150, Witness at y≈100.
-  //   Label is 20pt below the underline.
-  return buildPdfWithText([
-    { text: UNDERLINE, x: 50, y: 200 },
-    { text: "Locador", x: 50, y: 180 },
-    { text: UNDERLINE, x: 200, y: 200 },
-    { text: "Inquilino", x: 200, y: 180 },
-    { text: UNDERLINE, x: 350, y: 200 },
-    { text: "João da Silva", x: 350, y: 180 },
-  ]);
+/** Convenience: 1-page PDF with [[LOCADOR]] and [[LOCATARIO]] markers. */
+async function buildMinimalValidPdf(): Promise<Uint8Array> {
+  return buildPdfWithMarkers(
+    new Map([[0, ["[[LOCADOR]]", "[[LOCATARIO]]"]]]),
+    1,
+  );
 }
 
 /** Run detection on raw bytes and return the result. */
@@ -77,239 +65,237 @@ async function detect(pdfBytes: Uint8Array): Promise<DetectResult> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// unit: standard 3-signer layout
+// unit: basic valid case — both required markers present
 // ═══════════════════════════════════════════════════════════════════════════
 
-Deno.test("unit: detect — standard layout returns ok:true", async () => {
-  const pdf = await buildStandard3SignerPdf();
+Deno.test("unit: detect — valid PDF with required markers returns ok:true", async () => {
+  const pdf = await buildMinimalValidPdf();
   const result = await detect(pdf);
   assertEquals(result.ok, true);
 });
 
-Deno.test("unit: detect — standard layout returns 3 signers", async () => {
-  const pdf = await buildStandard3SignerPdf();
+Deno.test("unit: detect — valid PDF returns positions array", async () => {
+  const pdf = await buildMinimalValidPdf();
   const result = await detect(pdf);
   assertEquals(result.ok, true);
   if (result.ok) {
-    assertEquals(result.signers.length, 3);
+    assertEquals(Array.isArray(result.positions), true);
   }
 });
 
-Deno.test("unit: detect — standard layout detects landlord role", async () => {
-  const pdf = await buildStandard3SignerPdf();
+Deno.test("unit: detect — valid PDF returns 2 positions for required roles", async () => {
+  const pdf = await buildMinimalValidPdf();
   const result = await detect(pdf);
   assertEquals(result.ok, true);
   if (result.ok) {
-    const landlord = result.signers.find((s: DetectedSigner) =>
-      s.role === "landlord"
+    assertEquals(result.positions.length, 2);
+  }
+});
+
+Deno.test("unit: detect — LOCADOR position has role LOCADOR", async () => {
+  const pdf = await buildMinimalValidPdf();
+  const result = await detect(pdf);
+  assertEquals(result.ok, true);
+  if (result.ok) {
+    const pos = result.positions.find((p: SignerPosition) =>
+      p.role === "LOCADOR"
     );
-    assertEquals(landlord !== undefined, true);
-    assertEquals(landlord?.name, "Locador");
+    assertEquals(pos !== undefined, true);
   }
 });
 
-Deno.test("unit: detect — standard layout detects tenant role", async () => {
-  const pdf = await buildStandard3SignerPdf();
+Deno.test("unit: detect — LOCATARIO position has role LOCATARIO", async () => {
+  const pdf = await buildMinimalValidPdf();
   const result = await detect(pdf);
   assertEquals(result.ok, true);
   if (result.ok) {
-    const tenant = result.signers.find((s: DetectedSigner) =>
-      s.role === "tenant"
+    const pos = result.positions.find((p: SignerPosition) =>
+      p.role === "LOCATARIO"
     );
-    assertEquals(tenant !== undefined, true);
-    assertEquals(tenant?.name, "Inquilino");
+    assertEquals(pos !== undefined, true);
   }
 });
 
-Deno.test("unit: detect — standard layout detects witness role", async () => {
-  const pdf = await buildStandard3SignerPdf();
-  const result = await detect(pdf);
-  assertEquals(result.ok, true);
-  if (result.ok) {
-    const witness = result.signers.find((s: DetectedSigner) =>
-      s.role === "witness"
-    );
-    assertEquals(witness !== undefined, true);
-  }
-});
+// ═══════════════════════════════════════════════════════════════════════════
+// unit: coordinate shape
+// ═══════════════════════════════════════════════════════════════════════════
 
-Deno.test("unit: detect — standard layout witness name is the custom label text", async () => {
-  const pdf = await buildStandard3SignerPdf();
+Deno.test("unit: detect — each position has numeric x and y", async () => {
+  const pdf = await buildMinimalValidPdf();
   const result = await detect(pdf);
   assertEquals(result.ok, true);
   if (result.ok) {
-    const witness = result.signers.find((s: DetectedSigner) =>
-      s.role === "witness"
-    );
-    assertEquals(witness?.name, "João da Silva");
-  }
-});
-
-Deno.test("unit: detect — each signer has numeric x and y coordinates", async () => {
-  const pdf = await buildStandard3SignerPdf();
-  const result = await detect(pdf);
-  assertEquals(result.ok, true);
-  if (result.ok) {
-    for (const signer of result.signers) {
-      assertEquals(typeof signer.x, "number");
-      assertEquals(typeof signer.y, "number");
-      assertEquals(isNaN(signer.x), false);
-      assertEquals(isNaN(signer.y), false);
+    for (const pos of result.positions) {
+      assertEquals(typeof pos.x, "number");
+      assertEquals(typeof pos.y, "number");
+      assertEquals(isNaN(pos.x), false);
+      assertEquals(isNaN(pos.y), false);
     }
   }
 });
 
-Deno.test("unit: detect — all signers report last page number (1-indexed)", async () => {
-  const pdf = await buildStandard3SignerPdf();
+Deno.test("unit: detect — each position has x > 0", async () => {
+  const pdf = await buildMinimalValidPdf();
   const result = await detect(pdf);
   assertEquals(result.ok, true);
   if (result.ok) {
-    for (const signer of result.signers) {
-      assertEquals(signer.page, 1); // single-page PDF
+    for (const pos of result.positions) {
+      assertEquals(pos.x > 0, true);
+    }
+  }
+});
+
+Deno.test("unit: detect — each position has y > 0", async () => {
+  const pdf = await buildMinimalValidPdf();
+  const result = await detect(pdf);
+  assertEquals(result.ok, true);
+  if (result.ok) {
+    for (const pos of result.positions) {
+      assertEquals(pos.y > 0, true);
+    }
+  }
+});
+
+Deno.test("unit: detect — each position has a 1-based page number", async () => {
+  const pdf = await buildMinimalValidPdf();
+  const result = await detect(pdf);
+  assertEquals(result.ok, true);
+  if (result.ok) {
+    for (const pos of result.positions) {
+      assertEquals(typeof pos.page, "number");
+      assertEquals(pos.page >= 1, true);
     }
   }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// unit: multi-page PDF — signers land on correct page number
+// unit: witness markers are detected when present
 // ═══════════════════════════════════════════════════════════════════════════
 
-Deno.test("unit: detect — multi-page PDF reports correct 1-indexed page number", async () => {
-  // 3-page PDF: signature block on last page (page 3).
-  const pdf = await buildPdfWithText(
-    [
-      { text: UNDERLINE, x: 50, y: 200 },
-      { text: "Inquilino", x: 50, y: 180 },
-    ],
-    3,
+Deno.test("unit: detect — TESTEMUNHA_1 marker detected when present", async () => {
+  const pdf = await buildPdfWithMarkers(
+    new Map([[
+      0,
+      ["[[LOCADOR]]", "[[LOCATARIO]]", "[[TESTEMUNHA_1]]"],
+    ]]),
+    1,
   );
   const result = await detect(pdf);
   assertEquals(result.ok, true);
   if (result.ok) {
-    assertEquals(result.signers.length, 1);
-    assertEquals(result.signers[0].page, 3);
+    assertEquals(result.positions.length, 3);
+    const t1 = result.positions.find((p: SignerPosition) =>
+      p.role === "TESTEMUNHA_1"
+    );
+    assertEquals(t1 !== undefined, true);
+  }
+});
+
+Deno.test("unit: detect — TESTEMUNHA_2 marker detected when present", async () => {
+  const pdf = await buildPdfWithMarkers(
+    new Map([[
+      0,
+      ["[[LOCADOR]]", "[[LOCATARIO]]", "[[TESTEMUNHA_1]]", "[[TESTEMUNHA_2]]"],
+    ]]),
+    1,
+  );
+  const result = await detect(pdf);
+  assertEquals(result.ok, true);
+  if (result.ok) {
+    assertEquals(result.positions.length, 4);
+    const t2 = result.positions.find((p: SignerPosition) =>
+      p.role === "TESTEMUNHA_2"
+    );
+    assertEquals(t2 !== undefined, true);
   }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// unit: missing markers — fallback path
+// unit: page number reporting
 // ═══════════════════════════════════════════════════════════════════════════
 
-Deno.test("unit: detect — empty PDF returns ok:false", async () => {
-  const doc = await PDFDocument.create();
-  doc.addPage();
-  const bytes = await doc.save();
+Deno.test("unit: detect — single-page PDF reports page 1 for all positions", async () => {
+  const pdf = await buildMinimalValidPdf();
+  const result = await detect(pdf);
+  assertEquals(result.ok, true);
+  if (result.ok) {
+    for (const pos of result.positions) {
+      assertEquals(pos.page, 1);
+    }
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// unit: failure — empty bytes
+// ═══════════════════════════════════════════════════════════════════════════
+
+Deno.test("unit: detect — empty Uint8Array returns ok:false", async () => {
+  const result = await detect(new Uint8Array(0));
+  assertEquals(result.ok, false);
+});
+
+Deno.test("unit: detect — empty bytes error is detect_empty_pdf", async () => {
+  const result = await detect(new Uint8Array(0));
+  assertEquals(result.ok, false);
+  if (!result.ok) {
+    assertEquals(result.error, "detect_empty_pdf");
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// unit: failure — invalid PDF bytes
+// ═══════════════════════════════════════════════════════════════════════════
+
+Deno.test("unit: detect — random bytes return ok:false", async () => {
+  const bytes = new Uint8Array([0x00, 0x01, 0x02, 0x03, 0xFF]);
   const result = await detect(bytes);
   assertEquals(result.ok, false);
 });
 
-Deno.test("unit: detect — fallback error message is user-friendly Portuguese", async () => {
-  const doc = await PDFDocument.create();
-  doc.addPage();
-  const bytes = await doc.save();
+Deno.test("unit: detect — invalid PDF error is detect_invalid_pdf", async () => {
+  const bytes = new Uint8Array([0x00, 0x01, 0x02, 0x03, 0xFF]);
   const result = await detect(bytes);
   assertEquals(result.ok, false);
   if (!result.ok) {
-    assertStringIncludes(result.error, "Autentique");
-    assertStringIncludes(result.error, "manualmente");
+    assertEquals(result.error, "detect_invalid_pdf");
   }
 });
 
-Deno.test("unit: detect — PDF with short underscores (< 20) returns ok:false", async () => {
-  // 5 underscores should not trigger detection.
-  const pdf = await buildPdfWithText([
-    { text: "_____", x: 50, y: 200 },
-    { text: "Inquilino", x: 50, y: 180 },
-  ]);
-  const result = await detect(pdf);
+// ═══════════════════════════════════════════════════════════════════════════
+// unit: failure — missing required markers
+// ═══════════════════════════════════════════════════════════════════════════
+
+Deno.test("unit: detect — PDF with no markers returns ok:false", async () => {
+  const doc = await PDFDocument.create();
+  doc.addPage();
+  const bytes = await doc.save();
+  const result = await detect(bytes);
   assertEquals(result.ok, false);
 });
 
-Deno.test("unit: detect — PDF with underline but no label below returns ok:false", async () => {
-  // Underline with no text below it within the search window.
-  const pdf = await buildPdfWithText([
-    { text: UNDERLINE, x: 50, y: 200 },
-    // Label is 60pt below (outside the 40pt search window).
-    { text: "Inquilino", x: 50, y: 130 },
-  ]);
+Deno.test("unit: detect — missing LOCADOR marker returns error string", async () => {
+  // Only LOCATARIO present.
+  const pdf = await buildPdfWithMarkers(
+    new Map([[0, ["[[LOCATARIO]]"]]]),
+    1,
+  );
   const result = await detect(pdf);
-  // No valid block found → fallback.
   assertEquals(result.ok, false);
-});
-
-// ═══════════════════════════════════════════════════════════════════════════
-// unit: witness with custom name
-// ═══════════════════════════════════════════════════════════════════════════
-
-Deno.test("unit: detect — witness with multi-word name is preserved", async () => {
-  const pdf = await buildPdfWithText([
-    { text: UNDERLINE, x: 50, y: 200 },
-    { text: "Maria Conceição", x: 50, y: 182 },
-  ]);
-  const result = await detect(pdf);
-  assertEquals(result.ok, true);
-  if (result.ok) {
-    assertEquals(result.signers[0].role, "witness");
-    assertEquals(result.signers[0].name, "Maria Conceição");
+  if (!result.ok) {
+    assertStringIncludes(result.error, "LOCADOR");
   }
 });
 
-Deno.test("unit: detect — unknown label (not Inquilino/Locador) treated as witness", async () => {
-  const pdf = await buildPdfWithText([
-    { text: UNDERLINE, x: 50, y: 200 },
-    { text: "Fiador", x: 50, y: 182 },
-  ]);
+Deno.test("unit: detect — missing LOCATARIO marker returns error string", async () => {
+  // Only LOCADOR present.
+  const pdf = await buildPdfWithMarkers(
+    new Map([[0, ["[[LOCADOR]]"]]]),
+    1,
+  );
   const result = await detect(pdf);
-  assertEquals(result.ok, true);
-  if (result.ok) {
-    assertEquals(result.signers[0].role, "witness");
-    assertEquals(result.signers[0].name, "Fiador");
-  }
-});
-
-// ═══════════════════════════════════════════════════════════════════════════
-// unit: single-signer edge case
-// ═══════════════════════════════════════════════════════════════════════════
-
-Deno.test("unit: detect — single signer PDF returns ok:true with one signer", async () => {
-  const pdf = await buildPdfWithText([
-    { text: UNDERLINE, x: 50, y: 200 },
-    { text: "Locador", x: 50, y: 182 },
-  ]);
-  const result = await detect(pdf);
-  assertEquals(result.ok, true);
-  if (result.ok) {
-    assertEquals(result.signers.length, 1);
-    assertEquals(result.signers[0].role, "landlord");
-  }
-});
-
-Deno.test("unit: detect — single signer has x > 0 and y > 0", async () => {
-  const pdf = await buildPdfWithText([
-    { text: UNDERLINE, x: 50, y: 200 },
-    { text: "Locador", x: 50, y: 182 },
-  ]);
-  const result = await detect(pdf);
-  assertEquals(result.ok, true);
-  if (result.ok) {
-    assertEquals(result.signers[0].x > 0, true);
-    assertEquals(result.signers[0].y > 0, true);
-  }
-});
-
-// ═══════════════════════════════════════════════════════════════════════════
-// unit: role field values
-// ═══════════════════════════════════════════════════════════════════════════
-
-Deno.test("unit: detect — role values are restricted to tenant|landlord|witness", async () => {
-  const pdf = await buildStandard3SignerPdf();
-  const result = await detect(pdf);
-  assertEquals(result.ok, true);
-  if (result.ok) {
-    const validRoles = new Set(["tenant", "landlord", "witness"]);
-    for (const signer of result.signers) {
-      assertEquals(validRoles.has(signer.role), true);
-    }
+  assertEquals(result.ok, false);
+  if (!result.ok) {
+    assertStringIncludes(result.error, "LOCATARIO");
   }
 });
 
@@ -317,15 +303,12 @@ Deno.test("unit: detect — role values are restricted to tenant|landlord|witnes
 // unit: result shape conformance
 // ═══════════════════════════════════════════════════════════════════════════
 
-Deno.test("unit: detect — success result has ok:true and signers array", async () => {
-  const pdf = await buildPdfWithText([
-    { text: UNDERLINE, x: 50, y: 200 },
-    { text: "Inquilino", x: 50, y: 182 },
-  ]);
+Deno.test("unit: detect — success result has ok:true and positions array", async () => {
+  const pdf = await buildMinimalValidPdf();
   const result = await detect(pdf);
   assertEquals(result.ok, true);
   if (result.ok) {
-    assertEquals(Array.isArray(result.signers), true);
+    assertEquals(Array.isArray(result.positions), true);
   }
 });
 
@@ -342,29 +325,35 @@ Deno.test("unit: detect — failure result has ok:false and error string", async
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// unit: label matching is case-insensitive
+// unit: position ordering follows ROLE_ORDER
 // ═══════════════════════════════════════════════════════════════════════════
 
-Deno.test("unit: detect — INQUILINO (uppercase) maps to tenant role", async () => {
-  const pdf = await buildPdfWithText([
-    { text: UNDERLINE, x: 50, y: 200 },
-    { text: "INQUILINO", x: 50, y: 182 },
-  ]);
+Deno.test("unit: detect — positions ordered LOCADOR before LOCATARIO", async () => {
+  const pdf = await buildMinimalValidPdf();
   const result = await detect(pdf);
   assertEquals(result.ok, true);
   if (result.ok) {
-    assertEquals(result.signers[0].role, "tenant");
+    const roles = result.positions.map((p: SignerPosition) => p.role);
+    const locadorIdx = roles.indexOf("LOCADOR");
+    const locatarioIdx = roles.indexOf("LOCATARIO");
+    assertEquals(locadorIdx < locatarioIdx, true);
   }
 });
 
-Deno.test("unit: detect — LOCADOR (uppercase) maps to landlord role", async () => {
-  const pdf = await buildPdfWithText([
-    { text: UNDERLINE, x: 50, y: 200 },
-    { text: "LOCADOR", x: 50, y: 182 },
-  ]);
+Deno.test("unit: detect — TESTEMUNHA positions come after required roles", async () => {
+  const pdf = await buildPdfWithMarkers(
+    new Map([[
+      0,
+      ["[[LOCADOR]]", "[[LOCATARIO]]", "[[TESTEMUNHA_1]]"],
+    ]]),
+    1,
+  );
   const result = await detect(pdf);
   assertEquals(result.ok, true);
   if (result.ok) {
-    assertEquals(result.signers[0].role, "landlord");
+    const roles = result.positions.map((p: SignerPosition) => p.role);
+    const t1Idx = roles.indexOf("TESTEMUNHA_1");
+    const locatarioIdx = roles.indexOf("LOCATARIO");
+    assertEquals(t1Idx > locatarioIdx, true);
   }
 });
