@@ -3,6 +3,13 @@
 ## Unreleased
 
 ### Added
+- `POST /documents/generate` Edge Function: substitution engine that looks up templates
+  mapped to the property's type, copies each to the tenant's Drive folder, replaces all
+  `{{placeholder}}` tokens with provided values (applying `maiúsculas`/`minúsculas`/`título`/`frase`
+  case transformations), and returns Drive URLs. Regeneration atomically overwrites existing files.
+  Returns 422 if any required placeholder is missing; retries Drive API up to 3× with exponential
+  backoff on 429/500 errors. Unit tests for `applyCase` and `substituteTokens`; integration tests
+  covering 200/400/401/404/422/502 cases and regeneration overwrite. (issue 10)
 - `POST /templates`, `DELETE /templates/:id` Edge Functions: register and remove lease templates
   with property-type mappings. Inserts into `templates` and `property_type_templates` tables. (issue 8)
 - `POST /placeholders`, `DELETE /placeholders/:name` Edge Functions: manage placeholder definitions.
