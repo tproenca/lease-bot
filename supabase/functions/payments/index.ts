@@ -170,7 +170,21 @@ async function handleRecordPayment(req: Request): Promise<Response> {
 // ─── GET /payments?month=YYYY-MM ──────────────────────────────────────────
 
 async function handleGetPayments(req: Request): Promise<Response> {
-  // 1. Verify JWT.
+  // 1. Validate query param.
+  const url = new URL(req.url);
+  const month = url.searchParams.get("month");
+
+  if (!month || !/^\d{4}-\d{2}$/.test(month)) {
+    return errorResponse(
+      400,
+      "INVALID_MONTH",
+      "O parâmetro 'month' é obrigatório e deve estar no formato YYYY-MM.",
+    );
+  }
+
+  const referenceMonthDate = `${month}-01`;
+
+  // 2. Verify JWT.
   const jwt = extractBearer(req);
   if (!jwt) {
     return errorResponse(
@@ -188,20 +202,6 @@ async function handleGetPayments(req: Request): Promise<Response> {
       "Token de autorização inválido ou expirado.",
     );
   }
-
-  // 2. Validate query param.
-  const url = new URL(req.url);
-  const month = url.searchParams.get("month");
-
-  if (!month || !/^\d{4}-\d{2}$/.test(month)) {
-    return errorResponse(
-      400,
-      "INVALID_MONTH",
-      "O parâmetro 'month' é obrigatório e deve estar no formato YYYY-MM.",
-    );
-  }
-
-  const referenceMonthDate = `${month}-01`;
 
   const db = userClient(jwt);
 
@@ -275,21 +275,24 @@ async function handleGetPayments(req: Request): Promise<Response> {
     (payments ?? []).map((p: { tenant_id: string }) => p.tenant_id),
   );
 
-  const paid = (payments ?? []).map(
-    (p: {
-      tenant_id: string;
-      amount: number;
-      paid_at: string;
-      on_time: boolean;
-      tenants: { name: string } | null;
-    }) => ({
+  type PaymentWithTenant = {
+    tenant_id: string;
+    amount: number;
+    paid_at: string;
+    on_time: boolean;
+    tenants: { name: string } | Array<{ name: string }> | null;
+  };
+
+  const paid = ((payments ?? []) as Array<PaymentWithTenant>).map((p) => {
+    const tenant = Array.isArray(p.tenants) ? p.tenants[0] : p.tenants;
+    return {
       tenant_id: p.tenant_id,
-      name: (p.tenants as { name: string } | null)?.name ?? null,
+      name: tenant?.name ?? null,
       amount: p.amount,
       paid_at: p.paid_at,
       on_time: p.on_time,
-    }),
-  );
+    };
+  });
 
   // Build map of last reminder per tenant (already ordered desc by sent_at).
   const lastReminderMap = new Map<string, string>();

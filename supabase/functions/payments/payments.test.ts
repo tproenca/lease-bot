@@ -123,7 +123,7 @@ function buildMockFetch(opts: MockFetchOpts) {
           return new Response(JSON.stringify(null), { status: 500 });
         }
         const insertData = opts.paymentInsert ?? { id: MOCK_PAYMENT_ID };
-        return new Response(JSON.stringify([insertData]), { status: 201 });
+        return new Response(JSON.stringify(insertData), { status: 201 });
       }
       if (method === "GET") {
         if (opts.paymentsQueryFail) {
@@ -504,7 +504,9 @@ Deno.test("integration: POST /payments — 400 when paid_at is not a valid datet
 
 Deno.test("integration: POST /payments — on_time=true when paid exactly at boundary (5th 23:59:59Z)", async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = buildMockFetch({ payments: [{ id: "pay-boundary", on_time: true }] }) as typeof fetch;
+  globalThis.fetch = buildMockFetch({
+    paymentInsert: { id: "pay-boundary" },
+  }) as typeof fetch;
   try {
     const res = await handlePayments(
       makePostRequest(
@@ -527,7 +529,9 @@ Deno.test("integration: POST /payments — on_time=true when paid exactly at bou
 
 Deno.test("integration: POST /payments — on_time=false when paid one second after boundary (6th 00:00:00Z)", async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = buildMockFetch({ payments: [{ id: "pay-late", on_time: false }] }) as typeof fetch;
+  globalThis.fetch = buildMockFetch({
+    paymentInsert: { id: "pay-late" },
+  }) as typeof fetch;
   try {
     const res = await handlePayments(
       makePostRequest(
