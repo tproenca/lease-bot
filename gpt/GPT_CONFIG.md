@@ -38,6 +38,7 @@ See `SYSTEM_PROMPT.md` — paste the full contents into the Instructions field.
 - Authorization URL: `https://accounts.google.com/o/oauth2/v2/auth`
 - Token URL: `https://oauth2.googleapis.com/token`
 - Scope: `openid email profile https://www.googleapis.com/auth/drive`
+- Privacy Policy URL: `https://<project-ref>.supabase.co/storage/v1/object/public/legal/privacy-policy.html`
 
 ## Notes for developer
 
