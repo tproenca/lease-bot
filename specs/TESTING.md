@@ -51,9 +51,9 @@ deno test --allow-all supabase/functions/ --filter "e2e:smoke"
 - Template diff: add new template → detect new placeholders → configure → verify DB updated
 - Template diff: remove template → verify mapping cleaned up
 - Tenant replacement → verify old folder unstarred, new folder starred
-- Signing flow: generate documents → send for signing → mock Autentique webhook → verify signed PDF saved to Drive
-- Payment reminder: mock pg_cron trigger → verify Meta WhatsApp API called → verify `payment_reminders` record created
-- Webhook idempotency: duplicate Autentique webhook → verify processed only once
+- Signing flow: generate documents → send for signing → mock Autentique webhook → verify signed PDF saved to Drive (planned)
+- Payment reminder: mock pg_cron trigger → verify Meta WhatsApp API called → verify `payment_reminders` record created (planned)
+- Webhook idempotency: duplicate Autentique webhook → verify processed only once (planned)
 - Access control: JWT from landlord A rejected for landlord B's resources
 
 **Coverage threshold:** 80% line coverage across all Edge Function logic
@@ -108,3 +108,50 @@ scripts/nightly.sh
 `scripts/ci.sh` exits with code 0 if all Tier 1 and Tier 2 tests pass, code 1 otherwise.
 `scripts/nightly.sh` exits with code 0 if all tests pass and coverage ≥ 80%, code 1 otherwise.
 On failure, `scripts/nightly.sh` appends a bug entry to `issues.md`.
+
+---
+
+## Coverage Status
+
+Which flows are covered at which tier, and what has no automated test yet.
+
+### Covered
+
+| Flow | Tier | Type | Notes |
+|---|---|---|---|
+| Core landlord happy path (building → property → tenant → generate docs → payment) | 2 | E2E smoke | Google/Drive mocked; real Supabase |
+| Buildings CRUD | 1 | Integration | Auth, validation, Drive failures, folder reuse |
+| Properties CRUD | 1 | Integration | House / commercial / apartment; building scoping |
+| Tenants CRUD (create, get, patch) | 1 | Integration | Folder creation, Drive star/unstar, replacement, rollback |
+| Context load | 1 | Integration | Full landlord context, account config, template mapping |
+| Document generation | 1 | Integration + unit | Placeholder substitution, case transforms, RLS block |
+| Document export / PDF merge | 1 | Integration + unit | Multi-doc merge, stop-on-first-failure, token auth |
+| Template diff (fast + slow path) | 1 | Integration + unit | Placeholder detection, witness detection |
+| Templates CRUD | 1 | Integration | Create, delete |
+| Payments (record + query) | 1 | Integration | on_time boundary logic, paid/overdue split |
+| Ad-hoc payment reminder | 1 | Integration | WhatsApp send, `payment_reminders` record, non-500 on failure |
+| Account config (reminder frequency) | 1 | Integration | All valid values + invalid inputs |
+| Placeholders CRUD | 1 | Integration | Create, delete (idempotent, URL-encoded) |
+| Witnesses CRUD | 1 | Integration | Create, uniqueness |
+| Setup / onboarding complete | 1 | Integration | Folder ID, WhatsApp, Autentique key validation |
+| Substitution engine | 1 | Unit | applyCase, substituteTokens |
+| PDF merge logic | 1 | Unit | Page count, header check |
+| Input validation utilities | 1 | Unit | WhatsApp, Drive ID, folder name, API key, cookies, OAuth URL |
+
+### Tier 3 only — nightly, not pre-merge
+
+| Flow | Notes |
+|---|---|
+| Tenant replacement full flow | Old folder unstarred, new folder starred |
+| Cross-landlord access control | JWT from landlord A rejected for landlord B's resources |
+| Template add/remove round-trip | Diff detects new/removed → DB updated |
+
+### No automated test yet
+
+| Flow | Reason |
+|---|---|
+| Signing flow end-to-end | Autentique webhook requires a live external call |
+| pg_cron reminder execution | Requires live Supabase deployment with pg_cron enabled |
+| Webhook idempotency | Duplicate Autentique webhook processed only once |
+
+For manual coverage of these flows, see [docs/MANUAL-TEST.md](../docs/MANUAL-TEST.md).
