@@ -657,7 +657,13 @@ paths:
                         drive_url:
                           type: string
         '400':
-          description: Missing required placeholders
+          description: Malformed request or unknown placeholder key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Missing required placeholder value
           content:
             application/json:
               schema:

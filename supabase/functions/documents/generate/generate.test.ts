@@ -1,8 +1,9 @@
-// unit + integration: POST /documents/generate
+// unit: POST /documents/generate
 //
-// Unit tests cover the pure helper functions (applyCase, substituteTokens).
-// Integration tests call handleGenerateDocuments() directly with fetch stubs.
-// No real Supabase instance or Google account is needed.
+// Unit tests cover the pure helper functions (applyCase, substituteTokens)
+// and the handler via globalThis.fetch stubs (no real Supabase instance needed).
+// Real integration tests (against a live local Supabase DB) live in
+// generate.integration.test.ts and require `supabase start`.
 //
 // Test naming follows the ci.sh filter: "unit|integration".
 
@@ -137,7 +138,7 @@ Deno.test("unit: substituteTokens — trims whitespace inside token braces", () 
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// integration: POST /documents/generate
+// unit: POST /documents/generate (handler tests — Supabase + Drive stubbed)
 // ═══════════════════════════════════════════════════════════════════════════
 
 // ─── Fixtures ────────────────────────────────────────────────────────────
@@ -383,7 +384,7 @@ const VALID_BODY = {
 // OPTIONS / CORS
 // ═══════════════════════════════════════════════════════════════════════════
 
-Deno.test("integration: generate OPTIONS — returns 200 with CORS headers", async () => {
+Deno.test("unit: generate OPTIONS — returns 200 with CORS headers", async () => {
   const res = await handleGenerateDocuments(
     new Request("http://localhost/documents/generate", { method: "OPTIONS" }),
   );
@@ -393,7 +394,7 @@ Deno.test("integration: generate OPTIONS — returns 200 with CORS headers", asy
 
 // ─── 405 — wrong method ─────────────────────────────────────────────────
 
-Deno.test("integration: generate GET — 405 method not allowed", async () => {
+Deno.test("unit: generate GET — 405 method not allowed", async () => {
   const res = await handleGenerateDocuments(
     new Request("http://localhost/documents/generate", { method: "GET" }),
   );
@@ -404,14 +405,14 @@ Deno.test("integration: generate GET — 405 method not allowed", async () => {
 // Auth failures
 // ═══════════════════════════════════════════════════════════════════════════
 
-Deno.test("integration: generate — 401 when no JWT provided", async () => {
+Deno.test("unit: generate — 401 when no JWT provided", async () => {
   const res = await handleGenerateDocuments(makePostRequest(VALID_BODY));
   assertEquals(res.status, 401);
   const body = await jsonBody(res) as Record<string, unknown>;
   assertEquals((body.error as Record<string, string>).code, "UNAUTHORIZED");
 });
 
-Deno.test("integration: generate — 401 when JWT is invalid", async () => {
+Deno.test("unit: generate — 401 when JWT is invalid", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ authUser: null }) as typeof fetch;
   try {
@@ -428,7 +429,7 @@ Deno.test("integration: generate — 401 when JWT is invalid", async () => {
 // Input validation
 // ═══════════════════════════════════════════════════════════════════════════
 
-Deno.test("integration: generate — 400 when property_id is missing", async () => {
+Deno.test("unit: generate — 400 when property_id is missing", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -442,7 +443,7 @@ Deno.test("integration: generate — 400 when property_id is missing", async () 
   }
 });
 
-Deno.test("integration: generate — 400 when tenant_id is missing", async () => {
+Deno.test("unit: generate — 400 when tenant_id is missing", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -456,7 +457,7 @@ Deno.test("integration: generate — 400 when tenant_id is missing", async () =>
   }
 });
 
-Deno.test("integration: generate — 400 when placeholders field is missing", async () => {
+Deno.test("unit: generate — 400 when placeholders field is missing", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -471,7 +472,7 @@ Deno.test("integration: generate — 400 when placeholders field is missing", as
   }
 });
 
-Deno.test("integration: generate — 400 when placeholders field is an array", async () => {
+Deno.test("unit: generate — 400 when placeholders field is an array", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -489,7 +490,7 @@ Deno.test("integration: generate — 400 when placeholders field is an array", a
   }
 });
 
-Deno.test("integration: generate — 400 when unknown placeholder key sent", async () => {
+Deno.test("unit: generate — 400 when unknown placeholder key sent", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -514,7 +515,7 @@ Deno.test("integration: generate — 400 when unknown placeholder key sent", asy
 // 422 — missing required placeholders
 // ═══════════════════════════════════════════════════════════════════════════
 
-Deno.test("integration: generate — 422 when required placeholder value is missing", async () => {
+Deno.test("unit: generate — 422 when required placeholder value is missing", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -541,7 +542,7 @@ Deno.test("integration: generate — 422 when required placeholder value is miss
   }
 });
 
-Deno.test("integration: generate — 422 when required placeholder value is empty string", async () => {
+Deno.test("unit: generate — 422 when required placeholder value is empty string", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -567,7 +568,7 @@ Deno.test("integration: generate — 422 when required placeholder value is empt
 // 404 — resource not found
 // ═══════════════════════════════════════════════════════════════════════════
 
-Deno.test("integration: generate — 404 when landlord not found", async () => {
+Deno.test("unit: generate — 404 when landlord not found", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ landlord: null }) as typeof fetch;
   try {
@@ -580,7 +581,7 @@ Deno.test("integration: generate — 404 when landlord not found", async () => {
   }
 });
 
-Deno.test("integration: generate — 404 when property not found", async () => {
+Deno.test("unit: generate — 404 when property not found", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ property: null }) as typeof fetch;
   try {
@@ -593,7 +594,7 @@ Deno.test("integration: generate — 404 when property not found", async () => {
   }
 });
 
-Deno.test("integration: generate — 404 when tenant not found", async () => {
+Deno.test("unit: generate — 404 when tenant not found", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ tenant: null }) as typeof fetch;
   try {
@@ -606,7 +607,7 @@ Deno.test("integration: generate — 404 when tenant not found", async () => {
   }
 });
 
-Deno.test("integration: generate — 404 when no templates mapped to property type", async () => {
+Deno.test("unit: generate — 404 when no templates mapped to property type", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ mappings: [] }) as typeof fetch;
   try {
@@ -623,7 +624,7 @@ Deno.test("integration: generate — 404 when no templates mapped to property ty
 // 502 — Drive API failures
 // ═══════════════════════════════════════════════════════════════════════════
 
-Deno.test("integration: generate — 502 when Google token refresh fails", async () => {
+Deno.test("unit: generate — 502 when Google token refresh fails", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ tokenExchangeFail: true }) as typeof fetch;
   try {
@@ -636,7 +637,7 @@ Deno.test("integration: generate — 502 when Google token refresh fails", async
   }
 });
 
-Deno.test("integration: generate — 502 when Drive copy fails", async () => {
+Deno.test("unit: generate — 502 when Drive copy fails", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ driveCopyFail: true }) as typeof fetch;
   try {
@@ -649,7 +650,7 @@ Deno.test("integration: generate — 502 when Drive copy fails", async () => {
   }
 });
 
-Deno.test("integration: generate — 502 when Drive export fails", async () => {
+Deno.test("unit: generate — 502 when Drive export fails", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ driveExportFail: true }) as typeof fetch;
   try {
@@ -662,7 +663,7 @@ Deno.test("integration: generate — 502 when Drive export fails", async () => {
   }
 });
 
-Deno.test("integration: generate — 502 when Drive update content fails", async () => {
+Deno.test("unit: generate — 502 when Drive update content fails", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ driveUpdateFail: true }) as typeof fetch;
   try {
@@ -679,7 +680,7 @@ Deno.test("integration: generate — 502 when Drive update content fails", async
 // 200 — happy path
 // ═══════════════════════════════════════════════════════════════════════════
 
-Deno.test("integration: generate — 200 returns documents with Drive URLs", async () => {
+Deno.test("unit: generate — 200 returns documents with Drive URLs", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({
     existingFileId: null,
@@ -699,7 +700,7 @@ Deno.test("integration: generate — 200 returns documents with Drive URLs", asy
   }
 });
 
-Deno.test("integration: generate — CORS headers on success response", async () => {
+Deno.test("unit: generate — CORS headers on success response", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -710,7 +711,7 @@ Deno.test("integration: generate — CORS headers on success response", async ()
   }
 });
 
-Deno.test("integration: generate — Drive delete called when existing file found (regeneration)", async () => {
+Deno.test("unit: generate — Drive delete called when existing file found (regeneration)", async () => {
   const originalFetch = globalThis.fetch;
   let deleteCalledWithId: string | null = null;
   const existingFileId = "old-doc-drive-file-id";
@@ -739,7 +740,7 @@ Deno.test("integration: generate — Drive delete called when existing file foun
   }
 });
 
-Deno.test("integration: generate — succeeds even when delete of old file fails (best-effort)", async () => {
+Deno.test("unit: generate — succeeds even when delete of old file fails (best-effort)", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({
     existingFileId: "old-file-id",
@@ -754,7 +755,7 @@ Deno.test("integration: generate — succeeds even when delete of old file fails
   }
 });
 
-Deno.test("integration: generate — case transformation applied to title case placeholder", async () => {
+Deno.test("unit: generate — case transformation applied to title case placeholder", async () => {
   const originalFetch = globalThis.fetch;
   let capturedBody: string | undefined;
 
@@ -797,7 +798,7 @@ Deno.test("integration: generate — case transformation applied to title case p
   }
 });
 
-Deno.test("integration: generate — optional placeholder absent from request is substituted with empty string", async () => {
+Deno.test("unit: generate — optional placeholder absent from request is substituted with empty string", async () => {
   const originalFetch = globalThis.fetch;
   let capturedBody: string | undefined;
 
