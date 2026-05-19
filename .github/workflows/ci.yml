@@ -10,13 +10,10 @@ jobs:
   static:
     name: Check + unit tests
     runs-on: ubuntu-latest
+    container: denoland/deno:2.3.3
 
     steps:
       - uses: actions/checkout@v4
-
-      - uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
 
       - name: Check (format, lint, typecheck)
         run: scripts/check.sh
