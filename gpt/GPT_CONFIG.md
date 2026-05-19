@@ -46,3 +46,14 @@ See `SYSTEM_PROMPT.md` — paste the full contents into the Instructions field.
 - The GPT is shared via a single link with all landlords — do not create separate
   GPTs per landlord
 - Update the Instructions field whenever `gpt/SYSTEM_PROMPT.md` changes
+
+### Local development
+
+To point the GPT at your local Supabase instance during development:
+
+1. Start ngrok: `ngrok http 54321 --domain <your-domain>.ngrok-free.dev`
+2. Set the action server URL to: `https://<your-domain>.ngrok-free.dev/functions/v1`
+3. Add a custom action header: `ngrok-skip-browser-warning: true`
+
+Your ngrok dev domain is free and permanent (no URL changes between restarts).
+See README.md → "Run Locally" for the full setup flow.
