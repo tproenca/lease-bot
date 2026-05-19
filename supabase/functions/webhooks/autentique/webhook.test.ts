@@ -513,6 +513,20 @@ Deno.test("unit: webhook — 200 silent when property has no current_tenant_fold
   }
 });
 
+Deno.test("unit: DB update failure after Drive upload returns 500", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({
+    signatureUpdateError: true,
+  }) as typeof fetch;
+  try {
+    const req = await makeWebhookRequest(VALID_PAYLOAD);
+    const res = await handleAutentiqueWebhook(req);
+    assertEquals(res.status, 500);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // Method validation
 // ═══════════════════════════════════════════════════════════════════════════════

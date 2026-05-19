@@ -340,10 +340,16 @@ export async function handleAutentiqueWebhook(
   }
 
   // Mark the signature_request as completed.
-  await db
+  // On failure, return 500 so Autentique retries — safe because the Drive
+  // filename (contrato-assinado-{tenant_id}.pdf) is deterministic and overwrites.
+  const { error: updateError } = await db
     .from("signature_requests")
     .update({ status: "completed", completed_at: new Date().toISOString() })
     .eq("id", sig.id);
+
+  if (updateError) {
+    return new Response(null, { status: 500 });
+  }
 
   return new Response(null, { status: 200 });
 }
