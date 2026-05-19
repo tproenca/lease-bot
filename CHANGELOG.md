@@ -11,6 +11,16 @@
   500 for DB errors. `GET /context` reflects the updated value immediately.
   Integration tests cover all valid frequencies, invalid inputs, auth errors,
   DB failures, and method-not-allowed. (issue 18)
+- `POST /payments/remind` Edge Function: GPT-triggered ad-hoc WhatsApp payment
+  reminder. Sends a `payment_reminder` template via the Meta WhatsApp API to the
+  tenant's stored number and records the attempt in `payment_reminders`.
+  `sent_at` is set to the current timestamp on success and left null on failure.
+  If the WhatsApp send fails, returns 422 `WHATSAPP_SEND_FAILED` (never 500) so
+  the GPT can surface a helpful message. Validates `tenant_id` as UUID and
+  `reference_month` in `YYYY-MM` or `YYYY-MM-DD` format. Returns 422 when the
+  tenant has no WhatsApp number on file. 17 integration tests covering success,
+  WhatsApp failure (non-500 response), missing/invalid inputs, 401, 404, and
+  405 cases. (issue 16)
 - `_shared/whatsapp.ts`: reusable Meta WhatsApp Business Cloud API client —
   `sendWhatsAppTemplate` sends pre-approved template messages, never throws,
   retries once on 5xx/network errors, and maps 401/403 → `invalid_token`,
