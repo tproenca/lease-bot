@@ -59,7 +59,8 @@ In the project, go to **APIs & Services → Library** and enable:
 1. Go to **APIs & Services → Credentials → Create Credentials → OAuth 2.0 Client ID**
 2. Application type: **Web application**
 3. Add **Authorized redirect URIs**:
-   - Local (ngrok): `https://<your-domain>.ngrok-free.dev/functions/v1/auth/callback`
+   - Local (browser flows): `http://localhost:54321/functions/v1/auth/callback`
+   - Local (GPT OAuth testing via ngrok): `https://<your-domain>.ngrok-free.dev/functions/v1/auth/callback`
    - Production: `https://<project-ref>.supabase.co/functions/v1/auth/callback`
 4. Click **Create** → copy the **Client ID** and **Client Secret**
 
