@@ -16,15 +16,15 @@
 //   404 — property or tenant not found (or belongs to another landlord)
 //   502 — Google Drive API error after 3 retries
 
-import { corsHeaders } from "../_shared/cors.ts";
-import { errorResponse } from "../_shared/errors.ts";
+import { corsHeaders } from "../../_shared/cors.ts";
+import { errorResponse } from "../../_shared/errors.ts";
 import {
   extractBearer,
   getAuthenticatedUser,
   userClient,
-} from "../_shared/supabase.ts";
-import { refreshGoogleAccessToken } from "../_shared/google.ts";
-import { isNonEmptyString } from "../_shared/validation.ts";
+} from "../../_shared/supabase.ts";
+import { refreshGoogleAccessToken } from "../../_shared/google.ts";
+import { isNonEmptyString } from "../../_shared/validation.ts";
 
 // ─── Drive API constants ───────────────────────────────────────────────────
 
