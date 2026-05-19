@@ -3,6 +3,14 @@
 ## Unreleased
 
 ### Added
+- `PATCH /account/config` Edge Function: allows the landlord to update
+  `payment_reminder_frequency` (`daily | weekly | disabled`) via the GPT.
+  Validates the enum value, persists to `landlords.payment_reminder_frequency`
+  using the authenticated user client (RLS-scoped), and returns the updated
+  value. Returns 400 for invalid frequency values, 401 for missing/invalid JWT,
+  500 for DB errors. `GET /context` reflects the updated value immediately.
+  Integration tests cover all valid frequencies, invalid inputs, auth errors,
+  DB failures, and method-not-allowed. (issue 18)
 - `_shared/whatsapp.ts`: reusable Meta WhatsApp Business Cloud API client —
   `sendWhatsAppTemplate` sends pre-approved template messages, never throws,
   retries once on 5xx/network errors, and maps 401/403 → `invalid_token`,
