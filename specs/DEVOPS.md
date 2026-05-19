@@ -94,5 +94,5 @@ Dependencies are Deno modules imported via URL or `deno.json` import map. No aut
 1. Check for updates periodically (monthly or when a security advisory is published)
 2. Before updating any dependency, check which Edge Functions import it (`grep -r "module-name" supabase/functions/`)
 3. Do not update dependencies while agents are actively working in affected files — coordinate to avoid conflicts
-4. After updating, run `scripts/ci.sh` to verify Tier 1 and Tier 2 tests still pass before merging
+4. After updating, run `scripts/check.sh && scripts/test-unit.sh && scripts/test-integration.sh && scripts/test-smoke.sh` to verify all tests still pass before merging
 5. Update the import map version pin in `deno.json` and commit with message: `chore: update <module> to <version>`
