@@ -34,9 +34,14 @@ storage.
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) (required by
   Supabase local dev)
 - [Deno](https://deno.land/) v2.x
-- A Google Cloud project with Drive API enabled and OAuth credentials configured
-- An [Autentique](https://autentique.com.br) account and API key
-- A Meta WhatsApp Business Cloud account and approved message templates
+- [ngrok](https://ngrok.com) with a free permanent domain (required to connect the
+  Custom GPT to your local backend)
+- Google Cloud project with Drive API + OAuth credentials
+- [Autentique](https://autentique.com.br) account (for e-signatures, Phase 2)
+- Meta WhatsApp Business Cloud account (for payment reminders, Phase 3)
+
+> **Setting up for the first time?** Follow [docs/SETUP.md](docs/SETUP.md) for
+> step-by-step instructions on configuring all external services.
 
 ---
 
@@ -47,13 +52,13 @@ storage.
 supabase start
 
 # Copy and fill in the required environment variables
-cp .env.example .env.local
+cp .env.example supabase/.env.local
 
-# Deploy Edge Functions to the local Supabase instance
-supabase functions serve --env-file .env.local
+# Serve Edge Functions against the local Supabase instance
+supabase functions serve --env-file supabase/.env.local
 
 # Expose local functions to ChatGPT (required — ChatGPT cannot reach localhost)
-ngrok http 54321 --domain <your-static-dev-domain>.ngrok-free.dev
+ngrok http 54321 --domain <your-domain>.ngrok-free.dev
 ```
 
 The local API is available at `http://localhost:54321/functions/v1/`.
@@ -126,6 +131,10 @@ coverage expectations.
 
 ## Deeper Context
 
+- [docs/SETUP.md](docs/SETUP.md) — step-by-step setup for Google Cloud, Autentique,
+  ngrok, and Meta WhatsApp
+- [docs/MANUAL-TEST.md](docs/MANUAL-TEST.md) — manual test runbook (10 end-to-end
+  flows against a live GPT + local Supabase)
 - [specs/PRD.md](specs/PRD.md) — product goals, features, phasing, and risks
 - [specs/ARCHITECTURE.md](specs/ARCHITECTURE.md) — system design and tech stack
   decisions

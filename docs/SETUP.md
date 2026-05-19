@@ -73,7 +73,7 @@ folder ID manually, but the Picker is the better UX.
 2. Restrict it to **Google Picker API** and your ngrok/production domains
 3. Copy the key
 
-### Add to `.env`
+### Add to `supabase/.env.local`
 ```sh
 GOOGLE_CLIENT_ID=<client-id>
 GOOGLE_CLIENT_SECRET=<client-secret>
@@ -136,7 +136,7 @@ for local testing.
 1. On the **API Setup** screen, under **Send and receive messages**:
    - Copy the **Temporary access token** (valid 24h — regenerate it from this same screen when it expires)
    - Copy the **Phone number ID** of the test sender
-2. Add to `.env`:
+2. Add to `supabase/.env.local`:
    ```sh
    META_WHATSAPP_TOKEN=<temporary-access-token>
    META_WHATSAPP_PHONE_ID=<phone-number-id>
