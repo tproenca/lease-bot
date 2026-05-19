@@ -7,11 +7,11 @@ Mark **Pass / Fail** in the verify tables as you go.
 ## Pre-requisites
 
 > **First time?** See [docs/SETUP.md](SETUP.md) for step-by-step instructions on setting up
-> Google Cloud Console, Autentique, ngrok, and Meta WhatsApp Business before continuing.
+> ngrok, Google Cloud Console, Autentique, and Meta WhatsApp Business before continuing.
 
 ### Accounts
 - Google account (your own — will be the landlord)
-- Autentique account → grab API key from Account → Integrações
+- Autentique account → grab API key from Configurações → Tokens de API
 - Meta WhatsApp Business account with a registered phone number ID and token (Flow 9 only)
 
 ### Google Drive setup

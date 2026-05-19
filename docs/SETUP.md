@@ -21,11 +21,11 @@ brew install ngrok/ngrok/ngrok   # macOS
 2. Copy your authtoken from the dashboard → **Your Authtoken**
 3. Run: `ngrok config add-authtoken <your-token>`
 4. Go to **Cloud Edge → Domains → New Domain** → claim a free permanent subdomain
-   (e.g. `your-name.ngrok-free.app`). Note it down — you'll use it everywhere below.
+   (e.g. `your-name.ngrok-free.dev`). Note it down — you'll use it everywhere below.
 
 ### Start ngrok
 ```sh
-ngrok http 54321 --domain <your-domain>.ngrok-free.app
+ngrok http 54321 --domain <your-domain>.ngrok-free.dev
 ```
 
 Keep this running whenever you test locally.
@@ -59,7 +59,7 @@ In the project, go to **APIs & Services → Library** and enable:
 1. Go to **APIs & Services → Credentials → Create Credentials → OAuth 2.0 Client ID**
 2. Application type: **Web application**
 3. Add **Authorized redirect URIs**:
-   - Local (ngrok): `https://<your-domain>.ngrok-free.app/functions/v1/auth/callback`
+   - Local (ngrok): `https://<your-domain>.ngrok-free.dev/functions/v1/auth/callback`
    - Production: `https://<project-ref>.supabase.co/functions/v1/auth/callback`
 4. Click **Create** → copy the **Client ID** and **Client Secret**
 
@@ -101,8 +101,9 @@ The webhook notifies your local backend when a document is fully signed, trigger
 signed PDF to be saved back to Google Drive.
 
 1. In Autentique, go to **Configurações → Webhooks → Novo Webhook**
-2. URL: `https://<your-domain>.ngrok-free.app/functions/v1/webhooks/autentique`
-3. Events: select **Documento assinado** (document signed) and **Documento finalizado**
+2. URL: `https://<your-domain>.ngrok-free.dev/functions/v1/webhooks/autentique`
+3. Event: select **Documento finalizado** (fully signed by all parties)
+   — do NOT also select "Documento assinado"; that fires per-signer and would trigger duplicate processing
 4. Secret: generate a random string (e.g. `openssl rand -hex 32`) — Autentique will sign
    webhook payloads with it; your backend verifies the signature
 5. Copy the secret and add to `.env`:
@@ -132,7 +133,7 @@ Meta provides a free test sender number — no real phone number or verified bus
 for local testing.
 
 1. On the **API Setup** screen, under **Send and receive messages**:
-   - Copy the **Temporary access token** (valid 24h — regenerate when it expires)
+   - Copy the **Temporary access token** (valid 24h — regenerate it from this same screen when it expires)
    - Copy the **Phone number ID** of the test sender
 2. Add to `.env`:
    ```sh
@@ -160,7 +161,7 @@ full list) and start the local stack:
 
 ```sh
 supabase start
-ngrok http 54321 --domain <your-domain>.ngrok-free.app
+ngrok http 54321 --domain <your-domain>.ngrok-free.dev
 ```
 
 Then follow `docs/MANUAL-TEST.md` to run the flows end-to-end.
