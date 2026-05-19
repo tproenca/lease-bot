@@ -3,6 +3,16 @@
 ## Unreleased
 
 ### Added
+- `POST /templates`, `DELETE /templates/:id` Edge Functions: register and remove lease templates
+  with property-type mappings. Inserts into `templates` and `property_type_templates` tables. (issue 8)
+- `POST /placeholders`, `DELETE /placeholders/:name` Edge Functions: manage placeholder definitions.
+  After any change, regenerates the "Guia de Placeholders" Google Doc in the landlord's Templates
+  Drive folder. Unique-constraint violation returns 409. DELETE is idempotent. (issue 8)
+- `POST /witnesses` Edge Function: register a witness by name and WhatsApp. Unique-constraint
+  violation returns 409. (issue 8)
+- `upsertGuiaDePlaceholders` helper added to `_shared/google.ts`: creates or updates the
+  "Guia de Placeholders" Google Doc via Drive multipart upload. (issue 8)
+- Integration tests for all five new endpoints covering 201/204/401/404/409/400 cases (issue 8)
 - `POST /payments` Edge Function: records a received payment and computes `on_time` (paid on or
   before the 5th of the reference month at 23:59:59 UTC). Accepts `reference_month` as `YYYY-MM`
   or `YYYY-MM-DD`. Returns `{ id, on_time }`. (issue 9)
