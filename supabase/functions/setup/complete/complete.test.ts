@@ -4,7 +4,7 @@
 // verification + input validation layers without needing a real Supabase
 // instance running, by intercepting the network calls that those layers make.
 //
-// Test naming follows the ci.sh filter: "unit|integration".
+// Test names follow the "unit:" / "integration:" prefix convention.
 // These are tagged "integration" because they involve the full handler stack
 // (JWT check → body parse → field validation) even though they're synchronous
 // and require no external services.

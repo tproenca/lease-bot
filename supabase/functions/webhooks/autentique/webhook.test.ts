@@ -5,7 +5,7 @@
 // globalThis.fetch replacement.
 //
 // No hardcoded secrets — AUTENTIQUE_WEBHOOK_SECRET is read from Deno.env.
-// All test names are prefixed "unit:" per ci.sh filter conventions.
+// All test names are prefixed "unit:" per test naming conventions.
 
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 

@@ -3,7 +3,7 @@
 // Unit tests for exportAndMergePdfs. All external calls (Drive API, pdf-lib)
 // are mocked via globalThis.fetch stubs and module-level injection.
 //
-// Test naming follows the ci.sh filter: "unit|integration".
+// Test names follow the "unit:" / "integration:" prefix convention.
 
 import {
   assertEquals,

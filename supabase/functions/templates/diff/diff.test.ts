@@ -7,7 +7,7 @@
 // Unit tests for extractPlaceholders() and extractWitnessNames() run in
 // isolation without any stubs.
 //
-// Test naming follows the ci.sh filter: "unit|integration".
+// Test names follow the "unit:" / "integration:" prefix convention.
 
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 

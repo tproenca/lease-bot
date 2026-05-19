@@ -4,7 +4,7 @@
 // dependencies (Supabase client, Google Drive, Autentique, pdf-lib, detect)
 // mocked via dependency injection.
 //
-// Test names follow the ci.sh filter: "unit|integration".
+// Test names follow the "unit:" / "integration:" prefix convention.
 
 import {
   assertEquals,

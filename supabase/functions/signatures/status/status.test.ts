@@ -3,7 +3,7 @@
 // Tests GET /signatures/:id/status and PATCH /signatures/:id/reminder
 // with all external dependencies mocked.
 //
-// Test names follow the ci.sh filter: "unit|integration".
+// Test names follow the "unit:" / "integration:" prefix convention.
 
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 

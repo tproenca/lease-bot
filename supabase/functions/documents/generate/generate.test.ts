@@ -5,7 +5,7 @@
 // Real integration tests (against a live local Supabase DB) live in
 // generate.integration.test.ts and require `supabase start`.
 //
-// Test naming follows the ci.sh filter: "unit|integration".
+// Test names follow the "unit:" / "integration:" prefix convention.
 
 import {
   assertEquals,
