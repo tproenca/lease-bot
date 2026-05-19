@@ -1,5 +1,8 @@
 # Lease Assistant
 
+[![CI](https://github.com/tproenca/lease-bot/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/tproenca/lease-bot/actions/workflows/ci.yml)
+[![Nightly](https://github.com/tproenca/lease-bot/actions/workflows/nightly.yml/badge.svg?branch=main)](https://github.com/tproenca/lease-bot/actions/workflows/nightly.yml)
+
 Lease Assistant lets Brazilian landlords generate, sign, and track residential
 and commercial lease documents through a ChatGPT Custom GPT. The landlord has a
 conversation, confirms a summary, and the backend handles document substitution,
