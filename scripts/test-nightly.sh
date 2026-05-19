@@ -52,33 +52,16 @@ export SUPABASE_URL="$API_URL"
 export SUPABASE_ANON_KEY="$ANON_KEY"
 export SUPABASE_SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY"
 
-append_bug_issue() {
-  local reason="$1"
-  local date
-  date="$(date +%Y-%m-%d)"
-  cat >> issues.md <<EOF
-
-## BUG — nightly failure ($date)
-**Detected:** $date
-**Reason:** $reason
-**Priority:** high
-**Dependencies:** none
-EOF
-  echo "==> Bug entry appended to issues.md"
-}
-
 rm -rf "$COVERAGE_DIR"
 
 echo "==> E2E regression tests"
 if ! REGRESSION_OUTPUT="$(deno test --allow-all "${E2E_FILES[@]}" --filter "$REGRESSION_FILTER" 2>&1)"; then
   printf '%s\n' "$REGRESSION_OUTPUT"
-  append_bug_issue "E2E regression tests failed"
   exit 1
 fi
 printf '%s\n' "$REGRESSION_OUTPUT"
 
 if grep -Eq "ok \| 0 passed \| 0 failed" <<<"$REGRESSION_OUTPUT"; then
-  append_bug_issue "E2E regression filter matched zero tests"
   echo "ERROR: e2e regression test filter matched zero tests. Check test names or filter ${REGRESSION_FILTER}." >&2
   exit 1
 fi
@@ -88,7 +71,6 @@ rm -rf "$COVERAGE_DIR"
 echo "==> Unit suite with coverage"
 if ! UNIT_OUTPUT="$(deno test --allow-all "${UNIT_FILES[@]}" "--coverage=$COVERAGE_DIR" --filter "/unit:/" 2>&1)"; then
   printf '%s\n' "$UNIT_OUTPUT"
-  append_bug_issue "Unit tests failed during coverage suite"
   exit 1
 fi
 printf '%s\n' "$UNIT_OUTPUT"
@@ -96,7 +78,6 @@ printf '%s\n' "$UNIT_OUTPUT"
 echo "==> Integration tests"
 if ! INTEGRATION_OUTPUT="$(deno test --allow-all "${INTEGRATION_FILES[@]}" --filter "/integration:/" 2>&1)"; then
   printf '%s\n' "$INTEGRATION_OUTPUT"
-  append_bug_issue "Integration tests failed during full suite"
   exit 1
 fi
 printf '%s\n' "$INTEGRATION_OUTPUT"
@@ -104,7 +85,6 @@ printf '%s\n' "$INTEGRATION_OUTPUT"
 echo "==> E2E tests"
 if ! OUTPUT="$(deno test --allow-all "${E2E_FILES[@]}" --filter "/e2e:/" 2>&1)"; then
   printf '%s\n' "$OUTPUT"
-  append_bug_issue "E2E tests failed during full suite"
   exit 1
 fi
 printf '%s\n' "$OUTPUT"
@@ -116,7 +96,6 @@ COVERED="$(grep -c "^DA:[0-9]*,[^0]" "$COVERAGE_DIR/lcov.info" || true)"
 TOTAL="$(grep -c "^DA:" "$COVERAGE_DIR/lcov.info" || true)"
 
 if [[ "$TOTAL" -eq 0 ]]; then
-  append_bug_issue "No coverage data found"
   echo "ERROR: no coverage data found." >&2
   exit 1
 fi
@@ -124,7 +103,7 @@ fi
 PCT=$(( COVERED * 100 / TOTAL ))
 echo "==> Coverage: ${PCT}% (threshold: ${COVERAGE_THRESHOLD}%)"
 if [[ "$PCT" -lt "$COVERAGE_THRESHOLD" ]]; then
-  append_bug_issue "Coverage ${PCT}% is below the ${COVERAGE_THRESHOLD}% threshold"
+  echo "::error::Coverage ${PCT}% is below the ${COVERAGE_THRESHOLD}% threshold"
   exit 1
 fi
 

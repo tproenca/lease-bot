@@ -8,7 +8,7 @@ on:
 
 jobs:
   test:
-    name: Tier 1 + Tier 2
+    name: PR checks
     runs-on: ubuntu-latest
 
     steps:
@@ -25,8 +25,14 @@ jobs:
       - name: Start Supabase
         run: supabase start
 
-      - name: Tier 1 — unit + integration
-        run: deno test --allow-all supabase/functions/ --filter "unit|integration"
+      - name: Check (format, lint, typecheck)
+        run: scripts/check.sh
 
-      - name: Tier 2 — e2e smoke
-        run: deno test --allow-all supabase/functions/ --filter "e2e:smoke"
+      - name: Unit tests
+        run: scripts/test-unit.sh
+
+      - name: Integration tests
+        run: scripts/test-integration.sh
+
+      - name: E2E smoke tests
+        run: scripts/test-smoke.sh
