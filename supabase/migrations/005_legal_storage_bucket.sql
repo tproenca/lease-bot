@@ -13,14 +13,15 @@ values (
 on conflict (id) do nothing;
 
 -- Public read: anyone can download objects from the legal bucket.
-create policy "legal: public read"
+create policy if not exists "legal: public read"
   on storage.objects
   for select
   using (bucket_id = 'legal');
 
 -- Authenticated write: only service-role callers can upload/update/delete.
 -- In practice, updates are done via the Supabase dashboard or CLI.
-create policy "legal: service role write"
+create policy if not exists "legal: service role write"
   on storage.objects
   for all
-  using (bucket_id = 'legal' and auth.role() = 'service_role');
+  using (bucket_id = 'legal' and auth.role() = 'service_role')
+  with check (bucket_id = 'legal' and auth.role() = 'service_role');
