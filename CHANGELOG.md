@@ -3,6 +3,17 @@
 ## Unreleased
 
 ### Added
+- `documents/signatures/detect` internal module: scans the last page of a merged
+  PDF for signature blocks (underscore lines + role labels) and returns
+  Autentique-compatible signer coordinates `{ name, role, x, y, page }`.
+  Detects `Inquilino` → `"tenant"`, `Locador` → `"landlord"`, any other label →
+  `"witness"`. Falls back gracefully to `{ ok: false, error }` with a
+  user-friendly Portuguese message when no markers are found. Implementation
+  decompresses pdf-lib's zlib content streams with Deno's built-in
+  `DecompressionStream` and parses PDF content-stream operators (Tm, Td, Tj, TJ).
+  22 unit tests covering standard 3-signer layout, missing markers, witness with
+  custom name, single-signer edge case, multi-page PDFs, and role classification.
+  ADR-0012 documents the content-stream parsing approach. (issue 12)
 - `documents/export` internal helper module: exports Google Docs to PDF via the
   Drive API (using the landlord's stored OAuth refresh token) and merges them into
   a single bundle in document order using pdf-lib. Returns `{ ok: true; pdf:
