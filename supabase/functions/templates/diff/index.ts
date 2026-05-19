@@ -321,4 +321,4 @@ export async function handleTemplatesDiff(req: Request): Promise<Response> {
   );
 }
 
-Deno.serve(handleTemplatesDiff);
+if (import.meta.main) Deno.serve(handleTemplatesDiff);

@@ -321,4 +321,4 @@ async function handleGetPayments(req: Request): Promise<Response> {
   });
 }
 
-Deno.serve(handlePayments);
+if (import.meta.main) Deno.serve(handlePayments);

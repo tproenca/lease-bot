@@ -463,4 +463,4 @@ async function handleUpdateTenant(
   });
 }
 
-Deno.serve(handleTenants);
+if (import.meta.main) Deno.serve(handleTenants);

@@ -279,4 +279,4 @@ async function handleCreateProperty(req: Request): Promise<Response> {
   );
 }
 
-Deno.serve(handleProperties);
+if (import.meta.main) Deno.serve(handleProperties);

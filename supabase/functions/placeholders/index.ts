@@ -260,4 +260,4 @@ async function regenerateGuia(
   }
 }
 
-Deno.serve(handlePlaceholders);
+if (import.meta.main) Deno.serve(handlePlaceholders);

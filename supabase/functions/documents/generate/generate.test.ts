@@ -324,7 +324,7 @@ function buildMockFetch(opts: MockFetchOpts) {
     // Drive: search for existing file by name in tenant folder
     // The URL will contain "in+parents" or "in%20parents" depending on encoding.
     if (
-      url.includes("drive.googleapis.com/drive/v3/files") &&
+      url.includes("googleapis.com/drive/v3/files") &&
       method === "GET" &&
       (url.includes("in+parents") || url.includes("in%20parents") ||
         url.includes("parents")) &&
@@ -383,7 +383,7 @@ function buildMockFetch(opts: MockFetchOpts) {
 
     // Drive: delete existing file
     if (
-      url.includes("drive.googleapis.com/drive/v3/files/") &&
+      url.includes("googleapis.com/drive/v3/files/") &&
       method === "DELETE"
     ) {
       if (opts.driveDeleteFail) {
@@ -863,7 +863,7 @@ Deno.test("unit: generate — Drive delete called when existing file found (rege
     const method = (init as RequestInit | undefined)?.method?.toUpperCase() ??
       "GET";
     if (
-      url.includes("drive.googleapis.com/drive/v3/files/") &&
+      url.includes("googleapis.com/drive/v3/files/") &&
       method === "DELETE"
     ) {
       deleteCalledWithId = url.split("/files/")[1].split("?")[0];

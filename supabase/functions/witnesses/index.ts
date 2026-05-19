@@ -117,4 +117,4 @@ async function handleCreateWitness(req: Request): Promise<Response> {
   );
 }
 
-Deno.serve(handleWitnesses);
+if (import.meta.main) Deno.serve(handleWitnesses);

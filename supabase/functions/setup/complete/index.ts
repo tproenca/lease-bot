@@ -263,11 +263,12 @@ export async function handleSetupComplete(req: Request): Promise<Response> {
  */
 export function sanitizeApiKey(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
+  // Check control characters on the raw value before trimming — a trailing
+  // \r is a sign of header injection, not accidental whitespace.
+  // deno-lint-ignore no-control-regex
+  if (/[\x00-\x1F\x7F]/.test(raw)) return null;
   const trimmed = raw.trim();
   if (trimmed.length < 10 || trimmed.length > 256) return null;
-  // Reject ASCII control characters (covers CR, LF, TAB, NUL, etc.)
-  // deno-lint-ignore no-control-regex
-  if (/[\x00-\x1F\x7F]/.test(trimmed)) return null;
   // Reject internal whitespace (space, non-breaking space, etc.)
   if (/\s/.test(trimmed)) return null;
   return trimmed;

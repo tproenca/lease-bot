@@ -192,4 +192,4 @@ export async function handleContext(req: Request): Promise<Response> {
   });
 }
 
-Deno.serve(handleContext);
+if (import.meta.main) Deno.serve(handleContext);

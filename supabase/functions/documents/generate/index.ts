@@ -623,4 +623,4 @@ export async function handleGenerateDocuments(req: Request): Promise<Response> {
   });
 }
 
-Deno.serve(handleGenerateDocuments);
+if (import.meta.main) Deno.serve(handleGenerateDocuments);

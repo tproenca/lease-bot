@@ -164,4 +164,4 @@ export async function handleBuildings(req: Request): Promise<Response> {
   );
 }
 
-Deno.serve(handleBuildings);
+if (import.meta.main) Deno.serve(handleBuildings);

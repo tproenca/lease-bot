@@ -241,4 +241,4 @@ async function handleDeleteTemplate(
   });
 }
 
-Deno.serve(handleTemplates);
+if (import.meta.main) Deno.serve(handleTemplates);
