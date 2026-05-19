@@ -64,7 +64,9 @@ export async function handleTenants(req: Request): Promise<Response> {
   const pathParts = url.pathname.replace(/^\/+/, "").split("/");
   // pathParts may be ["tenants", ":id"] or ["tenants"] depending on deployment
   // We look for a UUID segment after the last meaningful part.
-  const tenantId = pathParts.length >= 2 ? pathParts[pathParts.length - 1] : null;
+  const tenantId = pathParts.length >= 2
+    ? pathParts[pathParts.length - 1]
+    : null;
   const hasId = tenantId != null && tenantId !== "" && tenantId !== "tenants";
 
   if (req.method === "POST" && !hasId) {
@@ -461,4 +463,4 @@ async function handleUpdateTenant(
   });
 }
 
-Deno.serve(handleTenants);
+if (import.meta.main) Deno.serve(handleTenants);

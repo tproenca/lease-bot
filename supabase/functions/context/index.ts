@@ -109,16 +109,18 @@ export async function handleContext(req: Request): Promise<Response> {
   ]);
 
   // 4. Surface any DB errors.
-  for (const result of [
-    landlordResult,
-    propertiesResult,
-    buildingsResult,
-    templatesResult,
-    pttResult,
-    placeholdersResult,
-    witnessesResult,
-    cronErrorsResult,
-  ]) {
+  for (
+    const result of [
+      landlordResult,
+      propertiesResult,
+      buildingsResult,
+      templatesResult,
+      pttResult,
+      placeholdersResult,
+      witnessesResult,
+      cronErrorsResult,
+    ]
+  ) {
     if (result.error) {
       return errorResponse(
         500,
@@ -190,4 +192,4 @@ export async function handleContext(req: Request): Promise<Response> {
   });
 }
 
-Deno.serve(handleContext);
+if (import.meta.main) Deno.serve(handleContext);

@@ -296,10 +296,12 @@ async function handleGetPayments(req: Request): Promise<Response> {
 
   // Build map of last reminder per tenant (already ordered desc by sent_at).
   const lastReminderMap = new Map<string, string>();
-  for (const r of (reminders ?? []) as Array<{
-    tenant_id: string;
-    sent_at: string;
-  }>) {
+  for (
+    const r of (reminders ?? []) as Array<{
+      tenant_id: string;
+      sent_at: string;
+    }>
+  ) {
     if (!lastReminderMap.has(r.tenant_id)) {
       lastReminderMap.set(r.tenant_id, r.sent_at);
     }
@@ -319,4 +321,4 @@ async function handleGetPayments(req: Request): Promise<Response> {
   });
 }
 
-Deno.serve(handlePayments);
+if (import.meta.main) Deno.serve(handlePayments);

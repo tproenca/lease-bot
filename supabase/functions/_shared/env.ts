@@ -18,6 +18,6 @@ export function getEnv(name: string): string | undefined {
 export function publicFunctionsBaseUrl(): string {
   return (
     getEnv("PUBLIC_FUNCTIONS_BASE_URL") ??
-    `${getEnv("SUPABASE_URL") ?? "http://localhost:54321"}/functions/v1`
+      `${getEnv("SUPABASE_URL") ?? "http://localhost:54321"}/functions/v1`
   );
 }

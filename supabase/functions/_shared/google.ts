@@ -116,7 +116,9 @@ export async function getDriveFolder(params: {
   accessToken: string;
   folderId: string;
 }): Promise<{ id: string; name: string; mimeType: string } | null> {
-  const url = new URL(`${DRIVE_FILES_URL}/${encodeURIComponent(params.folderId)}`);
+  const url = new URL(
+    `${DRIVE_FILES_URL}/${encodeURIComponent(params.folderId)}`,
+  );
   url.searchParams.set("fields", "id,name,mimeType,trashed");
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${params.accessToken}` },
@@ -337,7 +339,9 @@ export async function upsertGuiaDePlaceholders(params: {
   const sorted = [...placeholders].sort((a, b) => a.name.localeCompare(b.name));
   const lines: string[] = ["Guia de Placeholders", ""];
   for (const p of sorted) {
-    let line = `{{${p.name}}} — format: ${p.format} | required: ${p.required ? "sim" : "não"}`;
+    let line = `{{${p.name}}} — format: ${p.format} | required: ${
+      p.required ? "sim" : "não"
+    }`;
     if (p.case != null) line += ` | case: ${p.case}`;
     if (p.default != null) line += ` | default: ${p.default}`;
     if (p.derived_from != null) line += ` | derived_from: ${p.derived_from}`;
@@ -347,8 +351,9 @@ export async function upsertGuiaDePlaceholders(params: {
 
   if (guia) {
     // 3a. File exists — update content in-place via media upload PATCH.
-    const patchUrl =
-      `https://www.googleapis.com/upload/drive/v3/files/${encodeURIComponent(guia.id)}?uploadType=media`;
+    const patchUrl = `https://www.googleapis.com/upload/drive/v3/files/${
+      encodeURIComponent(guia.id)
+    }?uploadType=media`;
     const res = await fetch(patchUrl, {
       method: "PATCH",
       headers: {

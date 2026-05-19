@@ -88,12 +88,11 @@ function buildMockFetch(opts: MockFetchOpts) {
     input: string | URL | Request,
     init?: RequestInit,
   ): Promise<Response> {
-    const url =
-      typeof input === "string"
-        ? input
-        : input instanceof URL
-        ? input.href
-        : (input as Request).url;
+    const url = typeof input === "string"
+      ? input
+      : input instanceof URL
+      ? input.href
+      : (input as Request).url;
     const method = (init as RequestInit | undefined)?.method?.toUpperCase() ??
       "GET";
 
@@ -186,14 +185,14 @@ function buildMockFetch(opts: MockFetchOpts) {
   };
 
   // Expose call counts for assertions if needed.
-  (mockFetch as unknown as Record<string, unknown>)["paymentsPostCount"] =
-    () => paymentsPostCount;
+  (mockFetch as unknown as Record<string, unknown>)["paymentsPostCount"] = () =>
+    paymentsPostCount;
   (mockFetch as unknown as Record<string, unknown>)["propertiesGetCount"] =
     () => propertiesGetCount;
-  (mockFetch as unknown as Record<string, unknown>)["tenantsGetCount"] =
-    () => tenantsGetCount;
-  (mockFetch as unknown as Record<string, unknown>)["remindersGetCount"] =
-    () => remindersGetCount;
+  (mockFetch as unknown as Record<string, unknown>)["tenantsGetCount"] = () =>
+    tenantsGetCount;
+  (mockFetch as unknown as Record<string, unknown>)["remindersGetCount"] = () =>
+    remindersGetCount;
 
   return mockFetch;
 }

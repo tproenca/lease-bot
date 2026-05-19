@@ -100,12 +100,11 @@ function buildMockFetch(opts: MockFetchOpts) {
     input: string | URL | Request,
     init?: RequestInit,
   ): Promise<Response> {
-    const url =
-      typeof input === "string"
-        ? input
-        : input instanceof URL
-        ? input.href
-        : (input as Request).url;
+    const url = typeof input === "string"
+      ? input
+      : input instanceof URL
+      ? input.href
+      : (input as Request).url;
     const method = (init as RequestInit | undefined)?.method?.toUpperCase() ??
       "GET";
 
@@ -623,7 +622,9 @@ Deno.test("integration: POST /tenants — 201 creates tenant folder and row for 
 
 Deno.test("integration: POST /tenants — 201 creates tenant folder inside apartment property folder", async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = buildMockFetch({ property: MOCK_PROPERTY_APARTMENT }) as typeof fetch;
+  globalThis.fetch = buildMockFetch({
+    property: MOCK_PROPERTY_APARTMENT,
+  }) as typeof fetch;
   try {
     const res = await handleTenants(
       makePostRequest(
@@ -683,7 +684,11 @@ Deno.test("integration: POST /tenants — 201 succeeds without whatsapp field", 
   try {
     const res = await handleTenants(
       makePostRequest(
-        { property_id: MOCK_PROPERTY_ID, name: "Pedro Costa", cpf: "111.222.333-44" },
+        {
+          property_id: MOCK_PROPERTY_ID,
+          name: "Pedro Costa",
+          cpf: "111.222.333-44",
+        },
         "valid.jwt",
       ),
     );
@@ -730,7 +735,9 @@ Deno.test("integration: GET /tenants/:id — 401 when JWT is invalid or expired"
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ authUser: null }) as typeof fetch;
   try {
-    const res = await handleTenants(makeGetRequest("tenant-uuid-1", "expired.jwt"));
+    const res = await handleTenants(
+      makeGetRequest("tenant-uuid-1", "expired.jwt"),
+    );
     assertEquals(res.status, 401);
     const body = await jsonBody(res) as Record<string, unknown>;
     assertEquals((body.error as Record<string, string>).code, "UNAUTHORIZED");
@@ -763,7 +770,9 @@ Deno.test("integration: GET /tenants/:id — 404 when tenant not found or belong
 
 Deno.test("integration: GET /tenants/:id — 200 returns tenant data", async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = buildMockFetch({ tenantFull: MOCK_TENANT_FULL }) as typeof fetch;
+  globalThis.fetch = buildMockFetch({
+    tenantFull: MOCK_TENANT_FULL,
+  }) as typeof fetch;
   try {
     const res = await handleTenants(
       makeGetRequest(MOCK_TENANT_FULL.id, "valid.jwt"),
@@ -786,7 +795,9 @@ Deno.test("integration: GET /tenants/:id — 200 returns tenant data", async () 
 
 Deno.test("integration: GET /tenants/:id — response includes CORS headers", async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = buildMockFetch({ tenantFull: MOCK_TENANT_FULL }) as typeof fetch;
+  globalThis.fetch = buildMockFetch({
+    tenantFull: MOCK_TENANT_FULL,
+  }) as typeof fetch;
   try {
     const res = await handleTenants(
       makeGetRequest(MOCK_TENANT_FULL.id, "valid.jwt"),
@@ -819,7 +830,11 @@ Deno.test("integration: PATCH /tenants/:id — 401 when JWT is invalid or expire
   globalThis.fetch = buildMockFetch({ authUser: null }) as typeof fetch;
   try {
     const res = await handleTenants(
-      makePatchRequest("tenant-uuid-1", { whatsapp: "+5511999990000" }, "expired.jwt"),
+      makePatchRequest(
+        "tenant-uuid-1",
+        { whatsapp: "+5511999990000" },
+        "expired.jwt",
+      ),
     );
     assertEquals(res.status, 401);
     const body = await jsonBody(res) as Record<string, unknown>;
@@ -877,7 +892,10 @@ Deno.test("integration: PATCH /tenants/:id — 400 when whatsapp format is inval
 
 Deno.test("integration: PATCH /tenants/:id — 404 when tenant not found or belongs to another landlord", async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = buildMockFetch({ tenantExisting: null, tenantFull: null }) as typeof fetch;
+  globalThis.fetch = buildMockFetch({
+    tenantExisting: null,
+    tenantFull: null,
+  }) as typeof fetch;
   try {
     const res = await handleTenants(
       makePatchRequest(

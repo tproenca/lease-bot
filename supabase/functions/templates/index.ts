@@ -30,7 +30,8 @@ export async function handleTemplates(req: Request): Promise<Response> {
   const pathParts = url.pathname.replace(/^\/+/, "").split("/").filter(Boolean);
   // pathParts: ["templates"] → POST, ["templates", ":id"] → DELETE
   const lastPart = pathParts[pathParts.length - 1];
-  const hasId = lastPart !== "templates" && lastPart !== "" && pathParts.length >= 2;
+  const hasId = lastPart !== "templates" && lastPart !== "" &&
+    pathParts.length >= 2;
 
   if (req.method === "POST" && !hasId) {
     return handleCreateTemplate(req);
@@ -113,7 +114,9 @@ async function handleCreateTemplate(req: Request): Promise<Response> {
       return errorResponse(
         400,
         "INVALID_REQUEST",
-        `Tipo de imóvel inválido: '${String(pt)}'. Use apartment, house ou commercial.`,
+        `Tipo de imóvel inválido: '${
+          String(pt)
+        }'. Use apartment, house ou commercial.`,
       );
     }
   }
@@ -133,7 +136,11 @@ async function handleCreateTemplate(req: Request): Promise<Response> {
     .single();
 
   if (insertError || !template) {
-    return errorResponse(500, "DB_ERROR", "Erro ao salvar o template. Tente novamente.");
+    return errorResponse(
+      500,
+      "DB_ERROR",
+      "Erro ao salvar o template. Tente novamente.",
+    );
   }
 
   const templateId = (template as Record<string, unknown>).id as string;
@@ -221,7 +228,11 @@ async function handleDeleteTemplate(
     .eq("id", templateId);
 
   if (deleteError) {
-    return errorResponse(500, "DB_ERROR", "Erro ao remover o template. Tente novamente.");
+    return errorResponse(
+      500,
+      "DB_ERROR",
+      "Erro ao remover o template. Tente novamente.",
+    );
   }
 
   return new Response(null, {
@@ -230,4 +241,4 @@ async function handleDeleteTemplate(
   });
 }
 
-Deno.serve(handleTemplates);
+if (import.meta.main) Deno.serve(handleTemplates);

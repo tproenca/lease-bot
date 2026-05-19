@@ -7,7 +7,7 @@ on:
 
 jobs:
   test:
-    name: Tier 3 — full e2e + coverage
+    name: Full regression suite
     runs-on: ubuntu-latest
 
     steps:
@@ -24,22 +24,8 @@ jobs:
       - name: Start Supabase
         run: supabase start
 
-      - name: Tier 3 — full e2e suite with coverage
-        run: deno test --allow-all supabase/functions/ --coverage=coverage
-
-      - name: Coverage report
-        run: |
-          deno coverage coverage --lcov > coverage/lcov.info
-          COVERED=$(grep -c "^DA:[0-9]*,[^0]" coverage/lcov.info || true)
-          TOTAL=$(grep -c "^DA:" coverage/lcov.info || true)
-          if [[ "$TOTAL" -gt 0 ]]; then
-            PCT=$(( COVERED * 100 / TOTAL ))
-            echo "Coverage: ${PCT}%"
-            if [[ "$PCT" -lt 80 ]]; then
-              echo "::error::Coverage ${PCT}% is below the 80% threshold"
-              exit 1
-            fi
-          fi
+      - name: Full regression suite + coverage
+        run: scripts/test-nightly.sh
 
       - name: Open bug issue on failure
         if: failure()

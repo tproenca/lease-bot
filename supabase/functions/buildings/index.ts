@@ -19,7 +19,10 @@ import {
   getAuthenticatedUser,
   userClient,
 } from "../_shared/supabase.ts";
-import { createDriveFolder, refreshGoogleAccessToken } from "../_shared/google.ts";
+import {
+  createDriveFolder,
+  refreshGoogleAccessToken,
+} from "../_shared/google.ts";
 import { isNonEmptyString } from "../_shared/validation.ts";
 
 export async function handleBuildings(req: Request): Promise<Response> {
@@ -161,4 +164,4 @@ export async function handleBuildings(req: Request): Promise<Response> {
   );
 }
 
-Deno.serve(handleBuildings);
+if (import.meta.main) Deno.serve(handleBuildings);

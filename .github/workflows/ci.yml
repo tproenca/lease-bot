@@ -7,8 +7,22 @@ on:
     branches: [main]
 
 jobs:
-  test:
-    name: Tier 1 + Tier 2
+  static:
+    name: Check + unit tests
+    runs-on: ubuntu-latest
+    container: denoland/deno:2.3.3
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check (format, lint, typecheck)
+        run: scripts/check.sh
+
+      - name: Unit tests
+        run: scripts/test-unit.sh
+
+  supabase:
+    name: Integration + smoke tests
     runs-on: ubuntu-latest
 
     steps:
@@ -25,8 +39,8 @@ jobs:
       - name: Start Supabase
         run: supabase start
 
-      - name: Tier 1 — unit + integration
-        run: deno test --allow-all supabase/functions/ --filter "unit|integration"
+      - name: Integration tests
+        run: scripts/test-integration.sh
 
-      - name: Tier 2 — e2e smoke
-        run: deno test --allow-all supabase/functions/ --filter "e2e:smoke"
+      - name: E2E smoke tests
+        run: scripts/test-smoke.sh

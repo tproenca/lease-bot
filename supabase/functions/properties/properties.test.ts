@@ -79,12 +79,11 @@ function buildMockFetch(opts: {
     input: string | URL | Request,
     init?: RequestInit,
   ): Promise<Response> {
-    const url =
-      typeof input === "string"
-        ? input
-        : input instanceof URL
-        ? input.href
-        : (input as Request).url;
+    const url = typeof input === "string"
+      ? input
+      : input instanceof URL
+      ? input.href
+      : (input as Request).url;
     const method = (init as RequestInit | undefined)?.method?.toUpperCase() ??
       "GET";
 
@@ -373,7 +372,10 @@ Deno.test("integration: POST /properties — 400 when address is missing", async
     );
     assertEquals(res.status, 400);
     const body = await jsonBody(res) as Record<string, unknown>;
-    assertEquals((body.error as Record<string, string>).code, "MISSING_ADDRESS");
+    assertEquals(
+      (body.error as Record<string, string>).code,
+      "MISSING_ADDRESS",
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }

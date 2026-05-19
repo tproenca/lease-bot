@@ -22,7 +22,10 @@ import {
   getAuthenticatedUser,
   userClient,
 } from "../_shared/supabase.ts";
-import { createDriveFolder, refreshGoogleAccessToken } from "../_shared/google.ts";
+import {
+  createDriveFolder,
+  refreshGoogleAccessToken,
+} from "../_shared/google.ts";
 import { isNonEmptyString } from "../_shared/validation.ts";
 
 const VALID_PROPERTY_TYPES = ["apartment", "house", "commercial"] as const;
@@ -78,7 +81,11 @@ async function handleGetProperties(req: Request): Promise<Response> {
     .order("name");
 
   if (error) {
-    return errorResponse(500, "DB_ERROR", "Erro ao carregar imóveis. Tente novamente.");
+    return errorResponse(
+      500,
+      "DB_ERROR",
+      "Erro ao carregar imóveis. Tente novamente.",
+    );
   }
 
   return new Response(JSON.stringify(data ?? []), {
@@ -195,7 +202,8 @@ async function handleCreateProperty(req: Request): Promise<Response> {
       );
     }
 
-    buildingFolderId = (building as Record<string, unknown>).drive_folder_id as string;
+    buildingFolderId = (building as Record<string, unknown>)
+      .drive_folder_id as string;
   }
 
   // 5. Obtain a fresh Google access token.
@@ -271,4 +279,4 @@ async function handleCreateProperty(req: Request): Promise<Response> {
   );
 }
 
-Deno.serve(handleProperties);
+if (import.meta.main) Deno.serve(handleProperties);

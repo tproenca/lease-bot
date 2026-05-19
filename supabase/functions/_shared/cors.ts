@@ -24,8 +24,7 @@ export function strictCorsHeaders(): Record<string, string> {
   // Derive the allowed origin from PUBLIC_FUNCTIONS_BASE_URL if set,
   // otherwise fall back to the Supabase project URL. We only need the
   // scheme+host part (no path).
-  const base =
-    Deno.env.get("PUBLIC_FUNCTIONS_BASE_URL") ??
+  const base = Deno.env.get("PUBLIC_FUNCTIONS_BASE_URL") ??
     Deno.env.get("SUPABASE_URL") ??
     "";
   let allowedOrigin = "*"; // safe fallback for local dev when nothing is configured

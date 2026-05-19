@@ -95,12 +95,11 @@ function buildMockFetch(opts: {
     input: string | URL | Request,
     _init?: RequestInit,
   ): Promise<Response> {
-    const url =
-      typeof input === "string"
-        ? input
-        : input instanceof URL
-        ? input.href
-        : (input as Request).url;
+    const url = typeof input === "string"
+      ? input
+      : input instanceof URL
+      ? input.href
+      : (input as Request).url;
 
     // Supabase Auth — getUser
     if (url.includes("/auth/v1/user")) {
@@ -268,7 +267,9 @@ Deno.test("integration: GET /context — account_config reflects daily frequency
     ...MOCK_LANDLORD,
     payment_reminder_frequency: "daily",
   };
-  globalThis.fetch = buildMockFetch({ landlord: customLandlord }) as typeof fetch;
+  globalThis.fetch = buildMockFetch({
+    landlord: customLandlord,
+  }) as typeof fetch;
   try {
     const res = await handleContext(makeRequest("valid.jwt.for.test"));
     assertEquals(res.status, 200);
@@ -285,12 +286,11 @@ Deno.test("integration: GET /context — account_config reflects daily frequency
 Deno.test("integration: GET /context — returns empty arrays when no data exists", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: string | URL | Request) => {
-    const url =
-      typeof input === "string"
-        ? input
-        : input instanceof URL
-        ? input.href
-        : (input as Request).url;
+    const url = typeof input === "string"
+      ? input
+      : input instanceof URL
+      ? input.href
+      : (input as Request).url;
 
     if (url.includes("/auth/v1/user")) {
       return new Response(JSON.stringify(MOCK_USER), { status: 200 });

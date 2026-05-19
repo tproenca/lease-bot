@@ -34,7 +34,8 @@ export function userClient(jwt: string): SupabaseClient {
 }
 
 export function extractBearer(req: Request): string | null {
-  const auth = req.headers.get("Authorization") ?? req.headers.get("authorization");
+  const auth = req.headers.get("Authorization") ??
+    req.headers.get("authorization");
   if (!auth) return null;
   const match = auth.match(/^Bearer\s+(.+)$/i);
   return match ? match[1].trim() : null;
@@ -42,7 +43,9 @@ export function extractBearer(req: Request): string | null {
 
 export async function getAuthenticatedUser(
   jwt: string,
-): Promise<{ id: string; email: string; user_metadata: Record<string, unknown> } | null> {
+): Promise<
+  { id: string; email: string; user_metadata: Record<string, unknown> } | null
+> {
   const client = createClient(
     requireEnv("SUPABASE_URL"),
     requireEnv("SUPABASE_ANON_KEY"),
