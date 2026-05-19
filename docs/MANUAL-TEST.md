@@ -1,13 +1,15 @@
-# Manual Test Script — Lease Assistant
+# Manual Test — Lease Assistant
+> Runbook: execute flows in order against a live GPT + local Supabase instance.
 
-End-to-end test using a real Google account, local Supabase, and the custom GPT.
-Run flows in order — each one builds on the previous.
+Each flow builds on the previous — run them sequentially in a single session.
+Mark **Pass / Fail** in the verify tables as you go.
 
 ## Pre-requisites
 
 ### Accounts
 - Google account (your own — will be the landlord)
 - Autentique account → grab API key from Account → Integrações
+- Meta WhatsApp Business account with a registered phone number ID and token (Flow 9 only)
 
 ### Google Drive setup
 1. Create a folder: **"Lease Assistant"** → copy its ID from the URL (`/folders/<ID>`)
@@ -66,9 +68,12 @@ GPT calls `GET /context`, finds no landlord profile, and starts setup.
 Confirm with: `Sim`
 
 **Verify:**
-- GPT greets you by name
-- GPT immediately calls `GET /templates/diff` and detects the template doc
-- GPT lists the detected placeholders and asks you to configure each one
+
+| Check | Pass | Notes |
+|---|---|---|
+| GPT greets you by name | | |
+| GPT calls `GET /templates/diff` and detects the template doc | | |
+| GPT lists detected placeholders and asks to configure each one | | |
 
 ---
 
@@ -97,8 +102,11 @@ When asked about witnesses ("Testemunha 1", "Testemunha 2"), provide a WhatsApp 
 Confirm each step with: `Sim`
 
 **Verify:**
-- GPT confirms each placeholder/witness saved
-- Restart the GPT chat — on next `GET /templates/diff` it should report no changes (fast path)
+
+| Check | Pass | Notes |
+|---|---|---|
+| GPT confirms each placeholder/witness saved | | |
+| Restart chat → `GET /templates/diff` reports no changes (fast path) | | |
 
 ---
 
@@ -117,8 +125,11 @@ Confirm each step with: `Sim`
 Confirm with: `Sim`
 
 **Verify:**
-- GPT confirms creation with property ID
-- Open your Drive "Lease Assistant" folder → a "Casa Flores" subfolder exists
+
+| Check | Pass | Notes |
+|---|---|---|
+| GPT confirms creation with property ID | | |
+| Drive "Lease Assistant" folder contains a "Casa Flores" subfolder | | |
 
 ---
 
@@ -138,8 +149,11 @@ Confirm with: `Sim`
 Confirm with: `Sim`
 
 **Verify:**
-- GPT confirms creation
-- In Drive, inside "Casa Flores": a "João Silva" folder exists and is starred (★)
+
+| Check | Pass | Notes |
+|---|---|---|
+| GPT confirms creation | | |
+| Drive: inside "Casa Flores", a "João Silva" folder exists and is starred (★) | | |
 
 ---
 
@@ -166,10 +180,14 @@ GPT derives before calling the API:
 GPT shows full summary. Confirm with: `Sim`
 
 **Verify:**
-- GPT returns a Drive link to the generated document
-- Open the doc: all `{{tokens}}` replaced with correct values
-- "João Silva" appears in título case; CPF is formatted as 123.456.789-09
-- "dois mil e quinhentos reais" appears where `{{valor por extenso}}` was
+
+| Check | Pass | Notes |
+|---|---|---|
+| GPT returns a Drive link to the generated document | | |
+| Open the doc: all `{{tokens}}` replaced, none remaining | | |
+| "João Silva" appears in título case | | |
+| CPF formatted as 123.456.789-09 | | |
+| "dois mil e quinhentos reais" appears where `{{valor por extenso}}` was | | |
 
 ---
 
@@ -189,8 +207,11 @@ GPT shows full summary. Confirm with: `Sim`
 Confirm with: `Sim`
 
 **Verify:**
-- GPT confirms payment recorded
-- Say: `Ver inadimplentes em junho de 2026` → João Silva should NOT appear
+
+| Check | Pass | Notes |
+|---|---|---|
+| GPT confirms payment recorded | | |
+| Say: `Ver inadimplentes em junho de 2026` → João Silva does NOT appear | | |
 
 ---
 
@@ -201,9 +222,13 @@ Confirm with: `Sim`
 **Say:** `Ver inadimplentes em julho de 2026`
 
 **Verify:**
-- João Silva appears as overdue for July 2026
-- GPT offers to send a WhatsApp reminder
-- Say `Não` to skip the reminder (signing flow not tested here)
+
+| Check | Pass | Notes |
+|---|---|---|
+| João Silva appears as overdue for July 2026 | | |
+| GPT offers to send a WhatsApp reminder | | |
+
+Say `Não` to skip the reminder for now — tested in Flow 9.
 
 ---
 
@@ -221,22 +246,67 @@ GPT lists signatories (tenant + landlord + witnesses) and their WhatsApp numbers
 Confirm with: `Sim`
 
 **Verify:**
-- GPT confirms sent
-- Autentique dashboard shows a new document pending signature
-- After signing in Autentique: signed PDF appears in João Silva's Drive folder
+
+| Check | Pass | Notes |
+|---|---|---|
+| GPT confirms sent | | |
+| Autentique dashboard shows a new document pending signature | | |
+| After signing in Autentique: signed PDF appears in João Silva's Drive folder | | |
 
 > If you don't want to sign for real, stop after confirming the send and verify
 > the Autentique dashboard shows the pending document.
 
 ---
 
+## Flow 9 — Ad-hoc payment reminder (requires Meta WhatsApp credentials)
+
+**Goal:** Send a manual WhatsApp reminder for an overdue tenant.
+
+**Pre-condition:** `META_WHATSAPP_TOKEN` and `META_WHATSAPP_PHONE_ID` set in your local `.env`.
+João Silva is overdue for July 2026 (from Flow 7).
+
+**Say:** `Enviar lembrete de pagamento para João Silva de julho de 2026`
+
+**Verify:**
+
+| Check | Pass | Notes |
+|---|---|---|
+| GPT confirms reminder sent | | |
+| João Silva's WhatsApp receives the message | | |
+| Say: `Ver inadimplentes em julho de 2026` → `last_reminder_sent_at` is populated | | |
+| Sending again for the same month records a second entry (no dedup on ad-hoc) | | |
+
+---
+
+## Flow 10 — Reminder frequency configuration
+
+**Goal:** Update the landlord's reminder frequency and confirm it's reflected in context.
+
+**Say:** `Alterar frequência de lembretes para semanal`
+
+**Verify:**
+
+| Check | Pass | Notes |
+|---|---|---|
+| GPT confirms frequency updated to `weekly` | | |
+| Say: `Ver configurações` → context shows `payment_reminder_frequency: weekly` | | |
+
+---
+
 ## What is NOT tested here
 
-These flows require additional setup (pg_cron, Meta WhatsApp API) and are out of scope
-for a basic manual test:
+These flows require infrastructure not available locally:
 
-- Automatic payment reminders (WhatsApp via pg_cron)
-- Webhook idempotency (duplicate Autentique webhook)
+- Automatic payment reminders via pg_cron (requires a live Supabase deployment with pg_cron enabled)
+- Webhook idempotency: duplicate Autentique webhook processed only once
+
+---
+
+## Session log
+
+| Date | Tester | Flows run | Result | Notes |
+|---|---|---|---|---|
+| | | | | |
 
 ---
 
