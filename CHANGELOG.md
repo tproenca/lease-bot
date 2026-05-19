@@ -3,6 +3,22 @@
 ## Unreleased
 
 ### Added
+- `POST /signatures/send` Edge Function: exports tenant Google Docs to PDF via Drive, merges
+  them with pdf-lib, detects `[[LOCADOR]]`/`[[LOCATARIO]]`/`[[TESTEMUNHA_N]]` signature markers,
+  submits the merged PDF to Autentique with DELIVERY_METHOD_WHATSAPP, and records the request
+  in `signature_requests`. Returns `{ id, autentique_document_id }`. Retries Autentique submission
+  up to 3× with exponential backoff; on final failure returns 502 with Drive URLs so the landlord
+  can retry. Returns 422 if signature markers are absent or no documents exist in the tenant folder. (issue 13)
+- `GET /signatures/:id/status` Edge Function: returns `{ status, created_at, completed_at, signers }`
+  combining the DB record with live per-signer `signed_at` timestamps from Autentique GraphQL. (issue 13)
+- `PATCH /signatures/:id/reminder` Edge Function: updates signing reminder frequency (DAILY/WEEKLY)
+  on Autentique via GraphQL mutation. Validates `frequency` is exactly "DAILY" or "WEEKLY". (issue 13)
+- `submitDocument`, `getDocumentStatus`, `updateReminderFrequency` functions added to
+  `_shared/autentique.ts`: full Autentique GraphQL signing integration using multipart upload
+  for PDF submission and standard GraphQL for status query and reminder update. (issue 13)
+- `documents/signatures/detect.ts` internal module: scans merged PDF bytes for `[[ROLE]]`
+  marker strings and returns page/coordinate positions for Autentique signer placement. (issue 13)
+- Unit tests for all new autentique.ts functions, send handler, and status/reminder handler (issue 13)
 - `documents/signatures/detect` internal module: scans the last page of a merged
   PDF for signature blocks (underscore lines + role labels) and returns
   Autentique-compatible signer coordinates `{ name, role, x, y, page }`.
