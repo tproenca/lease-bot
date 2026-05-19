@@ -3,6 +3,16 @@
 ## Unreleased
 
 ### Added
+- `supabase/migrations/004_pg_cron_payment_reminders.sql`: registers the
+  `send_payment_reminders` pg_cron job (daily at 12:00 UTC = 09:00 BRT).
+  For each landlord with `payment_reminder_frequency` set to `daily` or
+  `weekly`, the job finds active tenants with no payment for the current
+  reference month, skips any tenant already reminded within the frequency
+  window (24 h for daily, 7 days for weekly), and calls `POST /payments/remind`
+  via `pg_net` with the service-role JWT.  Per-tenant failures are logged to
+  `cron_errors` with `job_name = 'payment_reminder'` so they surface in
+  `GET /context`.  Enables `pg_cron` and `pg_net` extensions with
+  `IF NOT EXISTS` guards for idempotency. (issue 17)
 - `PATCH /account/config` Edge Function: allows the landlord to update
   `payment_reminder_frequency` (`daily | weekly | disabled`) via the GPT.
   Validates the enum value, persists to `landlords.payment_reminder_frequency`
