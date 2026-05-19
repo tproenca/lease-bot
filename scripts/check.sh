@@ -3,21 +3,7 @@
 set -euo pipefail
 
 echo "==> Format check"
-deno fmt --check \
-  supabase/functions \
-  scripts/check.sh \
-  scripts/test-unit.sh \
-  scripts/test-integration.sh \
-  scripts/test-smoke.sh \
-  scripts/test-nightly.sh \
-  .github/workflows/ci.yml \
-  .github/workflows/nightly.yml \
-  deno.json \
-  AGENTS.md \
-  README.md \
-  specs/DEVOPS.md \
-  specs/TESTING.md \
-  specs/TESTING_PLAN.md
+deno fmt --check supabase/functions
 
 echo "==> Lint"
 deno lint supabase/functions

@@ -106,7 +106,7 @@ function installDriveStub(opts: {
 
     // Drive: search for existing file in folder
     if (
-      url.includes("drive.googleapis.com/drive/v3/files") &&
+      url.includes("googleapis.com/drive/v3/files") &&
       method === "GET" &&
       url.includes("trashed")
     ) {
@@ -151,7 +151,7 @@ function installDriveStub(opts: {
 
     // Drive: delete file
     if (
-      url.includes("drive.googleapis.com/drive/v3/files/") &&
+      url.includes("googleapis.com/drive/v3/files/") &&
       method === "DELETE"
     ) {
       return new Response(null, { status: 204 });
