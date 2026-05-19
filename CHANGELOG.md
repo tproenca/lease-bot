@@ -3,6 +3,13 @@
 ## Unreleased
 
 ### Added
+- `documents/export` internal helper module: exports Google Docs to PDF via the
+  Drive API (using the landlord's stored OAuth refresh token) and merges them into
+  a single bundle in document order using pdf-lib. Returns `{ ok: true; pdf:
+  Uint8Array; pageCount: number }` on success or `{ ok: false; failedUrl: string;
+  driveUrl: string; error: string }` on any export failure. Drive calls retry up to
+  3× with exponential backoff. Unit tests with mocked Drive API; integration tests
+  with stubbed Drive/pdf-lib against a real local Supabase instance. (issue 11)
 - `POST /documents/generate` Edge Function: substitution engine that looks up templates
   mapped to the property's type, copies each to the tenant's Drive folder, replaces all
   `{{placeholder}}` tokens with provided values (applying `maiúsculas`/`minúsculas`/`título`/`frase`
