@@ -3,6 +3,18 @@
 ## Unreleased
 
 ### Added
+- `POST /webhooks/autentique` Edge Function: receives Autentique's signed-document
+  notification, verifies the HMAC-SHA256 signature (`x-autentique-signature` header,
+  `AUTENTIQUE_WEBHOOK_SECRET` env var, timing-safe comparison) before any payload
+  processing, downloads the signed PDF, uploads it to the tenant's Drive folder as
+  `contrato-assinado-{tenant_id}.pdf`, and marks `signature_requests.status = 'completed'`.
+  Returns 200 immediately for all authenticated requests; idempotent on duplicates;
+  silent 200 for unknown documents (does not expose internal IDs). Uses service-role
+  client (no user JWT for webhooks — approved per specs/SECURITY.md). (issue 14)
+- Unit tests for `POST /webhooks/autentique`: valid webhook end-to-end success, invalid
+  HMAC (401), duplicate already-completed request (200 no-op), unknown document (200
+  silent), malformed payload, missing fields, and resilience against downstream failures
+  (PDF download, Drive upload, Google token refresh, DB lookup). (issue 14)
 - `POST /signatures/send` Edge Function: exports tenant Google Docs to PDF via Drive, merges
   them with pdf-lib, detects `[[LOCADOR]]`/`[[LOCATARIO]]`/`[[TESTEMUNHA_N]]` signature markers,
   submits the merged PDF to Autentique with DELIVERY_METHOD_WHATSAPP, and records the request
