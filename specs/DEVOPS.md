@@ -56,7 +56,7 @@ supabase secrets set KEY=value --project-ref <project-ref>
 
 **Per-landlord secrets:** Autentique API keys are stored per-landlord in `landlords.autentique_api_key` (encrypted via Supabase Vault) — not in environment variables. Collected during onboarding.
 
-**Local development:** secrets are set in `supabase/.env.local` (gitignored). See `.env.example` for the full list with placeholder values.
+**Local development:** secrets are set in `supabase/.env.local` (gitignored). See `.env.example` for the full list with placeholder values and [docs/SETUP.md](../docs/SETUP.md) for step-by-step instructions on obtaining each value.
 
 ---
 
