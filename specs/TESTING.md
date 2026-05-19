@@ -51,9 +51,9 @@ deno test --allow-all supabase/functions/ --filter "e2e:smoke"
 - Template diff: add new template → detect new placeholders → configure → verify DB updated
 - Template diff: remove template → verify mapping cleaned up
 - Tenant replacement → verify old folder unstarred, new folder starred
-- Signing flow: generate documents → send for signing → mock Autentique webhook → verify signed PDF saved to Drive
-- Payment reminder: mock pg_cron trigger → verify Meta WhatsApp API called → verify `payment_reminders` record created
-- Webhook idempotency: duplicate Autentique webhook → verify processed only once
+- Signing flow: generate documents → send for signing → mock Autentique webhook → verify signed PDF saved to Drive (planned)
+- Payment reminder: mock pg_cron trigger → verify Meta WhatsApp API called → verify `payment_reminders` record created (planned)
+- Webhook idempotency: duplicate Autentique webhook → verify processed only once (planned)
 - Access control: JWT from landlord A rejected for landlord B's resources
 
 **Coverage threshold:** 80% line coverage across all Edge Function logic

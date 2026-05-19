@@ -245,6 +245,9 @@ Say `Não` to skip the reminder for now — tested in Flow 9.
 GPT lists signatories (tenant + landlord + witnesses) and their WhatsApp numbers.
 Confirm with: `Sim`
 
+> **If running without a live Autentique account:** stop after confirming the send and verify
+> the Autentique dashboard shows the pending document — do not wait for a real signature.
+
 **Verify:**
 
 | Check | Pass | Notes |
@@ -253,16 +256,14 @@ Confirm with: `Sim`
 | Autentique dashboard shows a new document pending signature | | |
 | After signing in Autentique: signed PDF appears in João Silva's Drive folder | | |
 
-> If you don't want to sign for real, stop after confirming the send and verify
-> the Autentique dashboard shows the pending document.
-
 ---
 
 ## Flow 9 — Ad-hoc payment reminder (requires Meta WhatsApp credentials)
 
 **Goal:** Send a manual WhatsApp reminder for an overdue tenant.
 
-**Pre-condition:** `META_WHATSAPP_TOKEN` and `META_WHATSAPP_PHONE_ID` set in your local `.env`.
+**Pre-condition:** `META_WHATSAPP_TOKEN` and `META_WHATSAPP_PHONE_ID` set in your local `.env`
+(see `.env.example` for all required vars).
 João Silva is overdue for July 2026 (from Flow 7).
 
 **Say:** `Enviar lembrete de pagamento para João Silva de julho de 2026`
@@ -290,6 +291,8 @@ João Silva is overdue for July 2026 (from Flow 7).
 |---|---|---|
 | GPT confirms frequency updated to `weekly` | | |
 | Say: `Ver configurações` → context shows `payment_reminder_frequency: weekly` | | |
+
+> Note: the pg_cron schedule update is not verifiable locally — see "What is NOT tested here".
 
 ---
 
