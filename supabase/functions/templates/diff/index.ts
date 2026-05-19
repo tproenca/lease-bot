@@ -124,7 +124,9 @@ export async function handleTemplatesDiff(req: Request): Promise<Response> {
   const [templatesResult, landlordResult] = await Promise.all([
     db
       .from("templates")
-      .select("id, name, drive_file_id, drive_last_modified_at, placeholder_names"),
+      .select(
+        "id, name, drive_file_id, drive_last_modified_at, placeholder_names",
+      ),
     db
       .from("landlords")
       .select("google_refresh_token, templates_folder_id")

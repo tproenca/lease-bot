@@ -62,10 +62,16 @@ Deno.test("integration: /setup/complete — 401 when JWT is invalid", async () =
   // Intercept calls to Supabase Auth endpoints.
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (input: string | URL | Request) => {
-    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    const url = typeof input === "string"
+      ? input
+      : input instanceof URL
+      ? input.href
+      : input.url;
     if (url.includes("/auth/v1/user")) {
       return Promise.resolve(
-        new Response(JSON.stringify({ error: "invalid_token" }), { status: 401 }),
+        new Response(JSON.stringify({ error: "invalid_token" }), {
+          status: 401,
+        }),
       );
     }
     return originalFetch(input as string);
@@ -86,7 +92,11 @@ Deno.test("integration: /setup/complete — 400 when root_folder_id is invalid",
   // Mock a valid auth user response so we get past JWT check.
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (input: string | URL | Request) => {
-    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    const url = typeof input === "string"
+      ? input
+      : input instanceof URL
+      ? input.href
+      : input.url;
     if (url.includes("/auth/v1/user")) {
       return Promise.resolve(
         new Response(
@@ -129,7 +139,11 @@ Deno.test("integration: /setup/complete — 400 when root_folder_id is invalid",
 Deno.test("integration: /setup/complete — 400 when whatsapp is not a Brazilian number", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (input: string | URL | Request) => {
-    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    const url = typeof input === "string"
+      ? input
+      : input instanceof URL
+      ? input.href
+      : input.url;
     if (url.includes("/auth/v1/user")) {
       return Promise.resolve(
         new Response(
@@ -172,7 +186,11 @@ Deno.test("integration: /setup/complete — 400 when whatsapp is not a Brazilian
 Deno.test("integration: /setup/complete — 400 when autentique_api_key is empty", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (input: string | URL | Request) => {
-    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    const url = typeof input === "string"
+      ? input
+      : input instanceof URL
+      ? input.href
+      : input.url;
     if (url.includes("/auth/v1/user")) {
       return Promise.resolve(
         new Response(
@@ -215,7 +233,11 @@ Deno.test("integration: /setup/complete — 400 when autentique_api_key is empty
 Deno.test("integration: /setup/complete — 400 when autentique_api_key contains newline", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (input: string | URL | Request) => {
-    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    const url = typeof input === "string"
+      ? input
+      : input instanceof URL
+      ? input.href
+      : input.url;
     if (url.includes("/auth/v1/user")) {
       return Promise.resolve(
         new Response(

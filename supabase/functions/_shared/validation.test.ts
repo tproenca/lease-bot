@@ -1,5 +1,8 @@
 // unit: _shared/validation.ts
-import { assertEquals, assertStrictEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  assertEquals,
+  assertStrictEquals,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   looksLikeDriveId,
   normalizeBrazilianWhatsapp,
@@ -9,15 +12,24 @@ import {
 // ─── normalizeBrazilianWhatsapp ───────────────────────────────────────────
 
 Deno.test("unit: normalizeBrazilianWhatsapp — canonical E.164 11-digit", () => {
-  assertStrictEquals(normalizeBrazilianWhatsapp("+5511999999999"), "+5511999999999");
+  assertStrictEquals(
+    normalizeBrazilianWhatsapp("+5511999999999"),
+    "+5511999999999",
+  );
 });
 
 Deno.test("unit: normalizeBrazilianWhatsapp — canonical E.164 10-digit", () => {
-  assertStrictEquals(normalizeBrazilianWhatsapp("+551199999999"), "+551199999999");
+  assertStrictEquals(
+    normalizeBrazilianWhatsapp("+551199999999"),
+    "+551199999999",
+  );
 });
 
 Deno.test("unit: normalizeBrazilianWhatsapp — adds leading + from 55-prefixed digits", () => {
-  assertStrictEquals(normalizeBrazilianWhatsapp("5511999999999"), "+5511999999999");
+  assertStrictEquals(
+    normalizeBrazilianWhatsapp("5511999999999"),
+    "+5511999999999",
+  );
 });
 
 Deno.test("unit: normalizeBrazilianWhatsapp — strips formatting chars", () => {
@@ -52,7 +64,10 @@ Deno.test("unit: normalizeBrazilianWhatsapp — rejects non-string", () => {
 // ─── looksLikeDriveId ─────────────────────────────────────────────────────
 
 Deno.test("unit: looksLikeDriveId — accepts valid-looking Drive folder ID", () => {
-  assertEquals(looksLikeDriveId("1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms"), true);
+  assertEquals(
+    looksLikeDriveId("1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms"),
+    true,
+  );
 });
 
 Deno.test("unit: looksLikeDriveId — accepts short but valid ID (10 chars)", () => {
@@ -92,11 +107,17 @@ Deno.test("unit: normalizeTemplatesFolderName — accepts name without slash", (
 });
 
 Deno.test("unit: normalizeTemplatesFolderName — trims surrounding whitespace", () => {
-  assertStrictEquals(normalizeTemplatesFolderName("  Templates/  "), "Templates");
+  assertStrictEquals(
+    normalizeTemplatesFolderName("  Templates/  "),
+    "Templates",
+  );
 });
 
 Deno.test("unit: normalizeTemplatesFolderName — accepts name with spaces", () => {
-  assertStrictEquals(normalizeTemplatesFolderName("Meus Modelos"), "Meus Modelos");
+  assertStrictEquals(
+    normalizeTemplatesFolderName("Meus Modelos"),
+    "Meus Modelos",
+  );
 });
 
 Deno.test("unit: normalizeTemplatesFolderName — rejects name with path separator", () => {

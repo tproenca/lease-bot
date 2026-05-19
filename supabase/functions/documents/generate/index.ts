@@ -43,7 +43,10 @@ const DRIVE_FILES_URL = "https://www.googleapis.com/drive/v3/files";
  *
  * If `caseTransform` is null/undefined, the value is returned unchanged.
  */
-export function applyCase(value: string, caseTransform: string | null | undefined): string {
+export function applyCase(
+  value: string,
+  caseTransform: string | null | undefined,
+): string {
   if (!caseTransform) return value;
   switch (caseTransform) {
     case "maiúsculas":
@@ -52,8 +55,9 @@ export function applyCase(value: string, caseTransform: string | null | undefine
       return value.toLowerCase();
     case "título":
       // Title Case: capitalise first letter of each whitespace-separated word.
-      return value.replace(/\S+/g, (word) =>
-        word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+      return value.replace(
+        /\S+/g,
+        (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase(),
       );
     case "frase":
       // Sentence case: capitalise first letter of the entire string.
@@ -98,7 +102,9 @@ async function driveRequestWithRetry(
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     if (attempt > 0) {
       // Exponential backoff: 1000 ms, 2000 ms, …
-      await new Promise((resolve) => setTimeout(resolve, 1000 * Math.pow(2, attempt - 1)));
+      await new Promise((resolve) =>
+        setTimeout(resolve, 1000 * Math.pow(2, attempt - 1))
+      );
     }
     lastRes = await fetch(input, init);
     if (!RETRYABLE_STATUSES.has(lastRes.status)) {
@@ -204,8 +210,9 @@ async function updateDocContent(params: {
   fileId: string;
   content: string;
 }): Promise<void> {
-  const url =
-    `https://www.googleapis.com/upload/drive/v3/files/${encodeURIComponent(params.fileId)}?uploadType=media`;
+  const url = `https://www.googleapis.com/upload/drive/v3/files/${
+    encodeURIComponent(params.fileId)
+  }?uploadType=media`;
 
   const res = await driveRequestWithRetry(url, {
     method: "PATCH",
@@ -350,7 +357,11 @@ export async function handleGenerateDocuments(req: Request): Promise<Response> {
     return errorResponse(404, "PROPERTY_NOT_FOUND", "Imóvel não encontrado.");
   }
 
-  const prop = property as { id: string; type: string; drive_folder_id: string };
+  const prop = property as {
+    id: string;
+    type: string;
+    drive_folder_id: string;
+  };
 
   // 5. Load the tenant (RLS ensures it belongs to this landlord).
   const { data: tenant, error: tenantError } = await db
@@ -363,7 +374,11 @@ export async function handleGenerateDocuments(req: Request): Promise<Response> {
     return errorResponse(404, "TENANT_NOT_FOUND", "Inquilino não encontrado.");
   }
 
-  const ten = tenant as { id: string; drive_folder_id: string; property_id: string };
+  const ten = tenant as {
+    id: string;
+    drive_folder_id: string;
+    property_id: string;
+  };
 
   // 6. Verify tenant belongs to this property (defence in depth beyond RLS).
   if (ten.property_id !== prop.id) {
@@ -422,7 +437,9 @@ export async function handleGenerateDocuments(req: Request): Promise<Response> {
     return errorResponse(
       422,
       "MISSING_REQUIRED_PLACEHOLDERS",
-      `Os seguintes campos obrigatórios estão ausentes: ${missingRequired.join(", ")}.`,
+      `Os seguintes campos obrigatórios estão ausentes: ${
+        missingRequired.join(", ")
+      }.`,
     );
   }
 
@@ -571,7 +588,11 @@ export async function handleGenerateDocuments(req: Request): Promise<Response> {
     const substituted = substituteTokens(rawContent, valueMap);
 
     try {
-      await updateDocContent({ accessToken, fileId: newFileId, content: substituted });
+      await updateDocContent({
+        accessToken,
+        fileId: newFileId,
+        content: substituted,
+      });
     } catch {
       return errorResponse(
         502,

@@ -167,12 +167,11 @@ function buildMockFetch(opts: {
     input: string | URL | Request,
     init?: RequestInit,
   ): Promise<Response> {
-    const url =
-      typeof input === "string"
-        ? input
-        : input instanceof URL
-        ? input.href
-        : (input as Request).url;
+    const url = typeof input === "string"
+      ? input
+      : input instanceof URL
+      ? input.href
+      : (input as Request).url;
 
     // Supabase Auth — getUser
     if (url.includes("/auth/v1/user")) {
@@ -246,7 +245,10 @@ function buildMockFetch(opts: {
     }
 
     // Google Drive: export file as text
-    if (url.includes("www.googleapis.com/drive/v3/files") && url.includes("/export")) {
+    if (
+      url.includes("www.googleapis.com/drive/v3/files") &&
+      url.includes("/export")
+    ) {
       if (opts.driveExportFail) {
         return new Response(JSON.stringify({ error: "not found" }), {
           status: 404,
@@ -368,12 +370,11 @@ Deno.test("integration: GET /templates/diff — fast path does not export Drive 
   let exportCalled = false;
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: string | URL | Request) => {
-    const url =
-      typeof input === "string"
-        ? input
-        : input instanceof URL
-        ? input.href
-        : (input as Request).url;
+    const url = typeof input === "string"
+      ? input
+      : input instanceof URL
+      ? input.href
+      : (input as Request).url;
 
     if (url.includes("/export")) {
       exportCalled = true;
@@ -459,22 +460,22 @@ Deno.test("integration: GET /templates/diff — Guia de Placeholders is never in
     },
   ];
   let exportCallCount = 0;
-  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
-    const url =
-      typeof input === "string"
+  globalThis.fetch =
+    (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === "string"
         ? input
         : input instanceof URL
         ? input.href
         : (input as Request).url;
 
-    if (url.includes("/export")) {
-      exportCallCount++;
-    }
-    return buildMockFetch({
-      templates: templatesWithGuia,
-      driveFiles: driveFilesWithGuia,
-    })(input as string, init);
-  }) as typeof fetch;
+      if (url.includes("/export")) {
+        exportCallCount++;
+      }
+      return buildMockFetch({
+        templates: templatesWithGuia,
+        driveFiles: driveFilesWithGuia,
+      })(input as string, init);
+    }) as typeof fetch;
 
   try {
     const res = await handleTemplatesDiff(makeRequest("valid.jwt"));

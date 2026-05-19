@@ -16,11 +16,12 @@ import { createClient } from "@supabase/supabase-js";
 
 // ─── Local Supabase configuration ────────────────────────────────────────
 
-const SUPABASE_URL = "http://localhost:54321";
-// Default local anon and service role keys from `supabase start`.
-const ANON_KEY =
+// Keys are read from env vars exported by test-integration.sh via `supabase status --output env`.
+// Fall back to the standard local dev defaults so the file works without the shell wrapper.
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "http://localhost:54321";
+const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ??
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRFA0NiK7W9oaLFwQ1egSTumqSwalckNOm0NqZouAKc";
-const SERVICE_ROLE_KEY =
+const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hj04zWl196z2-SBc0";
 
 // ─── Availability check ───────────────────────────────────────────────────
@@ -39,7 +40,9 @@ try {
 
 function skipIfUnavailable(): boolean {
   if (!supabaseAvailable) {
-    console.log("  [SKIP] local Supabase not running — skipping integration test");
+    console.log(
+      "  [SKIP] local Supabase not running — skipping integration test",
+    );
     return true;
   }
   return false;
@@ -80,13 +83,13 @@ function installDriveStub(opts: {
     input: string | URL | Request,
     init?: RequestInit,
   ): Promise<Response> {
-    const url =
-      typeof input === "string"
-        ? input
-        : input instanceof URL
-        ? input.href
-        : (input as Request).url;
-    const method = (init as RequestInit | undefined)?.method?.toUpperCase() ?? "GET";
+    const url = typeof input === "string"
+      ? input
+      : input instanceof URL
+      ? input.href
+      : (input as Request).url;
+    const method = (init as RequestInit | undefined)?.method?.toUpperCase() ??
+      "GET";
 
     // Google token refresh
     if (url.includes("oauth2.googleapis.com/token")) {
@@ -113,9 +116,13 @@ function installDriveStub(opts: {
     // Drive: copy file
     if (url.includes("/copy") && method === "POST") {
       if (opts.driveCopyFail) {
-        return new Response(JSON.stringify({ error: "server_error" }), { status: 500 });
+        return new Response(JSON.stringify({ error: "server_error" }), {
+          status: 500,
+        });
       }
-      return new Response(JSON.stringify({ id: MOCK_DRIVE_FILE_ID }), { status: 200 });
+      return new Response(JSON.stringify({ id: MOCK_DRIVE_FILE_ID }), {
+        status: 200,
+      });
     }
 
     // Drive: export file as text
@@ -133,13 +140,20 @@ function installDriveStub(opts: {
     // Drive: media upload (write substituted content)
     if (url.includes("upload/drive/v3/files") && method === "PATCH") {
       if (opts.driveUpdateFail) {
-        return new Response(JSON.stringify({ error: "server_error" }), { status: 500 });
+        return new Response(JSON.stringify({ error: "server_error" }), {
+          status: 500,
+        });
       }
-      return new Response(JSON.stringify({ id: MOCK_DRIVE_FILE_ID }), { status: 200 });
+      return new Response(JSON.stringify({ id: MOCK_DRIVE_FILE_ID }), {
+        status: 200,
+      });
     }
 
     // Drive: delete file
-    if (url.includes("drive.googleapis.com/drive/v3/files/") && method === "DELETE") {
+    if (
+      url.includes("drive.googleapis.com/drive/v3/files/") &&
+      method === "DELETE"
+    ) {
       return new Response(null, { status: 204 });
     }
 
@@ -155,23 +169,28 @@ function installDriveStub(opts: {
 
 // ─── Test data helpers ────────────────────────────────────────────────────
 
-async function createTestUser(email: string): Promise<{ id: string; jwt: string }> {
+async function createTestUser(
+  email: string,
+): Promise<{ id: string; jwt: string }> {
   const password = "TestPassword123!";
   const { data, error } = await adminDb.auth.admin.createUser({
     email,
     password,
     email_confirm: true,
   });
-  if (error || !data.user) throw new Error(`Failed to create user: ${error?.message}`);
+  if (error || !data.user) {
+    throw new Error(`Failed to create user: ${error?.message}`);
+  }
 
   // Sign in to get a JWT
   const anonClient = createClient(SUPABASE_URL, ANON_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  const { data: session, error: signInError } = await anonClient.auth.signInWithPassword({
-    email,
-    password,
-  });
+  const { data: session, error: signInError } = await anonClient.auth
+    .signInWithPassword({
+      email,
+      password,
+    });
   if (signInError || !session.session) {
     throw new Error(`Failed to sign in: ${signInError?.message}`);
   }
@@ -198,7 +217,9 @@ async function seedTestData(userId: string): Promise<{
     root_folder_id: "root-folder-id",
     templates_folder_id: "templates-folder-id",
   });
-  if (landlordError) throw new Error(`Failed to insert landlord: ${landlordError.message}`);
+  if (landlordError) {
+    throw new Error(`Failed to insert landlord: ${landlordError.message}`);
+  }
 
   // Insert placeholder definitions
   const { error: pError } = await adminDb.from("placeholders").insert([
@@ -217,7 +238,9 @@ async function seedTestData(userId: string): Promise<{
       case: null,
     },
   ]);
-  if (pError) throw new Error(`Failed to insert placeholders: ${pError.message}`);
+  if (pError) {
+    throw new Error(`Failed to insert placeholders: ${pError.message}`);
+  }
 
   // Insert property
   const { data: propData, error: propError } = await adminDb
@@ -231,7 +254,9 @@ async function seedTestData(userId: string): Promise<{
     })
     .select("id")
     .single();
-  if (propError || !propData) throw new Error(`Failed to insert property: ${propError?.message}`);
+  if (propError || !propData) {
+    throw new Error(`Failed to insert property: ${propError?.message}`);
+  }
   const propertyId = propData.id as string;
 
   // Insert tenant
@@ -269,12 +294,15 @@ async function seedTestData(userId: string): Promise<{
   const templateId = templateData.id as string;
 
   // Map template to property type
-  const { error: mappingError } = await adminDb.from("property_type_templates").insert({
-    landlord_id: userId,
-    property_type: "house",
-    template_id: templateId,
-  });
-  if (mappingError) throw new Error(`Failed to insert mapping: ${mappingError.message}`);
+  const { error: mappingError } = await adminDb.from("property_type_templates")
+    .insert({
+      landlord_id: userId,
+      property_type: "house",
+      template_id: templateId,
+    });
+  if (mappingError) {
+    throw new Error(`Failed to insert mapping: ${mappingError.message}`);
+  }
 
   return { propertyId, tenantId, templateId };
 }
@@ -310,7 +338,8 @@ Deno.test("integration: generate — 200 happy path against real DB", async () =
   );
   const { propertyId, tenantId } = await seedTestData(userId);
   const restore = installDriveStub({
-    templateContent: "Contrato: {{nome do inquilino}}, CPF {{cpf do inquilino}}.",
+    templateContent:
+      "Contrato: {{nome do inquilino}}, CPF {{cpf do inquilino}}.",
   });
 
   try {
@@ -328,7 +357,9 @@ Deno.test("integration: generate — 200 happy path against real DB", async () =
       ),
     );
     assertEquals(res.status, 200);
-    const body = await res.json() as { documents: Array<{ template_name: string; drive_url: string }> };
+    const body = await res.json() as {
+      documents: Array<{ template_name: string; drive_url: string }>;
+    };
     assertEquals(Array.isArray(body.documents), true);
     assertEquals(body.documents.length, 1);
     assertEquals(body.documents[0].template_name, "Contrato de Locação");
@@ -361,7 +392,9 @@ Deno.test("integration: generate — 422 when required placeholder omitted (real
       ),
     );
     assertEquals(res.status, 422);
-    const body = await res.json() as { error: { code: string; message: string } };
+    const body = await res.json() as {
+      error: { code: string; message: string };
+    };
     assertEquals(body.error.code, "MISSING_REQUIRED_PLACEHOLDERS");
     assertStringIncludes(body.error.message, "cpf do inquilino");
   } finally {

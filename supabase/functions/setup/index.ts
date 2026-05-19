@@ -199,7 +199,9 @@ function renderPostAuthHtml(params: { email: string }): string {
 </head>
 <body>
   <h1>Configurar sua conta</h1>
-  <p>Olá, ${escapeHtml(params.email)}. Falta pouco para terminar a configuração.</p>
+  <p>Olá, ${
+    escapeHtml(params.email)
+  }. Falta pouco para terminar a configuração.</p>
 
   <form id="setupForm" autocomplete="off">
     <label for="rootFolderId">Pasta raiz no Google Drive</label>

@@ -1,10 +1,9 @@
 // unit: _shared/cookies.ts
-import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
-  clearCookie,
-  parseCookies,
-  serializeCookie,
-} from "./cookies.ts";
+  assertEquals,
+  assertStringIncludes,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { clearCookie, parseCookies, serializeCookie } from "./cookies.ts";
 
 // ─── parseCookies ─────────────────────────────────────────────────────────
 

@@ -37,8 +37,8 @@ export async function handlePlaceholders(req: Request): Promise<Response> {
   const pathParts = url.pathname.replace(/^\/+/, "").split("/").filter(Boolean);
   // pathParts: ["placeholders"] → POST, ["placeholders", ":name"] → DELETE
   const lastPart = pathParts[pathParts.length - 1];
-  const hasName =
-    lastPart !== "placeholders" && lastPart !== "" && pathParts.length >= 2;
+  const hasName = lastPart !== "placeholders" && lastPart !== "" &&
+    pathParts.length >= 2;
 
   if (req.method === "POST" && !hasName) {
     return handleCreatePlaceholder(req);
@@ -102,7 +102,9 @@ async function handleCreatePlaceholder(req: Request): Promise<Response> {
     return errorResponse(
       400,
       "INVALID_FORMAT",
-      `Formato inválido: '${String(format)}'. Use text, date, cpf, integer ou currency.`,
+      `Formato inválido: '${
+        String(format)
+      }'. Use text, date, cpf, integer ou currency.`,
     );
   }
 
@@ -113,7 +115,9 @@ async function handleCreatePlaceholder(req: Request): Promise<Response> {
     .insert({
       landlord_id: user.id,
       name: name.trim(),
-      required: required === true || required === undefined ? true : Boolean(required),
+      required: required === true || required === undefined
+        ? true
+        : Boolean(required),
       format: format as string,
       case: (caseField ?? null) as string | null,
       default: (defaultField ?? null) as string | null,
@@ -232,7 +236,9 @@ async function regenerateGuia(
 
     const { data: placeholders } = await db
       .from("placeholders")
-      .select("name, required, format, case, default, derived_from, derived_formula")
+      .select(
+        "name, required, format, case, default, derived_from, derived_formula",
+      )
       .order("name");
 
     await upsertGuiaDePlaceholders({

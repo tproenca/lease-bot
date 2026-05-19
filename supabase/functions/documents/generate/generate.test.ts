@@ -21,8 +21,8 @@ Deno.env.set("GOOGLE_CLIENT_SECRET", "test-google-client-secret");
 
 import {
   applyCase,
-  substituteTokens,
   handleGenerateDocuments,
+  substituteTokens,
 } from "./index.ts";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -181,7 +181,11 @@ const MOCK_PLACEHOLDER_DEFS = [
 const MOCK_MAPPINGS = [{ template_id: MOCK_TEMPLATE_ID }];
 
 const MOCK_TEMPLATES = [
-  { id: MOCK_TEMPLATE_ID, name: "Contrato de Locação", drive_file_id: MOCK_DRIVE_FILE_ID },
+  {
+    id: MOCK_TEMPLATE_ID,
+    name: "Contrato de Locação",
+    drive_file_id: MOCK_DRIVE_FILE_ID,
+  },
 ];
 
 const MOCK_ACCESS_TOKEN = "mock-google-access-token";
@@ -218,22 +222,28 @@ function buildMockFetch(opts: MockFetchOpts) {
     input: string | URL | Request,
     init?: RequestInit,
   ): Promise<Response> {
-    const url =
-      typeof input === "string"
-        ? input
-        : input instanceof URL
-        ? input.href
-        : (input as Request).url;
-    const method =
-      (init as RequestInit | undefined)?.method?.toUpperCase() ?? "GET";
+    const url = typeof input === "string"
+      ? input
+      : input instanceof URL
+      ? input.href
+      : (input as Request).url;
+    const method = (init as RequestInit | undefined)?.method?.toUpperCase() ??
+      "GET";
 
     // Google token refresh
     if (url.includes("oauth2.googleapis.com/token")) {
       if (opts.tokenExchangeFail) {
-        return new Response(JSON.stringify({ error: "invalid_grant" }), { status: 400 });
+        return new Response(JSON.stringify({ error: "invalid_grant" }), {
+          status: 400,
+        });
       }
       return new Response(
-        JSON.stringify({ access_token: MOCK_ACCESS_TOKEN, expires_in: 3600, token_type: "Bearer", scope: "" }),
+        JSON.stringify({
+          access_token: MOCK_ACCESS_TOKEN,
+          expires_in: 3600,
+          token_type: "Bearer",
+          scope: "",
+        }),
         { status: 200 },
       );
     }
@@ -241,9 +251,13 @@ function buildMockFetch(opts: MockFetchOpts) {
     // Supabase Auth — getUser
     if (url.includes("/auth/v1/user")) {
       if (opts.authUser === null) {
-        return new Response(JSON.stringify({ error: "invalid_token" }), { status: 401 });
+        return new Response(JSON.stringify({ error: "invalid_token" }), {
+          status: 401,
+        });
       }
-      return new Response(JSON.stringify(opts.authUser ?? MOCK_USER), { status: 200 });
+      return new Response(JSON.stringify(opts.authUser ?? MOCK_USER), {
+        status: 200,
+      });
     }
 
     // PostgREST: landlords
@@ -251,7 +265,9 @@ function buildMockFetch(opts: MockFetchOpts) {
       if (opts.landlord === null) {
         return new Response(JSON.stringify(null), { status: 200 });
       }
-      return new Response(JSON.stringify(opts.landlord ?? MOCK_LANDLORD), { status: 200 });
+      return new Response(JSON.stringify(opts.landlord ?? MOCK_LANDLORD), {
+        status: 200,
+      });
     }
 
     // PostgREST: properties
@@ -259,7 +275,9 @@ function buildMockFetch(opts: MockFetchOpts) {
       if (opts.property === null) {
         return new Response(JSON.stringify(null), { status: 200 });
       }
-      return new Response(JSON.stringify(opts.property ?? MOCK_PROPERTY), { status: 200 });
+      return new Response(JSON.stringify(opts.property ?? MOCK_PROPERTY), {
+        status: 200,
+      });
     }
 
     // PostgREST: tenants
@@ -267,7 +285,9 @@ function buildMockFetch(opts: MockFetchOpts) {
       if (opts.tenant === null) {
         return new Response(JSON.stringify(null), { status: 200 });
       }
-      return new Response(JSON.stringify(opts.tenant ?? MOCK_TENANT), { status: 200 });
+      return new Response(JSON.stringify(opts.tenant ?? MOCK_TENANT), {
+        status: 200,
+      });
     }
 
     // PostgREST: placeholders
@@ -275,7 +295,10 @@ function buildMockFetch(opts: MockFetchOpts) {
       if (opts.placeholderDefs === null) {
         return new Response(JSON.stringify([]), { status: 200 });
       }
-      return new Response(JSON.stringify(opts.placeholderDefs ?? MOCK_PLACEHOLDER_DEFS), { status: 200 });
+      return new Response(
+        JSON.stringify(opts.placeholderDefs ?? MOCK_PLACEHOLDER_DEFS),
+        { status: 200 },
+      );
     }
 
     // PostgREST: property_type_templates
@@ -283,7 +306,9 @@ function buildMockFetch(opts: MockFetchOpts) {
       if (opts.mappings === null) {
         return new Response(JSON.stringify([]), { status: 200 });
       }
-      return new Response(JSON.stringify(opts.mappings ?? MOCK_MAPPINGS), { status: 200 });
+      return new Response(JSON.stringify(opts.mappings ?? MOCK_MAPPINGS), {
+        status: 200,
+      });
     }
 
     // PostgREST: templates
@@ -291,7 +316,9 @@ function buildMockFetch(opts: MockFetchOpts) {
       if (opts.templates === null) {
         return new Response(JSON.stringify([]), { status: 200 });
       }
-      return new Response(JSON.stringify(opts.templates ?? MOCK_TEMPLATES), { status: 200 });
+      return new Response(JSON.stringify(opts.templates ?? MOCK_TEMPLATES), {
+        status: 200,
+      });
     }
 
     // Drive: search for existing file by name in tenant folder
@@ -299,14 +326,20 @@ function buildMockFetch(opts: MockFetchOpts) {
     if (
       url.includes("drive.googleapis.com/drive/v3/files") &&
       method === "GET" &&
-      (url.includes("in+parents") || url.includes("in%20parents") || url.includes("parents"))
-      && url.includes("trashed")
+      (url.includes("in+parents") || url.includes("in%20parents") ||
+        url.includes("parents")) &&
+      url.includes("trashed")
     ) {
       if (opts.driveSearchFail) {
-        return new Response(JSON.stringify({ error: "server_error" }), { status: 500 });
+        return new Response(JSON.stringify({ error: "server_error" }), {
+          status: 500,
+        });
       }
       if (opts.existingFileId) {
-        return new Response(JSON.stringify({ files: [{ id: opts.existingFileId }] }), { status: 200 });
+        return new Response(
+          JSON.stringify({ files: [{ id: opts.existingFileId }] }),
+          { status: 200 },
+        );
       }
       return new Response(JSON.stringify({ files: [] }), { status: 200 });
     }
@@ -314,7 +347,9 @@ function buildMockFetch(opts: MockFetchOpts) {
     // Drive: copy file
     if (url.includes("/copy") && method === "POST") {
       if (opts.driveCopyFail) {
-        return new Response(JSON.stringify({ error: "server_error" }), { status: 500 });
+        return new Response(JSON.stringify({ error: "server_error" }), {
+          status: 500,
+        });
       }
       return new Response(
         JSON.stringify({ id: opts.copiedFileId ?? MOCK_NEW_FILE_ID }),
@@ -328,7 +363,8 @@ function buildMockFetch(opts: MockFetchOpts) {
         return new Response("error", { status: 500 });
       }
       return new Response(
-        opts.templateContent ?? "Contrato entre {{nome do inquilino}}, CPF {{cpf do inquilino}}.",
+        opts.templateContent ??
+          "Contrato entre {{nome do inquilino}}, CPF {{cpf do inquilino}}.",
         { status: 200 },
       );
     }
@@ -336,15 +372,24 @@ function buildMockFetch(opts: MockFetchOpts) {
     // Drive: upload/update content (media upload)
     if (url.includes("upload/drive/v3/files") && method === "PATCH") {
       if (opts.driveUpdateFail) {
-        return new Response(JSON.stringify({ error: "server_error" }), { status: 500 });
+        return new Response(JSON.stringify({ error: "server_error" }), {
+          status: 500,
+        });
       }
-      return new Response(JSON.stringify({ id: MOCK_NEW_FILE_ID }), { status: 200 });
+      return new Response(JSON.stringify({ id: MOCK_NEW_FILE_ID }), {
+        status: 200,
+      });
     }
 
     // Drive: delete existing file
-    if (url.includes("drive.googleapis.com/drive/v3/files/") && method === "DELETE") {
+    if (
+      url.includes("drive.googleapis.com/drive/v3/files/") &&
+      method === "DELETE"
+    ) {
       if (opts.driveDeleteFail) {
-        return new Response(JSON.stringify({ error: "server_error" }), { status: 500 });
+        return new Response(JSON.stringify({ error: "server_error" }), {
+          status: 500,
+        });
       }
       return new Response(null, { status: 204 });
     }
@@ -416,7 +461,9 @@ Deno.test("unit: generate — 401 when JWT is invalid", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ authUser: null }) as typeof fetch;
   try {
-    const res = await handleGenerateDocuments(makePostRequest(VALID_BODY, "bad.jwt"));
+    const res = await handleGenerateDocuments(
+      makePostRequest(VALID_BODY, "bad.jwt"),
+    );
     assertEquals(res.status, 401);
     const body = await jsonBody(res) as Record<string, unknown>;
     assertEquals((body.error as Record<string, string>).code, "UNAUTHORIZED");
@@ -434,10 +481,15 @@ Deno.test("unit: generate — 400 when property_id is missing", async () => {
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
     const { property_id: _omit, ...bodyWithout } = VALID_BODY;
-    const res = await handleGenerateDocuments(makePostRequest(bodyWithout, "valid.jwt"));
+    const res = await handleGenerateDocuments(
+      makePostRequest(bodyWithout, "valid.jwt"),
+    );
     assertEquals(res.status, 400);
     const body = await jsonBody(res) as Record<string, unknown>;
-    assertEquals((body.error as Record<string, string>).code, "MISSING_PROPERTY_ID");
+    assertEquals(
+      (body.error as Record<string, string>).code,
+      "MISSING_PROPERTY_ID",
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -448,10 +500,15 @@ Deno.test("unit: generate — 400 when tenant_id is missing", async () => {
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
     const { tenant_id: _omit, ...bodyWithout } = VALID_BODY;
-    const res = await handleGenerateDocuments(makePostRequest(bodyWithout, "valid.jwt"));
+    const res = await handleGenerateDocuments(
+      makePostRequest(bodyWithout, "valid.jwt"),
+    );
     assertEquals(res.status, 400);
     const body = await jsonBody(res) as Record<string, unknown>;
-    assertEquals((body.error as Record<string, string>).code, "MISSING_TENANT_ID");
+    assertEquals(
+      (body.error as Record<string, string>).code,
+      "MISSING_TENANT_ID",
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -462,11 +519,17 @@ Deno.test("unit: generate — 400 when placeholders field is missing", async () 
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
     const res = await handleGenerateDocuments(
-      makePostRequest({ property_id: MOCK_PROPERTY_ID, tenant_id: MOCK_TENANT_ID }, "valid.jwt"),
+      makePostRequest({
+        property_id: MOCK_PROPERTY_ID,
+        tenant_id: MOCK_TENANT_ID,
+      }, "valid.jwt"),
     );
     assertEquals(res.status, 400);
     const body = await jsonBody(res) as Record<string, unknown>;
-    assertEquals((body.error as Record<string, string>).code, "INVALID_PLACEHOLDERS");
+    assertEquals(
+      (body.error as Record<string, string>).code,
+      "INVALID_PLACEHOLDERS",
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -478,13 +541,20 @@ Deno.test("unit: generate — 400 when placeholders field is an array", async ()
   try {
     const res = await handleGenerateDocuments(
       makePostRequest(
-        { property_id: MOCK_PROPERTY_ID, tenant_id: MOCK_TENANT_ID, placeholders: [] },
+        {
+          property_id: MOCK_PROPERTY_ID,
+          tenant_id: MOCK_TENANT_ID,
+          placeholders: [],
+        },
         "valid.jwt",
       ),
     );
     assertEquals(res.status, 400);
     const body = await jsonBody(res) as Record<string, unknown>;
-    assertEquals((body.error as Record<string, string>).code, "INVALID_PLACEHOLDERS");
+    assertEquals(
+      (body.error as Record<string, string>).code,
+      "INVALID_PLACEHOLDERS",
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -498,14 +568,20 @@ Deno.test("unit: generate — 400 when unknown placeholder key sent", async () =
       makePostRequest(
         {
           ...VALID_BODY,
-          placeholders: { ...VALID_BODY.placeholders, "campo_inexistente": "valor" },
+          placeholders: {
+            ...VALID_BODY.placeholders,
+            "campo_inexistente": "valor",
+          },
         },
         "valid.jwt",
       ),
     );
     assertEquals(res.status, 400);
     const body = await jsonBody(res) as Record<string, unknown>;
-    assertEquals((body.error as Record<string, string>).code, "UNKNOWN_PLACEHOLDER");
+    assertEquals(
+      (body.error as Record<string, string>).code,
+      "UNKNOWN_PLACEHOLDER",
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -532,7 +608,10 @@ Deno.test("unit: generate — 422 when required placeholder value is missing", a
     );
     assertEquals(res.status, 422);
     const body = await jsonBody(res) as Record<string, unknown>;
-    assertEquals((body.error as Record<string, string>).code, "MISSING_REQUIRED_PLACEHOLDERS");
+    assertEquals(
+      (body.error as Record<string, string>).code,
+      "MISSING_REQUIRED_PLACEHOLDERS",
+    );
     assertStringIncludes(
       (body.error as Record<string, string>).message,
       "cpf do inquilino",
@@ -551,14 +630,20 @@ Deno.test("unit: generate — 422 when required placeholder value is empty strin
         {
           property_id: MOCK_PROPERTY_ID,
           tenant_id: MOCK_TENANT_ID,
-          placeholders: { "nome do inquilino": "", "cpf do inquilino": "123.456.789-00" },
+          placeholders: {
+            "nome do inquilino": "",
+            "cpf do inquilino": "123.456.789-00",
+          },
         },
         "valid.jwt",
       ),
     );
     assertEquals(res.status, 422);
     const body = await jsonBody(res) as Record<string, unknown>;
-    assertEquals((body.error as Record<string, string>).code, "MISSING_REQUIRED_PLACEHOLDERS");
+    assertEquals(
+      (body.error as Record<string, string>).code,
+      "MISSING_REQUIRED_PLACEHOLDERS",
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -572,10 +657,15 @@ Deno.test("unit: generate — 404 when landlord not found", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ landlord: null }) as typeof fetch;
   try {
-    const res = await handleGenerateDocuments(makePostRequest(VALID_BODY, "valid.jwt"));
+    const res = await handleGenerateDocuments(
+      makePostRequest(VALID_BODY, "valid.jwt"),
+    );
     assertEquals(res.status, 404);
     const body = await jsonBody(res) as Record<string, unknown>;
-    assertEquals((body.error as Record<string, string>).code, "LANDLORD_NOT_FOUND");
+    assertEquals(
+      (body.error as Record<string, string>).code,
+      "LANDLORD_NOT_FOUND",
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -585,10 +675,15 @@ Deno.test("unit: generate — 404 when property not found", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ property: null }) as typeof fetch;
   try {
-    const res = await handleGenerateDocuments(makePostRequest(VALID_BODY, "valid.jwt"));
+    const res = await handleGenerateDocuments(
+      makePostRequest(VALID_BODY, "valid.jwt"),
+    );
     assertEquals(res.status, 404);
     const body = await jsonBody(res) as Record<string, unknown>;
-    assertEquals((body.error as Record<string, string>).code, "PROPERTY_NOT_FOUND");
+    assertEquals(
+      (body.error as Record<string, string>).code,
+      "PROPERTY_NOT_FOUND",
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -598,10 +693,15 @@ Deno.test("unit: generate — 404 when tenant not found", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ tenant: null }) as typeof fetch;
   try {
-    const res = await handleGenerateDocuments(makePostRequest(VALID_BODY, "valid.jwt"));
+    const res = await handleGenerateDocuments(
+      makePostRequest(VALID_BODY, "valid.jwt"),
+    );
     assertEquals(res.status, 404);
     const body = await jsonBody(res) as Record<string, unknown>;
-    assertEquals((body.error as Record<string, string>).code, "TENANT_NOT_FOUND");
+    assertEquals(
+      (body.error as Record<string, string>).code,
+      "TENANT_NOT_FOUND",
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -611,10 +711,15 @@ Deno.test("unit: generate — 404 when no templates mapped to property type", as
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ mappings: [] }) as typeof fetch;
   try {
-    const res = await handleGenerateDocuments(makePostRequest(VALID_BODY, "valid.jwt"));
+    const res = await handleGenerateDocuments(
+      makePostRequest(VALID_BODY, "valid.jwt"),
+    );
     assertEquals(res.status, 404);
     const body = await jsonBody(res) as Record<string, unknown>;
-    assertEquals((body.error as Record<string, string>).code, "NO_TEMPLATES_FOUND");
+    assertEquals(
+      (body.error as Record<string, string>).code,
+      "NO_TEMPLATES_FOUND",
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -626,12 +731,19 @@ Deno.test("unit: generate — 404 when no templates mapped to property type", as
 
 Deno.test("unit: generate — 502 when Google token refresh fails", async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = buildMockFetch({ tokenExchangeFail: true }) as typeof fetch;
+  globalThis.fetch = buildMockFetch({
+    tokenExchangeFail: true,
+  }) as typeof fetch;
   try {
-    const res = await handleGenerateDocuments(makePostRequest(VALID_BODY, "valid.jwt"));
+    const res = await handleGenerateDocuments(
+      makePostRequest(VALID_BODY, "valid.jwt"),
+    );
     assertEquals(res.status, 502);
     const body = await jsonBody(res) as Record<string, unknown>;
-    assertEquals((body.error as Record<string, string>).code, "GOOGLE_AUTH_FAILED");
+    assertEquals(
+      (body.error as Record<string, string>).code,
+      "GOOGLE_AUTH_FAILED",
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -641,10 +753,15 @@ Deno.test("unit: generate — 502 when Drive copy fails", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ driveCopyFail: true }) as typeof fetch;
   try {
-    const res = await handleGenerateDocuments(makePostRequest(VALID_BODY, "valid.jwt"));
+    const res = await handleGenerateDocuments(
+      makePostRequest(VALID_BODY, "valid.jwt"),
+    );
     assertEquals(res.status, 502);
     const body = await jsonBody(res) as Record<string, unknown>;
-    assertEquals((body.error as Record<string, string>).code, "DRIVE_COPY_FAILED");
+    assertEquals(
+      (body.error as Record<string, string>).code,
+      "DRIVE_COPY_FAILED",
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -654,10 +771,15 @@ Deno.test("unit: generate — 502 when Drive export fails", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ driveExportFail: true }) as typeof fetch;
   try {
-    const res = await handleGenerateDocuments(makePostRequest(VALID_BODY, "valid.jwt"));
+    const res = await handleGenerateDocuments(
+      makePostRequest(VALID_BODY, "valid.jwt"),
+    );
     assertEquals(res.status, 502);
     const body = await jsonBody(res) as Record<string, unknown>;
-    assertEquals((body.error as Record<string, string>).code, "DRIVE_EXPORT_FAILED");
+    assertEquals(
+      (body.error as Record<string, string>).code,
+      "DRIVE_EXPORT_FAILED",
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -667,10 +789,15 @@ Deno.test("unit: generate — 502 when Drive update content fails", async () => 
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ driveUpdateFail: true }) as typeof fetch;
   try {
-    const res = await handleGenerateDocuments(makePostRequest(VALID_BODY, "valid.jwt"));
+    const res = await handleGenerateDocuments(
+      makePostRequest(VALID_BODY, "valid.jwt"),
+    );
     assertEquals(res.status, 502);
     const body = await jsonBody(res) as Record<string, unknown>;
-    assertEquals((body.error as Record<string, string>).code, "DRIVE_UPDATE_FAILED");
+    assertEquals(
+      (body.error as Record<string, string>).code,
+      "DRIVE_UPDATE_FAILED",
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -684,13 +811,18 @@ Deno.test("unit: generate — 200 returns documents with Drive URLs", async () =
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({
     existingFileId: null,
-    templateContent: "Contrato: {{nome do inquilino}}, CPF {{cpf do inquilino}}.",
+    templateContent:
+      "Contrato: {{nome do inquilino}}, CPF {{cpf do inquilino}}.",
   }) as typeof fetch;
   try {
-    const res = await handleGenerateDocuments(makePostRequest(VALID_BODY, "valid.jwt"));
+    const res = await handleGenerateDocuments(
+      makePostRequest(VALID_BODY, "valid.jwt"),
+    );
     assertEquals(res.status, 200);
     const body = await jsonBody(res) as Record<string, unknown>;
-    const documents = body.documents as Array<{ template_name: string; drive_url: string }>;
+    const documents = body.documents as Array<
+      { template_name: string; drive_url: string }
+    >;
     assertEquals(Array.isArray(documents), true);
     assertEquals(documents.length, 1);
     assertEquals(documents[0].template_name, "Contrato de Locação");
@@ -704,7 +836,9 @@ Deno.test("unit: generate — CORS headers on success response", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
-    const res = await handleGenerateDocuments(makePostRequest(VALID_BODY, "valid.jwt"));
+    const res = await handleGenerateDocuments(
+      makePostRequest(VALID_BODY, "valid.jwt"),
+    );
     assertEquals(res.headers.get("Access-Control-Allow-Origin") !== null, true);
   } finally {
     globalThis.fetch = originalFetch;
@@ -717,22 +851,30 @@ Deno.test("unit: generate — Drive delete called when existing file found (rege
   const existingFileId = "old-doc-drive-file-id";
 
   const mockFetch = buildMockFetch({ existingFileId }) as typeof fetch;
-  globalThis.fetch = async function (input: string | URL | Request, init?: RequestInit) {
-    const url =
-      typeof input === "string"
-        ? input
-        : input instanceof URL
-        ? input.href
-        : (input as Request).url;
-    const method = (init as RequestInit | undefined)?.method?.toUpperCase() ?? "GET";
-    if (url.includes("drive.googleapis.com/drive/v3/files/") && method === "DELETE") {
+  globalThis.fetch = async function (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ) {
+    const url = typeof input === "string"
+      ? input
+      : input instanceof URL
+      ? input.href
+      : (input as Request).url;
+    const method = (init as RequestInit | undefined)?.method?.toUpperCase() ??
+      "GET";
+    if (
+      url.includes("drive.googleapis.com/drive/v3/files/") &&
+      method === "DELETE"
+    ) {
       deleteCalledWithId = url.split("/files/")[1].split("?")[0];
     }
     return mockFetch(input, init);
   } as typeof fetch;
 
   try {
-    const res = await handleGenerateDocuments(makePostRequest(VALID_BODY, "valid.jwt"));
+    const res = await handleGenerateDocuments(
+      makePostRequest(VALID_BODY, "valid.jwt"),
+    );
     assertEquals(res.status, 200);
     assertEquals(deleteCalledWithId, existingFileId);
   } finally {
@@ -748,7 +890,9 @@ Deno.test("unit: generate — succeeds even when delete of old file fails (best-
   }) as typeof fetch;
   try {
     // Delete failure should be swallowed — the endpoint still returns 200.
-    const res = await handleGenerateDocuments(makePostRequest(VALID_BODY, "valid.jwt"));
+    const res = await handleGenerateDocuments(
+      makePostRequest(VALID_BODY, "valid.jwt"),
+    );
     assertEquals(res.status, 200);
   } finally {
     globalThis.fetch = originalFetch;
@@ -763,16 +907,21 @@ Deno.test("unit: generate — case transformation applied to title case placehol
     templateContent: "Inquilino: {{nome do inquilino}}",
   }) as typeof fetch;
 
-  globalThis.fetch = async function (input: string | URL | Request, init?: RequestInit) {
-    const url =
-      typeof input === "string"
-        ? input
-        : input instanceof URL
-        ? input.href
-        : (input as Request).url;
-    const method = (init as RequestInit | undefined)?.method?.toUpperCase() ?? "GET";
+  globalThis.fetch = async function (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ) {
+    const url = typeof input === "string"
+      ? input
+      : input instanceof URL
+      ? input.href
+      : (input as Request).url;
+    const method = (init as RequestInit | undefined)?.method?.toUpperCase() ??
+      "GET";
     if (url.includes("upload/drive/v3/files") && method === "PATCH") {
-      capturedBody = (init as RequestInit | undefined)?.body as string | undefined;
+      capturedBody = (init as RequestInit | undefined)?.body as
+        | string
+        | undefined;
     }
     return base(input, init);
   } as typeof fetch;
@@ -783,7 +932,7 @@ Deno.test("unit: generate — case transformation applied to title case placehol
         {
           ...VALID_BODY,
           placeholders: {
-            "nome do inquilino": "joão silva",  // should become "João Silva" (título)
+            "nome do inquilino": "joão silva", // should become "João Silva" (título)
             "cpf do inquilino": "123.456.789-00",
           },
         },
@@ -806,16 +955,21 @@ Deno.test("unit: generate — optional placeholder absent from request is substi
     templateContent: "Endereço: {{endereço}}",
   }) as typeof fetch;
 
-  globalThis.fetch = async function (input: string | URL | Request, init?: RequestInit) {
-    const url =
-      typeof input === "string"
-        ? input
-        : input instanceof URL
-        ? input.href
-        : (input as Request).url;
-    const method = (init as RequestInit | undefined)?.method?.toUpperCase() ?? "GET";
+  globalThis.fetch = async function (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ) {
+    const url = typeof input === "string"
+      ? input
+      : input instanceof URL
+      ? input.href
+      : (input as Request).url;
+    const method = (init as RequestInit | undefined)?.method?.toUpperCase() ??
+      "GET";
     if (url.includes("upload/drive/v3/files") && method === "PATCH") {
-      capturedBody = (init as RequestInit | undefined)?.body as string | undefined;
+      capturedBody = (init as RequestInit | undefined)?.body as
+        | string
+        | undefined;
     }
     return base(input, init);
   } as typeof fetch;

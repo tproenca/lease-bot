@@ -51,14 +51,13 @@ function buildMockFetch(opts: MockFetchOpts) {
     input: string | URL | Request,
     init?: RequestInit,
   ): Promise<Response> {
-    const url =
-      typeof input === "string"
-        ? input
-        : input instanceof URL
-        ? input.href
-        : (input as Request).url;
-    const method =
-      (init as RequestInit | undefined)?.method?.toUpperCase() ?? "GET";
+    const url = typeof input === "string"
+      ? input
+      : input instanceof URL
+      ? input.href
+      : (input as Request).url;
+    const method = (init as RequestInit | undefined)?.method?.toUpperCase() ??
+      "GET";
 
     // Supabase Auth — getUser
     if (url.includes("/auth/v1/user")) {
@@ -206,10 +205,15 @@ Deno.test("integration: POST /templates — 400 when drive_file_id is missing", 
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
     const { drive_file_id: _omit, ...bodyWithout } = VALID_BODY;
-    const res = await handleTemplates(makePostRequest(bodyWithout, "valid.jwt"));
+    const res = await handleTemplates(
+      makePostRequest(bodyWithout, "valid.jwt"),
+    );
     assertEquals(res.status, 400);
     const body = await jsonBody(res) as Record<string, unknown>;
-    assertEquals((body.error as Record<string, string>).code, "INVALID_REQUEST");
+    assertEquals(
+      (body.error as Record<string, string>).code,
+      "INVALID_REQUEST",
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -229,7 +233,10 @@ Deno.test("integration: POST /templates — 400 when property_type is invalid", 
     );
     assertEquals(res.status, 400);
     const body = await jsonBody(res) as Record<string, unknown>;
-    assertEquals((body.error as Record<string, string>).code, "INVALID_REQUEST");
+    assertEquals(
+      (body.error as Record<string, string>).code,
+      "INVALID_REQUEST",
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }

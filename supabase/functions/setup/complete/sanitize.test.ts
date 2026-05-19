@@ -61,5 +61,8 @@ Deno.test("unit: sanitizeApiKey — rejects key with internal space", () => {
 });
 
 Deno.test("unit: sanitizeApiKey — accepts key with hyphens and underscores", () => {
-  assertEquals(sanitizeApiKey("valid-key_with-dashes"), "valid-key_with-dashes");
+  assertEquals(
+    sanitizeApiKey("valid-key_with-dashes"),
+    "valid-key_with-dashes",
+  );
 });

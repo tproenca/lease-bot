@@ -53,12 +53,11 @@ function buildMockFetch(opts: {
     input: string | URL | Request,
     init?: RequestInit,
   ): Promise<Response> {
-    const url =
-      typeof input === "string"
-        ? input
-        : input instanceof URL
-        ? input.href
-        : (input as Request).url;
+    const url = typeof input === "string"
+      ? input
+      : input instanceof URL
+      ? input.href
+      : (input as Request).url;
 
     // Supabase Auth — getUser
     if (url.includes("/auth/v1/user")) {
@@ -222,7 +221,10 @@ Deno.test("integration: POST /buildings — 400 when address is missing", async 
     );
     assertEquals(res.status, 400);
     const body = await jsonBody(res);
-    assertEquals((body.error as Record<string, string>).code, "MISSING_ADDRESS");
+    assertEquals(
+      (body.error as Record<string, string>).code,
+      "MISSING_ADDRESS",
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }
