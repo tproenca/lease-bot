@@ -301,6 +301,47 @@ paths:
                           type: string
                           format: date-time
 
+  # ── Account Config ───────────────────────────────────────
+
+  /account/config:
+    patch:
+      operationId: updateAccountConfig
+      summary: Update landlord account configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [payment_reminder_frequency]
+              properties:
+                payment_reminder_frequency:
+                  type: string
+                  enum: [daily, weekly, disabled]
+      responses:
+        '200':
+          description: Configuration updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  payment_reminder_frequency:
+                    type: string
+                    enum: [daily, weekly, disabled]
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   # ── Templates & Placeholders ──────────────────────────────
 
   /templates/diff:
