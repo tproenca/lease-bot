@@ -3,6 +3,13 @@
 ## Unreleased
 
 ### Added
+- `_shared/whatsapp.ts`: reusable Meta WhatsApp Business Cloud API client —
+  `sendWhatsAppTemplate` sends pre-approved template messages, never throws,
+  retries once on 5xx/network errors, and maps 401/403 → `invalid_token`,
+  other 4xx → `client_error`, and persistent 5xx/network → `transient_error`.
+  Reads `META_WHATSAPP_TOKEN` and `META_WHATSAPP_PHONE_ID` from env. 14 unit
+  tests covering success, 401 (no retry), 5xx retry-succeeds, and
+  5xx+5xx both-fail paths. (issue 15)
 - `POST /webhooks/autentique` Edge Function: receives Autentique's signed-document
   notification, verifies the HMAC-SHA256 signature (`x-autentique-signature` header,
   `AUTENTIQUE_WEBHOOK_SECRET` env var, timing-safe comparison) before any payload
