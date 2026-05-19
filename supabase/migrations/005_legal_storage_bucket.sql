@@ -13,15 +13,41 @@ values (
 on conflict (id) do nothing;
 
 -- Public read: anyone can download objects from the legal bucket.
-create policy if not exists "legal: public read"
-  on storage.objects
-  for select
-  using (bucket_id = 'legal');
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'storage'
+      and tablename  = 'objects'
+      and policyname = 'legal: public read'
+  ) then
+    execute $policy$
+      create policy "legal: public read"
+        on storage.objects
+        for select
+        using (bucket_id = 'legal')
+    $policy$;
+  end if;
+end;
+$$;
 
 -- Authenticated write: only service-role callers can upload/update/delete.
 -- In practice, updates are done via the Supabase dashboard or CLI.
-create policy if not exists "legal: service role write"
-  on storage.objects
-  for all
-  using (bucket_id = 'legal' and auth.role() = 'service_role')
-  with check (bucket_id = 'legal' and auth.role() = 'service_role');
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'storage'
+      and tablename  = 'objects'
+      and policyname = 'legal: service role write'
+  ) then
+    execute $policy$
+      create policy "legal: service role write"
+        on storage.objects
+        for all
+        using (bucket_id = 'legal' and auth.role() = 'service_role')
+        with check (bucket_id = 'legal' and auth.role() = 'service_role')
+    $policy$;
+  end if;
+end;
+$$;
