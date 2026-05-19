@@ -23,8 +23,11 @@ gpt/
 specs/             — approved design documents (do not edit without updating specs)
 adr/               — Architecture Decision Records
 scripts/
-  ci.sh            — Tier 1 + Tier 2 tests
-  nightly.sh       — Tier 3 full suite + coverage
+  check.sh         — format, lint, typecheck
+  test-unit.sh     — unit tests
+  test-integration.sh — integration tests
+  test-smoke.sh    — e2e smoke tests
+  test-nightly.sh  — full regression + coverage (nightly)
 ```
 
 ---
@@ -54,20 +57,25 @@ supabase db reset
 ## Running Tests
 
 ```sh
-# Pre-merge: Tier 1 (unit + integration) + Tier 2 (e2e smoke) — must pass before merge
-scripts/ci.sh
+# Static checks + unit tests (no Supabase needed)
+scripts/check.sh
+scripts/test-unit.sh
 
-# Nightly: full Tier 3 suite + coverage check (≥80%)
-scripts/nightly.sh
+# requires: supabase start
+scripts/test-integration.sh  # integration
+scripts/test-smoke.sh        # e2e smoke
+
+# Nightly: full regression + coverage (≥80%)
+scripts/test-nightly.sh
 ```
 
-`supabase start` must be running before executing either script. See `specs/TESTING.md` for full details.
+`supabase start` must be running before executing integration and e2e scripts. See `specs/TESTING.md` for full details.
 
 ---
 
 ## Deployment (Production)
 
-Manual, developer-triggered. Run `scripts/ci.sh` first and confirm it passes.
+Manual, developer-triggered. Run `scripts/check.sh && scripts/test-unit.sh && scripts/test-integration.sh && scripts/test-smoke.sh` first and confirm all pass.
 
 ```sh
 supabase functions deploy --project-ref <project-ref>  # Edge Functions
@@ -136,7 +144,7 @@ hotfix: description (1.2)
 
 Before handing off for review, verify:
 
-- [ ] All tests pass: `scripts/ci.sh`
+- [ ] All tests pass: `scripts/check.sh`, `scripts/test-unit.sh`, `scripts/test-integration.sh`, `scripts/test-smoke.sh`
 - [ ] No hardcoded secrets, tokens, or credentials anywhere in the diff
 - [ ] No `console.log` debug statements left in Edge Functions
 - [ ] Input validation exists at every API boundary (see `specs/SECURITY.md`)

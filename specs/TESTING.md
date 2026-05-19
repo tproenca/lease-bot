@@ -3,7 +3,7 @@
 ## Testing Strategy
 
 ### Tier 1 — Unit + Integration
-**When:** run before every merge via `scripts/ci.sh`. Must pass before merge.
+**When:** run before every merge via CI (`scripts/check.sh`, `scripts/test-unit.sh`, `scripts/test-integration.sh`, `scripts/test-smoke.sh`). Must pass before merge.
 
 **Scope:**
 - Unit tests for the substitution engine (placeholder replacement, case transformations, derived field handling)
@@ -16,15 +16,17 @@
 
 **How to run locally:**
 ```sh
-scripts/ci.sh --tier 1
-# or directly:
-deno test --allow-all supabase/functions/ --filter "unit|integration"
+scripts/check.sh
+scripts/test-unit.sh
+
+# requires: supabase start
+scripts/test-integration.sh
 ```
 
 ---
 
 ### Tier 2 — E2E Smoke Tests
-**When:** run before every merge via `scripts/ci.sh`. Must pass before merge.
+**When:** run before every merge via CI (`scripts/check.sh`, `scripts/test-unit.sh`, `scripts/test-integration.sh`, `scripts/test-smoke.sh`). Must pass before merge.
 
 **Critical paths covered:**
 1. Onboarding → setup complete → context loaded correctly
@@ -37,15 +39,14 @@ deno test --allow-all supabase/functions/ --filter "unit|integration"
 
 **How to run locally:**
 ```sh
-scripts/ci.sh --tier 2
-# or directly:
-deno test --allow-all supabase/functions/ --filter "e2e:smoke"
+# requires: supabase start
+scripts/test-smoke.sh
 ```
 
 ---
 
 ### Tier 3 — Full E2E Suite
-**When:** nightly on main via `scripts/nightly.sh`. Not required before merge.
+**When:** nightly on main via CI (`scripts/test-nightly.sh`). Not required before merge.
 
 **Additional paths covered beyond Tier 2:**
 - Template diff: add new template → detect new placeholders → configure → verify DB updated
@@ -60,10 +61,8 @@ deno test --allow-all supabase/functions/ --filter "e2e:smoke"
 
 **How to run locally:**
 ```sh
-scripts/nightly.sh
-# or directly:
-deno test --allow-all supabase/functions/ --coverage=coverage/
-deno coverage coverage/ --lcov > coverage/lcov.info
+# requires: supabase start
+scripts/test-nightly.sh
 ```
 
 ---
@@ -95,19 +94,23 @@ deno coverage coverage/ --lcov > coverage/lcov.info
 ## How to Run Each Tier Locally
 
 ```sh
-# Start local Supabase (required for Tier 1 integration and Tier 2/3)
+# Static checks + unit tests (no Supabase needed)
+scripts/check.sh
+scripts/test-unit.sh
+
+# Start local Supabase (required for integration and e2e)
 supabase start
 
-# Tier 1 + Tier 2 (pre-merge)
-scripts/ci.sh
+# Integration + smoke (Tier 1 + 2 — pre-merge gate)
+scripts/test-integration.sh
+scripts/test-smoke.sh
 
-# Tier 3 (nightly — full suite + coverage)
-scripts/nightly.sh
+# Full regression + coverage (Tier 3 — nightly)
+scripts/test-nightly.sh
 ```
 
-`scripts/ci.sh` exits with code 0 if all Tier 1 and Tier 2 tests pass, code 1 otherwise.
-`scripts/nightly.sh` exits with code 0 if all tests pass and coverage ≥ 80%, code 1 otherwise.
-On failure, `scripts/nightly.sh` appends a bug entry to `issues.md`.
+Each script exits with code 0 on success, code 1 on failure.
+On nightly failure, the CI workflow opens a GitHub issue automatically.
 
 ---
 

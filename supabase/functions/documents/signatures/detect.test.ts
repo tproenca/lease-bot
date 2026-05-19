@@ -3,7 +3,7 @@
 // Unit tests for detectSignaturePositions (marker-based, [[ROLE]] approach).
 // All PDFs are constructed synthetically in-memory — no disk I/O.
 //
-// Test naming follows the ci.sh filter: "unit|integration".
+// Test names follow the "unit:" / "integration:" prefix convention.
 //
 // Strategy:
 //   The detect.ts implementation scans raw PDF bytes using TextDecoder("latin1")

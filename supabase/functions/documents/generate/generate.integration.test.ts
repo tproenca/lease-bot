@@ -6,7 +6,7 @@
 // everything else to the real Supabase stack.
 //
 // Prerequisites: `supabase start` must be running.
-// Test naming follows the ci.sh filter: "unit|integration".
+// Test names follow the "unit:" / "integration:" prefix convention.
 
 import {
   assertEquals,

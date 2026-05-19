@@ -4,7 +4,7 @@
 // PostgREST, and Google APIs are intercepted via globalThis.fetch stubs.
 // No real Supabase instance or Google account is needed.
 //
-// Test naming follows the ci.sh filter: "unit|integration".
+// Test names follow the "unit:" / "integration:" prefix convention.
 
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 

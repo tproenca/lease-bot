@@ -7,7 +7,7 @@
 // Requires `supabase start` to be running before execution.
 // Run via: deno test --allow-all supabase/functions/ --filter "integration"
 //
-// Test naming follows the ci.sh filter: "unit|integration".
+// Test names follow the "unit:" / "integration:" prefix convention.
 
 import {
   assertEquals,
