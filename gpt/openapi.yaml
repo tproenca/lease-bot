@@ -1,3 +1,6 @@
+# GPT-only OpenAPI subset — upload this file to the Custom GPT action panel.
+# specs/openapi.yaml is the complete API spec (includes the Autentique webhook endpoint
+# which is not GPT-callable and is excluded here).
 openapi: 3.1.0
 info:
   title: Lease Assistant API
@@ -5,14 +8,8 @@ info:
   description: Backend API for the Lease Assistant Custom GPT. All endpoints require Bearer JWT authentication except the setup flow.
 
 servers:
-  - url: https://{project}.supabase.co/functions/v1
-    description: Production (Supabase Edge Functions)
-  - url: https://{ngrok_domain}.ngrok-free.dev/functions/v1
-    description: Local development (via ngrok static dev domain)
-    variables:
-      ngrok_domain:
-        default: your-domain
-        description: Your ngrok static dev domain subdomain (from ngrok.com → Static Domain)
+  - url: https://your-project.supabase.co/functions/v1
+    description: Set this to your Supabase project URL (production) or ngrok URL (local dev) — override in the GPT action panel
 
 security:
   - bearerAuth: []
@@ -882,60 +879,6 @@ paths:
       responses:
         '200':
           description: Updated
-
-  # ── Webhooks ─────────────────────────────────────────────
-  # Note: not GPT-callable — called directly by Autentique when a document is fully signed.
-  # Excluded from gpt/openapi.yaml (the GPT-only subset).
-  /webhooks/autentique/{landlord_id}:
-    post:
-      operationId: autentiqueWebhook
-      summary: Receive signed PDF from Autentique and save to Drive (per-landlord endpoint — HMAC verified with that landlord's Endpoint Secret)
-      security: []
-      parameters:
-        - name: landlord_id
-          in: path
-          required: true
-          description: Landlord's user ID (equals `auth.uid()`). Each landlord registers their own webhook URL in Autentique pointing at this path; each webhook has a unique Endpoint Secret stored in `landlords.autentique_webhook_secret`.
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                id:
-                  type: string
-                object:
-                  type: string
-                event:
-                  type: object
-                  properties:
-                    id:
-                      type: string
-                    type:
-                      type: string
-                    data:
-                      type: object
-                      properties:
-                        id:
-                          type: string
-                        files:
-                          type: object
-                          properties:
-                            signed:
-                              type: string
-      responses:
-        '200':
-          description: Acknowledged
-        '401':
-          description: Missing or invalid HMAC signature, or unknown landlord_id
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
 
   # ── Payments ──────────────────────────────────────────────
 

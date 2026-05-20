@@ -140,6 +140,6 @@ coverage expectations.
   decisions
 - [specs/DESIGN.md](specs/DESIGN.md) — database schema, API contracts, and user
   flows
-- [specs/openapi.yaml](specs/openapi.yaml) — OpenAPI 3.1 action schema (uploaded
-  to the Custom GPT)
+- [gpt/openapi.yaml](gpt/openapi.yaml) — GPT-only OpenAPI 3.1 action schema (upload this to the Custom GPT)
+- [specs/openapi.yaml](specs/openapi.yaml) — complete API spec (includes Autentique webhook; do not upload to the Custom GPT)
 - [adr/](adr/) — Architecture Decision Records

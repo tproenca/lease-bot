@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Added
+- `GET /oauth/authorize` and `POST /oauth/token`: thin proxy endpoints that forward requests to Google's OAuth authorization and token endpoints, enabling the GPT action OAuth config to satisfy OpenAI's root domain requirement. (issue 53)
+
 ### Changed
 - `gpt/SYSTEM_PROMPT.md`: reduce from 9,206 to 7,475 characters to fit the GPT Instructions field limit; onboarding script blocks replaced with concise behavioral rules and derivation/transformation rules extracted to `gpt/contract-rules.md` (Knowledge file). (issue 51)
 
