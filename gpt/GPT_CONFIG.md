@@ -34,7 +34,9 @@ Upload `gpt/contract-rules.md` as a Knowledge file in the Custom GPT configurati
 - [ ] Canvas — disabled
 - [ ] Image Generation — disabled
 - [ ] Code Interpreter & Data Analysis — disabled
-- [x] Actions — enabled (upload `specs/openapi.yaml` as the action schema)
+- [x] Actions — enabled (upload `gpt/openapi.yaml` as the action schema)
+
+> **Note:** `gpt/openapi.yaml` is the GPT-only subset. `specs/openapi.yaml` is the complete API spec — do not upload that one as it includes the Autentique webhook endpoint which is not GPT-callable and will cause a validation warning.
 
 ## Action Authentication
 
@@ -58,7 +60,7 @@ Upload `gpt/contract-rules.md` as a Knowledge file in the Custom GPT configurati
 
 ## Notes for developer
 
-- After uploading `specs/openapi.yaml` as the action schema, set the server URL to
+- After uploading `gpt/openapi.yaml` as the action schema, set the server URL to
   your Supabase project: `https://<project-ref>.supabase.co/functions/v1`
 - The GPT is shared via a single link with all landlords — do not create separate
   GPTs per landlord
