@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Changed
+- `gpt/SYSTEM_PROMPT.md`: reduce from 9,206 to 7,475 characters to fit the GPT Instructions field limit; onboarding script blocks replaced with concise behavioral rules and derivation/transformation rules extracted to `gpt/contract-rules.md` (Knowledge file). (issue 51)
+
+### Added
+- `gpt/contract-rules.md`: new Knowledge file containing derivation rules (data de término, valor por extenso, CPF formatado, data por extenso, derived_formula) and case transformation rules extracted from the system prompt. (issue 51)
+
 ### Fixed
 - `POST /webhooks/autentique`: fix payload parsing to read `event.data.id` and
   `event.data.files.signed` (verified from a real `document.finished` capture);
