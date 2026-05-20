@@ -119,6 +119,7 @@ Deno.test("integration: /setup/complete — 400 when root_folder_id is invalid",
           templates_folder_name: "Templates/",
           whatsapp: "+5511999999999",
           autentique_api_key: "a".repeat(32),
+          autentique_webhook_secret: "b".repeat(32),
         },
         "valid.jwt.for.test",
       ),
@@ -166,6 +167,7 @@ Deno.test("integration: /setup/complete — 400 when whatsapp is not a Brazilian
           templates_folder_name: "Templates/",
           whatsapp: "+14155552671", // US number
           autentique_api_key: "a".repeat(32),
+          autentique_webhook_secret: "b".repeat(32),
         },
         "valid.jwt.for.test",
       ),
@@ -269,6 +271,100 @@ Deno.test("integration: /setup/complete — 400 when autentique_api_key contains
     assertEquals(
       (body.error as Record<string, string>).code,
       "MISSING_AUTENTIQUE_KEY",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// ─── Input validation (missing webhook secret) ──────────────────────────
+
+Deno.test("integration: /setup/complete — 400 when autentique_webhook_secret is missing", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (input: string | URL | Request) => {
+    const url = typeof input === "string"
+      ? input
+      : input instanceof URL
+      ? input.href
+      : input.url;
+    if (url.includes("/auth/v1/user")) {
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            id: "user-uuid",
+            email: "landlord@example.com",
+            user_metadata: {},
+          }),
+          { status: 200 },
+        ),
+      );
+    }
+    return originalFetch(input as string);
+  };
+  try {
+    const res = await handleSetupComplete(
+      makeRequest(
+        {
+          root_folder_id: "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms",
+          templates_folder_name: "Templates/",
+          whatsapp: "+5511999999999",
+          autentique_api_key: "a".repeat(32),
+          // autentique_webhook_secret intentionally omitted
+        },
+        "valid.jwt.for.test",
+      ),
+    );
+    assertEquals(res.status, 400);
+    const body = await jsonBody(res);
+    assertEquals(
+      (body.error as Record<string, string>).code,
+      "MISSING_AUTENTIQUE_WEBHOOK_SECRET",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("integration: /setup/complete — 400 when autentique_webhook_secret contains newline", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (input: string | URL | Request) => {
+    const url = typeof input === "string"
+      ? input
+      : input instanceof URL
+      ? input.href
+      : input.url;
+    if (url.includes("/auth/v1/user")) {
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            id: "user-uuid",
+            email: "landlord@example.com",
+            user_metadata: {},
+          }),
+          { status: 200 },
+        ),
+      );
+    }
+    return originalFetch(input as string);
+  };
+  try {
+    const res = await handleSetupComplete(
+      makeRequest(
+        {
+          root_folder_id: "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms",
+          templates_folder_name: "Templates/",
+          whatsapp: "+5511999999999",
+          autentique_api_key: "a".repeat(32),
+          autentique_webhook_secret: "valid-looking-secret\r\nX-Injected: evil",
+        },
+        "valid.jwt.for.test",
+      ),
+    );
+    assertEquals(res.status, 400);
+    const body = await jsonBody(res);
+    assertEquals(
+      (body.error as Record<string, string>).code,
+      "MISSING_AUTENTIQUE_WEBHOOK_SECRET",
     );
   } finally {
     globalThis.fetch = originalFetch;

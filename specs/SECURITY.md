@@ -36,14 +36,20 @@
 - The Custom GPT uses OAuth — tokens are issued and rotated by the OAuth flow
 
 ### Spoofed Webhooks
-**Risk:** Attacker sends a fake Autentique webhook to `POST /webhooks/autentique`, triggering a fraudulent signed PDF save.
+**Risk:** Attacker sends a fake Autentique webhook to `POST /webhooks/autentique/{landlord_id}`, triggering a fraudulent signed PDF save.
 
 **Mitigation:**
 - Verify `x-autentique-signature` header on every incoming webhook
-- Signature: `HMAC-SHA256(raw_request_body, AUTENTIQUE_WEBHOOK_SECRET)`
+- Signature: `HMAC-SHA256(raw_request_body, landlord.autentique_webhook_secret)`
+- The webhook URL includes the landlord ID as a path parameter
+  (`POST /webhooks/autentique/{landlord_id}`); the handler looks up
+  the per-landlord Endpoint Secret from `landlords.autentique_webhook_secret`
+  before verifying the HMAC. Each landlord registers their own webhook in
+  their own Autentique account and pastes the Endpoint Secret during onboarding.
 - Use timing-safe comparison (`crypto.timingSafeEqual`) to prevent timing attacks
 - Reject any webhook where signature verification fails with `401`
-- `AUTENTIQUE_WEBHOOK_SECRET` stored as an Edge Function environment variable
+- Unknown `landlord_id` (no DB row) also returns `401` — the same response as
+  a bad signature, so landlord existence is not leaked.
 
 ### Drive Token Exposure
 **Risk:** Google OAuth refresh token stolen from the database gives attacker full Drive access for a landlord.
@@ -75,7 +81,7 @@
 | Actor | Auth mechanism | Access |
 |-------|---------------|--------|
 | Landlord (via GPT) | Google OAuth → Supabase JWT | Own data only (RLS enforced) |
-| Autentique webhook | HMAC-SHA256 signature verification | `POST /webhooks/autentique` only |
+| Autentique webhook | HMAC-SHA256 signature verification (per-landlord secret) | `POST /webhooks/autentique/{landlord_id}` only |
 | pg_cron | Supabase service role (internal) | Payment reminder job only |
 | Tenant | None | No login; receives WhatsApp messages only |
 
@@ -120,7 +126,7 @@ in narrowly justified cases. Every approved usage is listed here.
 | `POST /tenants` | CPF format validated (XXX.XXX.XXX-XX); WhatsApp validated as E.164 Brazilian number |
 | `POST /payments` | `reference_month` must be a valid date; `amount` must be positive |
 | `POST /documents/generate` | All `required: true` placeholders must be present in payload; unknown placeholder keys rejected |
-| `POST /webhooks/autentique` | HMAC signature verified before any payload processing |
+| `POST /webhooks/autentique/{landlord_id}` | HMAC signature verified (using per-landlord `autentique_webhook_secret`) before any payload processing |
 | `POST /setup/complete` | `root_folder_id` verified to exist in landlord's Drive before storing; `autentique_api_key` validated against Autentique API (test call) before storing |
 
 ---

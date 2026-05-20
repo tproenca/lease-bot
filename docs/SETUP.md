@@ -101,16 +101,24 @@ onboarding and stored per-landlord in the database.
 The webhook notifies your local backend when a document is fully signed, triggering the
 signed PDF to be saved back to Google Drive.
 
+This step is **landlord-driven via GPT onboarding** — each landlord registers their own
+webhook in their own Autentique account, and the Endpoint Secret Autentique generates
+is stored per-landlord in the DB (`landlords.autentique_webhook_secret`). There is no
+shared developer-level webhook secret env var.
+
+During GPT onboarding, the landlord will be prompted to:
+
 1. In Autentique, go to **Configurações → Webhooks → Novo Webhook**
-2. URL: `https://<your-domain>.ngrok-free.dev/functions/v1/webhooks/autentique`
-3. Event: select **Documento finalizado** (fully signed by all parties)
+2. URL: `https://<api-base>/functions/v1/webhooks/autentique/<landlord_id>`
+   — the GPT computes this URL from the landlord's auth user ID
+3. Format: **JSON**
+4. Event: select **Documento finalizado** (fully signed by all parties)
    — do NOT also select "Documento assinado"; that fires per-signer and would trigger duplicate processing
-4. Secret: generate a random string (e.g. `openssl rand -hex 32`) — Autentique will sign
-   webhook payloads with it; your backend verifies the signature
-5. Copy the secret and add to `.env`:
-   ```sh
-   AUTENTIQUE_WEBHOOK_SECRET=<your-secret>
-   ```
+5. Click **Criar**, then copy the **Endpoint Secret** Autentique displays (shown only once)
+6. Paste the secret back to the GPT — it is sent in the `POST /setup/complete` call and stored
+   in the DB; never echoed back
+
+Nothing to add to `.env`.
 
 ---
 

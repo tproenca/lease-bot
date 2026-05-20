@@ -50,11 +50,10 @@ supabase secrets set KEY=value --project-ref <project-ref>
 | `GOOGLE_CLIENT_ID` | Google OAuth app client ID | Required |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth app client secret | Required |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (internal use) | Required |
-| `AUTENTIQUE_WEBHOOK_SECRET` | HMAC secret for webhook verification (shared across all landlords) | Required (Phase 2) |
 | `META_WHATSAPP_TOKEN` | Meta WhatsApp Business Cloud API token | Required (Phase 3) |
 | `META_WHATSAPP_PHONE_ID` | Meta WhatsApp sender phone number ID | Required (Phase 3) |
 
-**Per-landlord secrets:** Autentique API keys are stored per-landlord in `landlords.autentique_api_key` (encrypted via Supabase Vault) — not in environment variables. Collected during onboarding.
+**Per-landlord secrets:** Both the Autentique API key (`landlords.autentique_api_key`) and the per-landlord Autentique webhook Endpoint Secret (`landlords.autentique_webhook_secret`) are stored per-landlord, not in environment variables. Each landlord registers their own webhook in their own Autentique account during onboarding (the unique Endpoint Secret is shown once on creation and pasted into the GPT / setup page).
 
 **Local development:** secrets are set in `supabase/.env.local` (gitignored). See `.env.example` for the full list with placeholder values and [docs/SETUP.md](../docs/SETUP.md) for step-by-step instructions on obtaining each value.
 

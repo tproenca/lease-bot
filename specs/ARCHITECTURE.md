@@ -14,7 +14,7 @@
 │  /setup          /auth/callback  /setup/complete    │
 │  /context        /templates/diff                    │
 │  /documents/generate  /signatures/send              │
-│  /webhooks/autentique /webhooks/pix (Phase 4)       │
+│  /webhooks/autentique/{landlord_id}  /webhooks/pix  │
 │  /tenants  /properties  /payments  /placeholders    │
 └──────┬───────────────┬──────────────────────────────┘
        │               │

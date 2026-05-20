@@ -11,7 +11,12 @@ Mark **Pass / Fail** in the verify tables as you go.
 
 ### Accounts
 - Google account (your own — will be the landlord)
-- Autentique account → grab API key from Configurações → Tokens de API
+- Autentique account
+  - API key from **Configurações → Tokens de API**
+  - Webhook configured during onboarding: **Configurações → Webhooks → Novo Webhook**, URL
+    `<api-base>/functions/v1/webhooks/autentique/<landlord_id>`, format JSON, event
+    "Documento finalizado" — copy the **Endpoint Secret** shown on creation (one time only).
+    The GPT will compute the exact URL for you during Flow 1.
 - Meta WhatsApp Business account with a registered phone number ID and token (Flow 9 only)
 
 ### Google Drive setup
@@ -38,7 +43,8 @@ Use these values throughout. They are fake but format-valid.
 |---|---|
 | Root folder ID | _(ID of "Lease Assistant" folder)_ |
 | Templates folder | Modelos |
-| Autentique API key | _(from autentique.com.br)_ |
+| Autentique API key | _(from autentique.com.br → Configurações → Tokens de API)_ |
+| Autentique webhook Endpoint Secret | _(copied after creating the webhook in Flow 1)_ |
 | Landlord WhatsApp | +5511987654321 |
 | Property name | Casa Flores |
 | Property address | Rua das Flores, 42 - Vila Madalena, São Paulo - SP |
@@ -53,19 +59,20 @@ Use these values throughout. They are fake but format-valid.
 
 ## Flow 1 — Onboarding
 
-**Goal:** Connect Google account, wire Drive folders, set Autentique key and WhatsApp.
+**Goal:** Connect Google account, wire Drive folders, set Autentique API key + webhook Endpoint Secret, and WhatsApp.
 
 **Say:** `Olá`
 
 GPT calls `GET /context`, finds no landlord profile, and starts setup.
 
-**Expected prompts and your inputs:**
+**Expected prompts and your inputs** (one value at a time, conversationally):
 
 | GPT asks | You answer |
 |---|---|
+| Chave de API do Autentique (Configurações → Tokens de API → criar token) | _(API key)_ |
+| Endpoint Secret do webhook — GPT gives you the exact webhook URL to register at Configurações → Webhooks → Novo Webhook, formato JSON, evento "Documento finalizado". Copie o Endpoint Secret mostrado uma única vez. | _(Endpoint Secret)_ |
 | ID da pasta raiz no Drive | _(root folder ID)_ |
 | Nome da pasta de modelos | Modelos |
-| Chave de API do Autentique | _(API key)_ |
 | WhatsApp | +5511987654321 |
 
 Confirm with: `Sim`

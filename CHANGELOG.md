@@ -2,7 +2,38 @@
 
 ## Unreleased
 
+### Fixed
+- `POST /webhooks/autentique`: fix payload parsing to read `event.data.id` and
+  `event.data.files.signed` (verified from a real `document.finished` capture);
+  the previous `document.id` / `document.files.signed` paths always evaluated
+  to `null`, silently dropping every webhook after HMAC verification. (issue 49)
+
+### Changed
+- `POST /webhooks/autentique` → `POST /webhooks/autentique/{landlord_id}`:
+  per-landlord webhook endpoint. Each landlord registers their own webhook in
+  their own Autentique account and stores the unique Endpoint Secret in the DB
+  (`landlords.autentique_webhook_secret`). The handler looks up that secret by
+  the path-parameter `landlord_id` and verifies HMAC-SHA256 against it. The
+  global `AUTENTIQUE_WEBHOOK_SECRET` env var is removed — it could not scale
+  across multiple landlords. Unknown landlord_id and DB lookup failures both
+  return 401 (same response as bad signature, so landlord existence is not
+  leaked). (issue 49)
+- `POST /setup/complete`: now accepts and requires `autentique_webhook_secret`
+  in the request body; validated with the same bounds/encoding rules as
+  `autentique_api_key` and stored in `landlords.autentique_webhook_secret`.
+  Returns 400 `MISSING_AUTENTIQUE_WEBHOOK_SECRET` when absent or malformed.
+  (issue 49)
+- `gpt/SYSTEM_PROMPT.md`: new "Onboarding inicial" section guiding the
+  landlord conversationally (one value at a time) through API key creation
+  and webhook registration before collecting Drive/WhatsApp fields. (issue 49)
+- `GET /setup` HTML form: adds a webhook Endpoint Secret input alongside the
+  API key, and displays the exact per-landlord webhook URL to paste into
+  Autentique. (issue 49)
+
 ### Added
+- `supabase/migrations/006_autentique_webhook_secret.sql`: adds
+  `landlords.autentique_webhook_secret text not null` so each landlord stores
+  the Endpoint Secret Autentique generates on webhook creation. (issue 49)
 - `supabase/migrations/004_pg_cron_payment_reminders.sql`: registers the
   `send_payment_reminders` pg_cron job (daily at 12:00 UTC = 09:00 BRT).
   For each landlord with `payment_reminder_frequency` set to `daily` or

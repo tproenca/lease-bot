@@ -82,7 +82,15 @@ async function handleSetupPage(req: Request): Promise<Response> {
   if (landlord) {
     return htmlResponse(renderPostSetupHtml());
   }
-  return htmlResponse(renderPostAuthHtml({ email: user.email }));
+  return htmlResponse(
+    renderPostAuthHtml({
+      email: user.email,
+      // Webhook URL that the landlord must paste into their Autentique
+      // webhook configuration. Includes the landlord_id path segment so
+      // the webhook handler can find their per-landlord Endpoint Secret.
+      webhookUrl: `${publicFunctionsBaseUrl()}/webhooks/autentique/${user.id}`,
+    }),
+  );
 }
 
 // ─── HTML rendering ────────────────────────────────────────────────────────
@@ -181,7 +189,9 @@ function renderPreAuthHtml(authUrl: string): string {
 </html>`;
 }
 
-function renderPostAuthHtml(params: { email: string }): string {
+function renderPostAuthHtml(
+  params: { email: string; webhookUrl: string },
+): string {
   // The Google Drive Picker needs the developer API key + OAuth client ID.
   // We surface them as data attributes for the inline script to pick up. If
   // PUBLIC_GOOGLE_API_KEY is absent, the page still lets the landlord paste
@@ -235,6 +245,15 @@ function renderPostAuthHtml(params: { email: string }): string {
        <a href="https://www.autentique.com.br" target="_blank" rel="noopener">autentique.com.br</a>
        usando o mesmo Google. Depois vá em <strong>Configurações → Tokens de API</strong>
        e copie a chave. Ela é validada antes de ser salva.</div>
+
+    <label for="autentiqueWebhookSecret">Endpoint Secret do webhook da Autentique</label>
+    <input type="password" id="autentiqueWebhookSecret" name="autentique_webhook_secret"
+           placeholder="Cole aqui o Endpoint Secret" required />
+    <div class="helper">Na Autentique, vá em <strong>Configurações → Webhooks → Novo Webhook</strong>.
+       Use a URL abaixo, formato <strong>JSON</strong>, evento <strong>Documento finalizado</strong>,
+       clique em <strong>Criar</strong> e copie o <strong>Endpoint Secret</strong> mostrado
+       (uma única vez).<br>
+       URL do webhook: <code>${escapeHtml(params.webhookUrl)}</code></div>
 
     <p class="error" id="formError" role="alert"></p>
 
@@ -313,7 +332,8 @@ function renderPostAuthHtml(params: { email: string }): string {
             root_folder_id: rootInput.value.trim(),
             templates_folder_name: document.getElementById('templatesFolderName').value.trim(),
             whatsapp: document.getElementById('whatsapp').value.trim(),
-            autentique_api_key: document.getElementById('autentiqueApiKey').value
+            autentique_api_key: document.getElementById('autentiqueApiKey').value,
+            autentique_webhook_secret: document.getElementById('autentiqueWebhookSecret').value
           };
           var res = await fetch('./setup/complete', {
             method: 'POST',
