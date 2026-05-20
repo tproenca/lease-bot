@@ -282,7 +282,10 @@ export async function handleSetupComplete(req: Request): Promise<Response> {
     // Drive doc creation is best-effort — don't block setup completion.
   }
 
-  return okResp({ templates_folder_id: templatesFolderId, guia_doc_id: guiaDocId });
+  return okResp({
+    templates_folder_id: templatesFolderId,
+    guia_doc_id: guiaDocId,
+  });
 }
 
 // ─── Sample template ───────────────────────────────────────────────────────

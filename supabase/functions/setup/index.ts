@@ -255,7 +255,9 @@ function renderPostAuthHtml(
        clique em <strong>Criar</strong> e copie o <strong>Endpoint Secret</strong> mostrado
        (uma única vez).
        <div style="position:relative; margin-top:8px; background:#f5f5f5; border-radius:6px; padding:10px 40px 10px 10px;">
-         <code id="webhookUrl" style="font-size:13px; word-break:break-all; display:block;">${escapeHtml(params.webhookUrl)}</code>
+         <code id="webhookUrl" style="font-size:13px; word-break:break-all; display:block;">${
+    escapeHtml(params.webhookUrl)
+  }</code>
          <button type="button" id="copyWebhookBtn" title="Copiar" style="position:absolute; top:6px; right:6px; background:none; border:1px solid #ccc; border-radius:4px; padding:3px 5px; cursor:pointer; color:#555; line-height:0;"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
        </div>
     </div>
