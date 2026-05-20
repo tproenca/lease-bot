@@ -9,7 +9,10 @@
 // `userClient()` carries the caller's JWT and is subject to RLS — use this for
 // any request handler that operates on already-authenticated landlord rows.
 
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import {
+  createClient,
+  type SupabaseClient,
+} from "https://esm.sh/@supabase/supabase-js@2";
 import { requireEnv } from "./env.ts";
 
 export function serviceClient(): SupabaseClient {
@@ -19,6 +22,14 @@ export function serviceClient(): SupabaseClient {
     {
       auth: { persistSession: false, autoRefreshToken: false },
     },
+  );
+}
+
+export function anonClient(): SupabaseClient {
+  return createClient(
+    requireEnv("SUPABASE_URL"),
+    requireEnv("SUPABASE_ANON_KEY"),
+    { auth: { persistSession: false, autoRefreshToken: false } },
   );
 }
 

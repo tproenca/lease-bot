@@ -131,11 +131,28 @@ export async function handleContext(req: Request): Promise<Response> {
   }
 
   // 5. Validate that the landlord row exists (setup may not be complete).
+  // Return 404 with landlord_id + api_base_url so the GPT can redirect
+  // the user to the correct setup URL.
   if (!landlordResult.data) {
-    return errorResponse(
-      404,
-      "LANDLORD_NOT_FOUND",
-      "Cadastro do proprietário não encontrado. Conclua o processo de configuração.",
+    const host = req.headers.get("x-forwarded-host") ??
+      req.headers.get("host") ??
+      new URL(req.url).host;
+    const proto = req.headers.get("x-forwarded-proto") ?? "https";
+    const apiBaseUrl = `${proto}://${host}/functions/v1`;
+    return new Response(
+      JSON.stringify({
+        error: {
+          code: "LANDLORD_NOT_FOUND",
+          message:
+            "Cadastro do proprietário não encontrado. Conclua o processo de configuração.",
+        },
+        landlord_id: user.id,
+        api_base_url: apiBaseUrl,
+      }),
+      {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
     );
   }
 

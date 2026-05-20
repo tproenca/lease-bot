@@ -20,7 +20,7 @@
 //
 // No console.log statements — errors are returned as structured values.
 
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument } from "https://esm.sh/pdf-lib@1.17.1";
 import { refreshGoogleAccessToken } from "../../_shared/google.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────

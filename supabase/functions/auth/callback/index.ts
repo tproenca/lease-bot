@@ -17,7 +17,7 @@
 // This file is kept under `supabase/functions/auth/callback/` per issue 1.2;
 // the deployable function is `supabase/functions/auth/` and routes internally.
 
-import { createClient } from "@supabase/supabase-js";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../../_shared/cors.ts";
 import { errorResponse } from "../../_shared/errors.ts";
 import { publicFunctionsBaseUrl, requireEnv } from "../../_shared/env.ts";
