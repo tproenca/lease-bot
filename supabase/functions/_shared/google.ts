@@ -306,8 +306,62 @@ export async function unstarDriveFile(params: {
 }
 
 /**
+ * Create a Google Doc in a Drive folder if a doc with that name doesn't
+ * already exist. Returns the file ID (existing or newly created).
+ */
+export async function createDriveDocIfNotExists(params: {
+  accessToken: string;
+  name: string;
+  content: string;
+  parentFolderId: string;
+}): Promise<string> {
+  const { accessToken, name, content, parentFolderId } = params;
+
+  const files = await listDriveFilesInFolder({
+    accessToken,
+    folderId: parentFolderId,
+  });
+  const existing = files.find((f) => f.name === name);
+  if (existing) return existing.id;
+
+  const boundary = "doc_boundary_lease_assistant";
+  const metadata = JSON.stringify({
+    name,
+    mimeType: "application/vnd.google-apps.document",
+    parents: [parentFolderId],
+  });
+  const body = [
+    `--${boundary}`,
+    "Content-Type: application/json; charset=UTF-8",
+    "",
+    metadata,
+    `--${boundary}`,
+    "Content-Type: text/plain; charset=UTF-8",
+    "",
+    content,
+    `--${boundary}--`,
+  ].join("\r\n");
+
+  const res = await fetch(
+    `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": `multipart/related; boundary=${boundary}`,
+      },
+      body,
+    },
+  );
+  if (!res.ok) throw new Error(`drive_create_doc_failed_${res.status}`);
+  const json = await res.json() as { id: string };
+  return json.id;
+}
+
+/**
  * Upsert the "Guia de Placeholders" Google Doc in the landlord's Templates
  * Drive folder. Creates it if absent; updates content if present.
+ * Returns the doc ID.
  *
  * The document is a plain-text file (uploaded as text/plain; Google converts it
  * to a Google Doc via the mimeType hint in the metadata part). Content is sorted
@@ -325,7 +379,7 @@ export async function upsertGuiaDePlaceholders(params: {
     derived_from?: string | null;
     derived_formula?: string | null;
   }>;
-}): Promise<void> {
+}): Promise<string> {
   const { accessToken, templatesFolderId, placeholders } = params;
 
   // 1. List files in the Templates folder to find "Guia de Placeholders".
@@ -365,6 +419,7 @@ export async function upsertGuiaDePlaceholders(params: {
     if (!res.ok) {
       throw new Error(`drive_guia_update_failed_${res.status}`);
     }
+    return guia.id;
   } else {
     // 3b. File not found — create via multipart upload.
     const boundary = "guia_boundary_lease_assistant";
@@ -386,7 +441,7 @@ export async function upsertGuiaDePlaceholders(params: {
     ].join("\r\n");
 
     const createUrl =
-      `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
+      `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id`;
     const res = await fetch(createUrl, {
       method: "POST",
       headers: {
@@ -398,6 +453,8 @@ export async function upsertGuiaDePlaceholders(params: {
     if (!res.ok) {
       throw new Error(`drive_guia_create_failed_${res.status}`);
     }
+    const json = await res.json() as { id: string };
+    return json.id;
   }
 }
 

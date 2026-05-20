@@ -23,9 +23,11 @@
 
 import { strictCorsHeaders } from "../../_shared/cors.ts";
 import {
+  createDriveDocIfNotExists,
   createDriveFolder,
   getDriveFolder,
   refreshGoogleAccessToken,
+  upsertGuiaDePlaceholders,
 } from "../../_shared/google.ts";
 import { validateAutentiqueApiKey } from "../../_shared/autentique.ts";
 import {
@@ -146,17 +148,7 @@ export async function handleSetupComplete(req: Request): Promise<Response> {
     );
   }
 
-  // 3. Validate Autentique API key.
-  const autentique = await validateAutentiqueApiKey(apiKey);
-  if (!autentique.ok) {
-    return errResp(
-      400,
-      "INVALID_AUTENTIQUE_KEY",
-      "Chave de API da Autentique inválida. Verifique em autentique.com.br → Configurações → Tokens de API.",
-    );
-  }
-
-  // 4. Refresh Google access token from stored refresh token.
+  // 3. Check Google refresh token before making any external API calls.
   const refreshToken =
     (user.user_metadata.google_refresh_token as string | undefined) ??
       undefined;
@@ -167,6 +159,18 @@ export async function handleSetupComplete(req: Request): Promise<Response> {
       "Conexão com o Google não encontrada. Refaça o login com o Google.",
     );
   }
+
+  // 4. Validate Autentique API key.
+  const autentique = await validateAutentiqueApiKey(apiKey);
+  if (!autentique.ok) {
+    return errResp(
+      400,
+      "INVALID_AUTENTIQUE_KEY",
+      "Chave de API da Autentique inválida. Verifique em autentique.com.br → Configurações → Tokens de API.",
+    );
+  }
+
+  // 5. Refresh Google access token.
   let accessToken: string;
   try {
     accessToken = await refreshGoogleAccessToken(refreshToken);
@@ -255,8 +259,37 @@ export async function handleSetupComplete(req: Request): Promise<Response> {
     );
   }
 
-  return okResp({ templates_folder_id: templatesFolderId });
+  // 8. Create starter docs in the Templates folder.
+  //    Non-fatal: if Drive calls fail here, the landlord row already exists and
+  //    setup is complete — we just won't have a guia_doc_id to link to.
+  let guiaDocId: string | undefined;
+  try {
+    const [guiaId] = await Promise.all([
+      upsertGuiaDePlaceholders({
+        accessToken,
+        templatesFolderId,
+        placeholders: [], // empty on first setup; updated as placeholders are registered
+      }),
+      createDriveDocIfNotExists({
+        accessToken,
+        name: "Contrato de Locação Residencial (Modelo)",
+        content: SAMPLE_TEMPLATE_CONTENT,
+        parentFolderId: templatesFolderId,
+      }),
+    ]);
+    guiaDocId = guiaId;
+  } catch {
+    // Drive doc creation is best-effort — don't block setup completion.
+  }
+
+  return okResp({ templates_folder_id: templatesFolderId, guia_doc_id: guiaDocId });
 }
+
+// ─── Sample template ───────────────────────────────────────────────────────
+
+const SAMPLE_TEMPLATE_CONTENT = await Deno.readTextFile(
+  new URL("./sample-template.txt", import.meta.url),
+);
 
 // ─── Input sanitization helpers ────────────────────────────────────────────
 
