@@ -131,9 +131,8 @@ export async function handleContext(req: Request): Promise<Response> {
   }
 
   // 5. Validate that the landlord row exists (setup may not be complete).
-  // Return 200 with needs_onboarding:true instead of 404 so the GPT can
-  // reliably detect the condition by reading a response field rather than
-  // by handling an error status code.
+  // Return 404 with landlord_id + api_base_url so the GPT can redirect
+  // the user to the correct setup URL.
   if (!landlordResult.data) {
     const host = req.headers.get("x-forwarded-host") ??
       req.headers.get("host") ??

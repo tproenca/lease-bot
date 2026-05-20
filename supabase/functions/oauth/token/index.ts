@@ -65,13 +65,23 @@ export async function handleOAuthToken(req: Request): Promise<Response> {
         access_token: data.session.access_token,
         refresh_token: data.session.refresh_token,
         token_type: "Bearer",
-        expires_in: 3600,
+        expires_in: data.session.expires_in ?? 3600,
       }),
       { status: 200, headers: { "Content-Type": "application/json" } },
     );
   }
 
   // ── Authorization code flow ──────────────────────────────────────────────
+  if (grantType !== "authorization_code") {
+    return new Response(
+      JSON.stringify({
+        error: "unsupported_grant_type",
+        error_description: `Unsupported grant_type: ${grantType}`,
+      }),
+      { status: 400, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
   const googleResponse = await fetch(GOOGLE_TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -123,7 +133,7 @@ export async function handleOAuthToken(req: Request): Promise<Response> {
   if (googleRefreshToken) {
     const svc = serviceClient();
     await svc.auth.admin.updateUserById(data.session.user.id, {
-      user_metadata: { google_refresh_token: googleRefreshToken },
+      app_metadata: { google_refresh_token: googleRefreshToken },
     });
   }
 
@@ -132,7 +142,7 @@ export async function handleOAuthToken(req: Request): Promise<Response> {
       access_token: data.session.access_token,
       refresh_token: data.session.refresh_token,
       token_type: "Bearer",
-      expires_in: 3600,
+      expires_in: data.session.expires_in ?? 3600,
     }),
     { status: 200, headers: { "Content-Type": "application/json" } },
   );

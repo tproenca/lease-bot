@@ -35,6 +35,7 @@ export async function handleOAuthAuthorize(req: Request): Promise<Response> {
     targetUrl.searchParams.set(key, value);
   });
   targetUrl.searchParams.set("access_type", "offline");
+  targetUrl.searchParams.set("prompt", "consent");
 
   return new Response(null, {
     status: 302,
