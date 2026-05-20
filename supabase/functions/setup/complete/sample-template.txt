@@ -1,0 +1,45 @@
+[Modelo de contrato — veja o "Guia de Placeholders" nesta pasta para a lista completa de {{tokens}} disponíveis.]
+
+CONTRATO DE LOCAÇÃO RESIDENCIAL
+
+LOCADOR: {{nome do locador}}
+
+LOCATÁRIO: {{nome do inquilino}}, inscrito no CPF sob o nº {{cpf do inquilino}},
+doravante denominado LOCATÁRIO.
+
+IMÓVEL: {{endereço do imóvel}}
+
+VALOR DO ALUGUEL: R$ {{valor do aluguel}} ({{valor por extenso}})
+
+VIGÊNCIA: {{prazo do contrato}} meses, com início em {{data por extenso}},
+com término previsto para {{data de término}}.
+
+DISPOSIÇÕES GERAIS
+
+1. O aluguel deverá ser pago até o 5º dia útil de cada mês.
+2. O imóvel destina-se exclusivamente a uso residencial.
+3. É vedada a sublocação total ou parcial sem autorização prévia por escrito do LOCADOR.
+4. O LOCATÁRIO declara ter vistoriado o imóvel e o aceita nas condições em que se encontra.
+5. Ao término do contrato, o imóvel deverá ser entregue nas mesmas condições de entrada.
+
+E por estarem justos e contratados, as partes assinam o presente instrumento.
+
+São Paulo, {{data por extenso}}.
+
+
+{{nome do locador}}
+_________________________________
+Locador
+
+
+{{nome do inquilino}}
+_________________________________
+Locatário
+
+
+_________________________________
+Testemunha 1
+
+
+_________________________________
+Testemunha 2

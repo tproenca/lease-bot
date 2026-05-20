@@ -80,7 +80,8 @@ async function handleSetupPage(req: Request): Promise<Response> {
   }
 
   if (landlord) {
-    return htmlResponse(renderPostSetupHtml());
+    const guiaDocId = new URL(req.url).searchParams.get("guia") ?? undefined;
+    return htmlResponse(renderPostSetupHtml(guiaDocId));
   }
   return htmlResponse(
     renderPostAuthHtml({
@@ -249,11 +250,17 @@ function renderPostAuthHtml(
     <label for="autentiqueWebhookSecret">Endpoint Secret do webhook da Autentique</label>
     <input type="password" id="autentiqueWebhookSecret" name="autentique_webhook_secret"
            placeholder="Cole aqui o Endpoint Secret" required />
-    <div class="helper">Na Autentique, vá em <strong>Configurações → Webhooks → Novo Webhook</strong>.
-       Use a URL abaixo, formato <strong>JSON</strong>, evento <strong>Documento finalizado</strong>,
+    <div class="helper">Na Autentique, vá em <strong>Configurações → Webhooks → Adicionar endpoint</strong>.
+       Use a URL abaixo, formato <strong>JSON</strong>, evento <strong>document.finished</strong>,
        clique em <strong>Criar</strong> e copie o <strong>Endpoint Secret</strong> mostrado
-       (uma única vez).<br>
-       URL do webhook: <code>${escapeHtml(params.webhookUrl)}</code></div>
+       (uma única vez).
+       <div style="position:relative; margin-top:8px; background:#f5f5f5; border-radius:6px; padding:10px 40px 10px 10px;">
+         <code id="webhookUrl" style="font-size:13px; word-break:break-all; display:block;">${
+    escapeHtml(params.webhookUrl)
+  }</code>
+         <button type="button" id="copyWebhookBtn" title="Copiar" style="position:absolute; top:6px; right:6px; background:none; border:1px solid #ccc; border-radius:4px; padding:3px 5px; cursor:pointer; color:#555; line-height:0;"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+       </div>
+    </div>
 
     <p class="error" id="formError" role="alert"></p>
 
@@ -275,6 +282,19 @@ function renderPostAuthHtml(
       var oauthToken = null;
 
       function showError(msg) { errorEl.textContent = msg || ''; }
+
+      var copyBtn = document.getElementById('copyWebhookBtn');
+      if (copyBtn) {
+        var copyIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+        var checkIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1a73e8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+        copyBtn.addEventListener('click', function() {
+          var url = document.getElementById('webhookUrl').textContent;
+          navigator.clipboard.writeText(url).then(function() {
+            copyBtn.innerHTML = checkIcon;
+            setTimeout(function() { copyBtn.innerHTML = copyIcon; }, 1500);
+          });
+        });
+      }
 
       function loadPicker() {
         if (pickerInited) return;
@@ -347,7 +367,8 @@ function renderPostAuthHtml(
             submitBtn.disabled = false;
             return;
           }
-          window.location.reload();
+          var guiaParam = json.guia_doc_id ? '?guia=' + encodeURIComponent(json.guia_doc_id) : '';
+          window.location.href = window.location.pathname + guiaParam;
         } catch (e) {
           showError('Erro de rede. Tente novamente.');
           submitBtn.disabled = false;
@@ -359,7 +380,19 @@ function renderPostAuthHtml(
 </html>`;
 }
 
-function renderPostSetupHtml(): string {
+function renderPostSetupHtml(guiaDocId?: string): string {
+  const guiaUrl = guiaDocId
+    ? `https://docs.google.com/document/d/${escapeHtml(guiaDocId)}/edit`
+    : null;
+  const guiaSection = guiaUrl
+    ? `<p>Um modelo de contrato e o <strong>Guia de Placeholders</strong> foram criados
+       na sua pasta de modelos no Google Drive.<br/>
+       <a href="${guiaUrl}" target="_blank" rel="noopener">Abrir Guia de Placeholders</a></p>`
+    : `<p>Antes de gerar seu primeiro contrato, leia o
+       <strong>Guia de Placeholders</strong> — ele explica como nomear as variáveis
+       dentro dos seus modelos no Google Docs (ex.: <code>{{nome do inquilino}}</code>).
+       Você pode pedir ao assistente: <em>"me mostre o guia de placeholders"</em>.</p>`;
+
   return `<!doctype html>
 <html lang="pt-BR">
 <head>
@@ -380,10 +413,7 @@ function renderPostSetupHtml(): string {
     </a>
   </p>
   <hr />
-  <p>Antes de gerar seu primeiro contrato, leia o
-     <strong>Guia de Placeholders</strong> — ele explica como nomear as variáveis
-     dentro dos seus modelos no Google Docs (ex.: <code>{{nome do inquilino}}</code>).
-     Você pode pedir ao assistente: <em>"me mostre o guia de placeholders"</em>.</p>
+  ${guiaSection}
 </body>
 </html>`;
 }
