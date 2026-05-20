@@ -16,11 +16,19 @@ import {
   userClient,
 } from "../_shared/supabase.ts";
 import { isNonEmptyString } from "../_shared/validation.ts";
+import { handleRemind } from "./remind/index.ts";
 
 export async function handlePayments(req: Request): Promise<Response> {
   // Handle CORS preflight.
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
+  }
+
+  // Delegate POST /payments/remind to the remind handler.
+  const url = new URL(req.url);
+  const lastSegment = url.pathname.split("/").filter(Boolean).at(-1);
+  if (req.method === "POST" && lastSegment === "remind") {
+    return handleRemind(req);
   }
 
   if (req.method === "POST") {
