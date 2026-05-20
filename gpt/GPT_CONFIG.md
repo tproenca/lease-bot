@@ -10,7 +10,7 @@ Lease Assistant
 
 ## Description
 
-Assistente de contratos de aluguel para proprietários brasileiros. Gera contratos,
+Assistente de contratos de aluguel para proprietários. Gera contratos,
 coordena assinaturas e acompanha pagamentos — tudo pelo chat.
 
 ## Instructions
@@ -31,7 +31,9 @@ Upload `gpt/contract-rules.md` as a Knowledge file in the Custom GPT configurati
 ## Capabilities
 
 - [ ] Web Search — disabled
-- [ ] Code Interpreter — disabled
+- [ ] Canvas — disabled
+- [ ] Image Generation — disabled
+- [ ] Code Interpreter & Data Analysis — disabled
 - [x] Actions — enabled (upload `specs/openapi.yaml` as the action schema)
 
 ## Action Authentication
@@ -39,10 +41,20 @@ Upload `gpt/contract-rules.md` as a Knowledge file in the Custom GPT configurati
 - Type: OAuth
 - Client ID: (Google OAuth client ID from Google Cloud Console)
 - Client Secret: (Google OAuth client secret)
-- Authorization URL: `https://accounts.google.com/o/oauth2/v2/auth`
-- Token URL: `https://oauth2.googleapis.com/token`
+- Authorization URL: `https://<your-domain>/functions/v1/oauth/authorize`
+- Token URL: `https://<your-domain>/functions/v1/oauth/token`
 - Scope: `openid email profile https://www.googleapis.com/auth/drive`
 - Privacy Policy URL: `https://<project-ref>.supabase.co/storage/v1/object/public/legal/privacy-policy.html`
+
+> **Note:** The Authorization URL and Token URL above are thin proxy endpoints
+> hosted on the same domain as the API (`<your-domain>/functions/v1`). They
+> forward requests to Google's real OAuth endpoints
+> (`accounts.google.com/o/oauth2/v2/auth` and `oauth2.googleapis.com/token`).
+> This satisfies OpenAI's requirement that the Authorization URL, Token URL,
+> and API server hostname all share the same root domain. For production, replace
+> `<your-domain>` with your Supabase project URL
+> (e.g. `https://<project-ref>.supabase.co`). For local development, use your
+> ngrok URL.
 
 ## Notes for developer
 

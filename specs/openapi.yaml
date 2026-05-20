@@ -5,14 +5,8 @@ info:
   description: Backend API for the Lease Assistant Custom GPT. All endpoints require Bearer JWT authentication except the setup flow.
 
 servers:
-  - url: https://{project}.supabase.co/functions/v1
-    description: Production (Supabase Edge Functions)
-  - url: https://{ngrok_domain}.ngrok-free.dev/functions/v1
-    description: Local development (via ngrok static dev domain)
-    variables:
-      ngrok_domain:
-        default: your-domain
-        description: Your ngrok static dev domain subdomain (from ngrok.com → Static Domain)
+  - url: https://your-project.supabase.co/functions/v1
+    description: Set this to your Supabase project URL (production) or ngrok URL (local dev)
 
 security:
   - bearerAuth: []
@@ -174,6 +168,68 @@ components:
           nullable: true
 
 paths:
+
+  # ── OAuth Proxy ───────────────────────────────────────────
+
+  /oauth/authorize:
+    get:
+      operationId: oauthAuthorize
+      summary: Proxy redirect to Google's OAuth authorization endpoint
+      description: >
+        Forwards all query parameters to https://accounts.google.com/o/oauth2/v2/auth
+        and returns a 302 redirect. Required so that the GPT OAuth action's
+        Authorization URL, Token URL, and API server all share the same root domain
+        (OpenAI enforces this). Only redirects to the exact Google authorization URL.
+      security: []
+      parameters:
+        - name: response_type
+          in: query
+          schema:
+            type: string
+        - name: client_id
+          in: query
+          schema:
+            type: string
+        - name: redirect_uri
+          in: query
+          schema:
+            type: string
+        - name: scope
+          in: query
+          schema:
+            type: string
+        - name: state
+          in: query
+          schema:
+            type: string
+      responses:
+        '302':
+          description: Redirect to Google's OAuth authorization endpoint
+
+  /oauth/token:
+    post:
+      operationId: oauthToken
+      summary: Proxy to Google's OAuth token endpoint
+      description: >
+        Forwards the request body as-is to https://oauth2.googleapis.com/token
+        and returns Google's response verbatim (status, body, content-type).
+        Required so that the GPT OAuth action's Token URL shares the same root
+        domain as the API server. Only proxies to the exact Google token URL.
+        No credentials are stored or logged by this proxy.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              description: Token exchange parameters forwarded verbatim to Google (grant_type, code, redirect_uri, client_id, client_secret, etc.)
+              additionalProperties: true
+      responses:
+        '200':
+          description: Google's token response (access_token, refresh_token, id_token, etc.)
+        '400':
+          description: Google token exchange error (forwarded verbatim)
 
   # ── Setup & Auth ──────────────────────────────────────────
 
@@ -820,35 +876,6 @@ paths:
       responses:
         '200':
           description: Updated
-
-  /webhooks/autentique/{landlord_id}:
-    post:
-      operationId: autentiqueWebhook
-      summary: Receive signed PDF from Autentique and save to Drive (per-landlord endpoint — HMAC verified with that landlord's Endpoint Secret)
-      security: []
-      parameters:
-        - name: landlord_id
-          in: path
-          required: true
-          description: Landlord's user ID (equals `auth.uid()`). Each landlord registers their own webhook URL in Autentique pointing at this path; each webhook has a unique Endpoint Secret stored in `landlords.autentique_webhook_secret`.
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-      responses:
-        '200':
-          description: Acknowledged
-        '401':
-          description: Missing or invalid HMAC signature, or unknown landlord_id
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
 
   # ── Payments ──────────────────────────────────────────────
 
