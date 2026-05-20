@@ -26,6 +26,19 @@ import {
 import { isNonEmptyString } from "../../_shared/validation.ts";
 import { sendWhatsAppTemplate } from "../../_shared/whatsapp.ts";
 
+// ─── Timing-safe string comparison ───────────────────────────────────────────
+
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  const aBytes = new TextEncoder().encode(a);
+  const bBytes = new TextEncoder().encode(b);
+  let diff = 0;
+  for (let i = 0; i < aBytes.length; i++) {
+    diff |= aBytes[i] ^ bBytes[i];
+  }
+  return diff === 0;
+}
+
 // ─── UUID validation ──────────────────────────────────────────────────────
 
 const UUID_RE =
@@ -68,7 +81,9 @@ export async function handleRemind(req: Request): Promise<Response> {
   }
 
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-  const isCronCall = serviceRoleKey.length > 0 && jwt === serviceRoleKey;
+  // Timing-safe comparison to prevent timing-attack enumeration of the service role key.
+  const isCronCall = serviceRoleKey.length > 0 &&
+    timingSafeEqual(jwt, serviceRoleKey);
 
   let userId: string | null = null;
   if (!isCronCall) {
@@ -147,6 +162,13 @@ export async function handleRemind(req: Request): Promise<Response> {
     landlord_id?: string;
   };
 
+  if (isCronCall && !ten.landlord_id) {
+    return errorResponse(
+      500,
+      "TENANT_MISSING_LANDLORD",
+      "Erro interno: inquilino sem proprietário associado.",
+    );
+  }
   const landlordId = isCronCall ? ten.landlord_id! : userId!;
 
   if (!ten.whatsapp) {
