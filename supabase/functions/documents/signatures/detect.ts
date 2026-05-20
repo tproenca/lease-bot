@@ -33,7 +33,7 @@
 //   TESTEMUNHA_2       → witness 2
 // Unknown markers are ignored (forward-compatible).
 
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument } from "https://esm.sh/pdf-lib@1.17.1";
 
 // ─── Public types ─────────────────────────────────────────────────────────
 

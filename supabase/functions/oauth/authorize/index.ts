@@ -29,12 +29,12 @@ export async function handleOAuthAuthorize(req: Request): Promise<Response> {
   const incomingUrl = new URL(req.url);
   const targetUrl = new URL(GOOGLE_AUTH_URL);
 
-  // Forward all query params as-is — the GPT sends response_type, client_id,
-  // redirect_uri, scope, state, etc. We do not inspect or validate their values;
-  // Google performs that validation at the other end.
+  // Forward all query params. Force access_type=offline so Google always
+  // issues a refresh token — required by /setup/complete to access Drive.
   incomingUrl.searchParams.forEach((value, key) => {
     targetUrl.searchParams.set(key, value);
   });
+  targetUrl.searchParams.set("access_type", "offline");
 
   return new Response(null, {
     status: 302,
