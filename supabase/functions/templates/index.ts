@@ -11,6 +11,7 @@ import {
   getAuthenticatedUser,
   userClient,
 } from "../_shared/supabase.ts";
+import { handleTemplatesDiff } from "./diff/index.ts";
 
 // Allow DELETE in addition to the default methods.
 const corsHeaders: Record<string, string> = {
@@ -32,6 +33,12 @@ export async function handleTemplates(req: Request): Promise<Response> {
   const lastPart = pathParts[pathParts.length - 1];
   const hasId = lastPart !== "templates" && lastPart !== "" &&
     pathParts.length >= 2;
+
+  // Delegate GET /templates/diff to the diff handler (handles both direct
+  // routing and cases where Supabase routes /templates/diff to this function).
+  if (req.method === "GET" && lastPart === "diff") {
+    return handleTemplatesDiff(req);
+  }
 
   if (req.method === "POST" && !hasId) {
     return handleCreateTemplate(req);

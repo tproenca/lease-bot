@@ -1,13 +1,14 @@
-// POST /payments/remind — GPT-triggered ad-hoc WhatsApp payment reminder.
+// POST /payments/remind — GPT-triggered or pg_cron-scheduled WhatsApp reminder.
 //
 // Sends a WhatsApp template message to the tenant's stored number, then records
 // the attempt in `payment_reminders` with:
 //   - sent_at = now()  if WhatsApp send succeeded
 //   - sent_at = null   if WhatsApp send failed (records failure without throwing)
 //
-// Auth: Bearer JWT verified via Supabase Auth — returns 401 if missing/invalid.
-// Uses userClient(jwt) for all DB ops — RLS enforces landlord isolation.
-// landlord_id is always taken from the verified JWT, never from the request body.
+// Auth: two modes —
+//   User JWT (GPT calls): landlord_id taken from JWT; RLS enforces isolation.
+//   Service role key (pg_cron): landlord_id looked up from the tenant record;
+//     service client bypasses RLS. The bearer is compared to SUPABASE_SERVICE_ROLE_KEY.
 //
 // Error contract:
 //   - Never returns 5xx for a WhatsApp failure — records with sent_at=null and
@@ -19,6 +20,7 @@ import { errorResponse } from "../../_shared/errors.ts";
 import {
   extractBearer,
   getAuthenticatedUser,
+  serviceClient,
   userClient,
 } from "../../_shared/supabase.ts";
 import { isNonEmptyString } from "../../_shared/validation.ts";
@@ -55,7 +57,7 @@ export async function handleRemind(req: Request): Promise<Response> {
     return errorResponse(405, "METHOD_NOT_ALLOWED", "Método não permitido.");
   }
 
-  // 1. Verify JWT.
+  // 1. Verify auth — user JWT (GPT) or service role key (pg_cron).
   const jwt = extractBearer(req);
   if (!jwt) {
     return errorResponse(
@@ -65,13 +67,20 @@ export async function handleRemind(req: Request): Promise<Response> {
     );
   }
 
-  const user = await getAuthenticatedUser(jwt);
-  if (!user) {
-    return errorResponse(
-      401,
-      "UNAUTHORIZED",
-      "Token de autorização inválido ou expirado.",
-    );
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  const isCronCall = serviceRoleKey.length > 0 && jwt === serviceRoleKey;
+
+  let userId: string | null = null;
+  if (!isCronCall) {
+    const user = await getAuthenticatedUser(jwt);
+    if (!user) {
+      return errorResponse(
+        401,
+        "UNAUTHORIZED",
+        "Token de autorização inválido ou expirado.",
+      );
+    }
+    userId = user.id;
   }
 
   // 2. Parse and validate request body.
@@ -112,12 +121,18 @@ export async function handleRemind(req: Request): Promise<Response> {
     );
   }
 
-  const db = userClient(jwt);
+  const db = isCronCall ? serviceClient() : userClient(jwt);
 
-  // 3. Load tenant record — verifies it belongs to this landlord via RLS.
+  // 3. Load tenant record.
+  //    User JWT path: RLS scopes to this landlord automatically.
+  //    Service role path: explicit landlord_id fetch replaces RLS scoping.
+  const tenantSelect = isCronCall
+    ? "id, name, whatsapp, landlord_id"
+    : "id, name, whatsapp";
+
   const { data: tenant, error: tenantError } = await db
     .from("tenants")
-    .select("id, name, whatsapp")
+    .select(tenantSelect)
     .eq("id", tenant_id)
     .maybeSingle();
 
@@ -125,7 +140,14 @@ export async function handleRemind(req: Request): Promise<Response> {
     return errorResponse(404, "TENANT_NOT_FOUND", "Inquilino não encontrado.");
   }
 
-  const ten = tenant as { id: string; name: string; whatsapp: string | null };
+  const ten = tenant as {
+    id: string;
+    name: string;
+    whatsapp: string | null;
+    landlord_id?: string;
+  };
+
+  const landlordId = isCronCall ? ten.landlord_id! : userId!;
 
   if (!ten.whatsapp) {
     return errorResponse(
@@ -145,7 +167,7 @@ export async function handleRemind(req: Request): Promise<Response> {
   // 5. Record the reminder attempt regardless of send outcome.
   //    sent_at = now() on success; sent_at = null on failure (per spec).
   const reminderPayload: Record<string, unknown> = {
-    landlord_id: user.id,
+    landlord_id: landlordId,
     tenant_id: ten.id,
     reference_month: referenceMonth,
   };

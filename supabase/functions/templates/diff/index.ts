@@ -161,21 +161,6 @@ export async function handleTemplatesDiff(req: Request): Promise<Response> {
   const allTemplates = (templatesResult.data ?? []) as TemplateRow[];
   const templates = allTemplates.filter((t) => t.name !== GUIA_EXACT_NAME);
 
-  // Fast path: no templates in DB — nothing to diff.
-  if (templates.length === 0) {
-    return new Response(
-      JSON.stringify({
-        templates: { added: [], removed: [] },
-        placeholders: { added: [], removed: [] },
-        witnesses: { added: [] },
-      }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      },
-    );
-  }
-
   // 4. Obtain a fresh Google access token — needed to list Drive files.
   let accessToken: string;
   try {
