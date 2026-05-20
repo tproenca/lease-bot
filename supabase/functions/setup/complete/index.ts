@@ -249,7 +249,33 @@ export async function handleSetupComplete(req: Request): Promise<Response> {
         .eq("id", user.id)
         .maybeSingle();
       if (existing) {
-        return okResp({ templates_folder_id: existing.templates_folder_id });
+        // Also (re-)create starter docs so the response always includes guia_doc_id.
+        let guiaDocIdRetry: string | undefined;
+        try {
+          const [guiaId] = await Promise.all([
+            upsertGuiaDePlaceholders({
+              accessToken,
+              templatesFolderId: existing.templates_folder_id as string,
+              placeholders: [],
+            }),
+            createDriveDocIfNotExists({
+              accessToken,
+              name: "Contrato de Locação Residencial (Modelo)",
+              content: await getSampleTemplateContent(),
+              parentFolderId: existing.templates_folder_id as string,
+            }),
+          ]);
+          guiaDocIdRetry = guiaId;
+        } catch (err) {
+          console.warn(
+            "setup/complete 23505 path: Drive doc creation failed",
+            err,
+          );
+        }
+        return okResp({
+          templates_folder_id: existing.templates_folder_id,
+          guia_doc_id: guiaDocIdRetry,
+        });
       }
     }
     return errResp(
@@ -273,13 +299,14 @@ export async function handleSetupComplete(req: Request): Promise<Response> {
       createDriveDocIfNotExists({
         accessToken,
         name: "Contrato de Locação Residencial (Modelo)",
-        content: SAMPLE_TEMPLATE_CONTENT,
+        content: await getSampleTemplateContent(),
         parentFolderId: templatesFolderId,
       }),
     ]);
     guiaDocId = guiaId;
-  } catch {
+  } catch (err) {
     // Drive doc creation is best-effort — don't block setup completion.
+    console.warn("setup/complete: Drive starter doc creation failed", err);
   }
 
   return okResp({
@@ -290,9 +317,15 @@ export async function handleSetupComplete(req: Request): Promise<Response> {
 
 // ─── Sample template ───────────────────────────────────────────────────────
 
-const SAMPLE_TEMPLATE_CONTENT = await Deno.readTextFile(
-  new URL("./sample-template.txt", import.meta.url),
-);
+let _sampleTemplateContent: string | undefined;
+async function getSampleTemplateContent(): Promise<string> {
+  if (_sampleTemplateContent === undefined) {
+    _sampleTemplateContent = await Deno.readTextFile(
+      new URL("./sample-template.txt", import.meta.url),
+    );
+  }
+  return _sampleTemplateContent;
+}
 
 // ─── Input sanitization helpers ────────────────────────────────────────────
 
