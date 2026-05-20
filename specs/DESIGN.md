@@ -10,6 +10,7 @@ landlords
   whatsapp                    text not null
   google_refresh_token        text not null
   autentique_api_key          text not null        -- per-landlord Autentique API key (encrypted at rest)
+  autentique_webhook_secret   text not null        -- per-landlord HMAC secret for the landlord's Autentique webhook
   root_folder_id              text not null        -- Google Drive folder ID
   templates_folder_id         text not null        -- Google Drive folder ID
   payment_reminder_frequency  text not null        -- daily | weekly | disabled
@@ -127,7 +128,8 @@ GET  /auth/callback?code=&state=
   → 302 redirect to /setup (session established)
 
 POST /setup/complete
-  Body: { root_folder_id, templates_folder_name, whatsapp, autentique_api_key }
+  Body: { root_folder_id, templates_folder_name, whatsapp, autentique_api_key,
+          autentique_webhook_secret }
   → 200 { templates_folder_id }
 
 GET  /context
@@ -228,10 +230,12 @@ PATCH /signatures/:id/reminder
   Body: { frequency }   -- DAILY | WEEKLY
   → 200
 
-POST /webhooks/autentique
+POST /webhooks/autentique/{landlord_id}
   Body: Autentique webhook payload
   → 200
   Side effects: saves signed PDF to Drive, updates signature_requests.status
+  Auth: HMAC-SHA256 over the raw body using
+        landlords.autentique_webhook_secret for the {landlord_id} path param.
 ```
 
 ### Payments

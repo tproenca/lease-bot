@@ -1,30 +1,79 @@
-// POST /webhooks/autentique — receives Autentique's signed-document notification,
-// verifies the HMAC-SHA256 signature, downloads the signed PDF, saves it to
-// the tenant's Google Drive folder, and marks the signature_request completed.
+// POST /webhooks/autentique/{landlord_id} — receives Autentique's signed-document
+// notification, verifies the per-landlord HMAC-SHA256 signature, downloads the
+// signed PDF, saves it to the tenant's Google Drive folder, and marks the
+// signature_request completed.
 //
 // Auth: none (public endpoint) — authenticity is established exclusively via the
-//   x-autentique-signature HMAC header (AUTENTIQUE_WEBHOOK_SECRET env var).
+//   x-autentique-signature HMAC header. The signing secret is the per-landlord
+//   `autentique_webhook_secret` looked up from the DB using the landlord_id
+//   path parameter. Each landlord has their own Autentique account and webhook,
+//   so each gets a unique Endpoint Secret (see issue #49).
 //
 // Security contract (specs/SECURITY.md):
 //   - HMAC verification runs BEFORE any payload processing.
 //   - Timing-safe comparison via crypto.timingSafeEqual.
 //   - Invalid HMAC → 401.
+//   - Unknown landlord → 401 (no secret to verify with).
 //   - Service-role Supabase client used (no user JWT available for webhooks).
 //
 // Processing (after returning 200 immediately per DESIGN.md):
-//   1. Verify HMAC-SHA256 signature.
-//   2. Parse payload → extract autentique_document_id and signed_pdf_url.
-//   3. Look up signature_requests by autentique_document_id.
-//   4. Idempotency: if already completed → return 200 immediately.
-//   5. Download signed PDF from the URL in the payload.
-//   6. Resolve tenant → property → current_tenant_folder_id.
-//   7. Get landlord google_refresh_token → obtain fresh access token.
-//   8. Upload PDF to Drive in current_tenant_folder_id.
-//   9. Update signature_requests: status='completed', completed_at=now().
+//   1. Extract landlord_id from the URL path.
+//   2. Look up landlord's autentique_webhook_secret from DB.
+//   3. Verify HMAC-SHA256 signature using that secret.
+//   4. Parse payload → extract autentique_document_id and signed_pdf_url
+//      from `event.data.id` / `event.data.files.signed`.
+//   5. Look up signature_requests by autentique_document_id.
+//   6. Idempotency: if already completed → return 200 immediately.
+//   7. Download signed PDF from the URL in the payload.
+//   8. Resolve tenant → property → current_tenant_folder_id.
+//   9. Get landlord google_refresh_token → obtain fresh access token.
+//  10. Upload PDF to Drive in current_tenant_folder_id.
+//  11. Update signature_requests: status='completed', completed_at=now().
 
-import { requireEnv } from "../../_shared/env.ts";
 import { serviceClient } from "../../_shared/supabase.ts";
 import { refreshGoogleAccessToken } from "../../_shared/google.ts";
+
+// ─── Path parsing ─────────────────────────────────────────────────────────
+
+/**
+ * Extract the landlord_id from the request URL.
+ *
+ * Expected path shapes:
+ *   /functions/v1/webhooks/autentique/{landlord_id}
+ *   /webhooks/autentique/{landlord_id}
+ *
+ * Returns the last path segment if it is a non-empty UUID-shaped string,
+ * otherwise null. We accept any non-empty segment that does not contain
+ * suspicious characters; the actual existence check happens against the DB.
+ */
+function extractLandlordId(req: Request): string | null {
+  let pathname: string;
+  try {
+    pathname = new URL(req.url).pathname;
+  } catch {
+    return null;
+  }
+  // Trim trailing slashes, then take the last segment.
+  const trimmed = pathname.replace(/\/+$/, "");
+  const lastSlash = trimmed.lastIndexOf("/");
+  if (lastSlash < 0) return null;
+  const segment = trimmed.slice(lastSlash + 1);
+  if (!segment) return null;
+  // The base mount path is `.../webhooks/autentique`; if the last segment is
+  // `autentique` it means no landlord_id was supplied.
+  if (segment === "autentique") return null;
+  // UUID v4 shape — 8-4-4-4-12 hex with dashes. Be tolerant of v1/v5 too
+  // (any RFC 4122 UUID); reject anything that doesn't match the shape so
+  // attackers cannot pass arbitrary text into the DB lookup.
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      segment,
+    )
+  ) {
+    return null;
+  }
+  return segment;
+}
 
 // ─── HMAC verification ────────────────────────────────────────────────────
 
@@ -38,6 +87,9 @@ async function verifyHmac(
   secret: string,
 ): Promise<boolean> {
   if (!signatureHeader) return false;
+  // Empty secret can never produce a meaningful HMAC; reject defensively so
+  // a landlord row with a missing/blank secret cannot accept any webhook.
+  if (!secret) return false;
 
   // Import the secret as an HMAC-SHA256 key.
   const encoder = new TextEncoder();
@@ -145,18 +197,36 @@ async function uploadPdfToDrive(params: {
 
 // ─── Webhook payload type ─────────────────────────────────────────────────
 
+/**
+ * Real Autentique `document.finished` payload structure (verified via
+ * webhook.site capture — see issue #49):
+ *
+ *   {
+ *     "event": {
+ *       "type": "document.finished",
+ *       "data": {
+ *         "id": "<uuid>",
+ *         "files": { "signed": "https://api.autentique.com.br/.../assinado.pdf" }
+ *       }
+ *     }
+ *   }
+ */
 interface AutentiqueWebhookPayload {
-  /** Autentique document identifier. */
-  document?: { id?: string; files?: { signed?: string } | null } | null;
-  /** Some payload formats nest the event differently — handled below. */
+  event?: {
+    data?: {
+      id?: string;
+      files?: { signed?: string } | null;
+    } | null;
+  } | null;
   [key: string]: unknown;
 }
 
 /**
  * Extract `autentique_document_id` and `signed_pdf_url` from the webhook
- * payload. Autentique's webhook body structure (best-effort, defensive parsing):
+ * payload. Paths verified from a real `document.finished` capture (issue #49):
  *
- *   { document: { id: "<uuid>", files: { signed: "<url>" } } }
+ *   event.data.id
+ *   event.data.files.signed
  *
  * Returns null for either field if parsing fails — the handler treats missing
  * fields as a malformed payload and returns 200 silently.
@@ -165,8 +235,8 @@ function extractPayloadFields(payload: AutentiqueWebhookPayload): {
   documentId: string | null;
   signedPdfUrl: string | null;
 } {
-  const documentId = payload?.document?.id ?? null;
-  const signedPdfUrl = payload?.document?.files?.signed ?? null;
+  const documentId = payload?.event?.data?.id ?? null;
+  const signedPdfUrl = payload?.event?.data?.files?.signed ?? null;
   return {
     documentId: typeof documentId === "string" ? documentId : null,
     signedPdfUrl: typeof signedPdfUrl === "string" ? signedPdfUrl : null,
@@ -193,8 +263,46 @@ export async function handleAutentiqueWebhook(
     return new Response(null, { status: 200 });
   }
 
+  // Extract landlord_id from the URL path. Without it we have no secret to
+  // verify against, so we cannot authenticate the request → 401.
+  const landlordId = extractLandlordId(req);
+  if (!landlordId) {
+    return new Response(
+      JSON.stringify({
+        error: { code: "UNAUTHORIZED", message: "Invalid signature." },
+      }),
+      { status: 401, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
+  // Service-role client — no user JWT for webhooks (specs/SECURITY.md).
+  const db = serviceClient();
+
+  // Look up the landlord's per-webhook Endpoint Secret. We must do this
+  // BEFORE verifying the HMAC (the secret is the verification key).
+  const { data: landlordRow, error: landlordSecretError } = await db
+    .from("landlords")
+    .select("autentique_webhook_secret")
+    .eq("id", landlordId)
+    .maybeSingle();
+
+  // Treat a missing landlord row or a DB error as 401 — we cannot verify
+  // the signature without a secret, so the request is unauthenticated.
+  // Returning the same 401 for "unknown landlord" and "bad signature"
+  // avoids leaking landlord existence to attackers.
+  if (landlordSecretError || !landlordRow) {
+    return new Response(
+      JSON.stringify({
+        error: { code: "UNAUTHORIZED", message: "Invalid signature." },
+      }),
+      { status: 401, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
+  const webhookSecret = (landlordRow as { autentique_webhook_secret: string })
+    .autentique_webhook_secret;
+
   // Verify HMAC-SHA256 BEFORE any payload processing (specs/SECURITY.md).
-  const webhookSecret = requireEnv("AUTENTIQUE_WEBHOOK_SECRET");
   const signatureHeader = req.headers.get("x-autentique-signature");
 
   const hmacValid = await verifyHmac(
@@ -232,15 +340,14 @@ export async function handleAutentiqueWebhook(
     return new Response(null, { status: 200 });
   }
 
-  // Use service-role client — no user JWT available for webhook handlers.
-  // Approved in specs/SECURITY.md (webhook exception).
-  const db = serviceClient();
-
-  // Look up the signature_request by autentique_document_id.
+  // Look up the signature_request by autentique_document_id. Scoped by
+  // landlord_id so a forged payload using a known document_id from another
+  // landlord cannot trigger this landlord's pipeline.
   const { data: sigRequest, error: sigError } = await db
     .from("signature_requests")
     .select("id, status, tenant_id, landlord_id")
     .eq("autentique_document_id", documentId)
+    .eq("landlord_id", landlordId)
     .maybeSingle();
 
   if (sigError || !sigRequest) {
@@ -306,6 +413,8 @@ export async function handleAutentiqueWebhook(
   const land = landlord as { google_refresh_token: string };
 
   // Download the signed PDF from Autentique.
+  // The signed PDF URL (api.autentique.com.br/documentos/{id}/assinado.pdf)
+  // is publicly accessible — no auth header needed (verified, issue #49).
   let pdfBytes: Uint8Array;
   try {
     const pdfRes = await fetch(signedPdfUrl);

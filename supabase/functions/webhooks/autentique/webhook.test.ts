@@ -1,10 +1,11 @@
-// unit: POST /webhooks/autentique
+// unit: POST /webhooks/autentique/{landlord_id}
 //
 // Tests call handleAutentiqueWebhook() directly. All external calls (Supabase,
 // Drive upload, signed PDF fetch, Google token refresh) are stubbed via
 // globalThis.fetch replacement.
 //
-// No hardcoded secrets — AUTENTIQUE_WEBHOOK_SECRET is read from Deno.env.
+// The per-landlord webhook secret is read from the DB (mocked here via the
+// fetch stub returning a `landlords` row with `autentique_webhook_secret`).
 // All test names are prefixed "unit:" per test naming conventions.
 
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
@@ -13,7 +14,6 @@ import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 Deno.env.set("SUPABASE_URL", "http://localhost:54321");
 Deno.env.set("SUPABASE_ANON_KEY", "test-anon-key");
 Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", "test-service-role-key");
-Deno.env.set("AUTENTIQUE_WEBHOOK_SECRET", "test-webhook-secret-32chars!!");
 Deno.env.set("GOOGLE_CLIENT_ID", "test-client-id");
 Deno.env.set("GOOGLE_CLIENT_SECRET", "test-client-secret");
 
@@ -47,12 +47,13 @@ async function computeHmacSignature(
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
-const WEBHOOK_SECRET = Deno.env.get("AUTENTIQUE_WEBHOOK_SECRET")!;
+const WEBHOOK_SECRET = "test-webhook-secret-32chars!!";
 
 const MOCK_DOC_ID = "autentique-doc-uuid-123";
 const MOCK_SIG_REQUEST_ID = "sig-request-uuid-456";
 const MOCK_TENANT_ID = "tenant-uuid-789";
-const MOCK_LANDLORD_ID = "landlord-uuid-abc";
+// Must be a UUID-shaped string — extractLandlordId() rejects anything else.
+const MOCK_LANDLORD_ID = "11111111-2222-3333-4444-555555555555";
 const MOCK_PROPERTY_ID = "property-uuid-def";
 const MOCK_FOLDER_ID = "drive-folder-id-ghi";
 const MOCK_SIGNED_PDF_URL = "https://cdn.autentique.com.br/signed/doc.pdf";
@@ -60,16 +61,26 @@ const MOCK_REFRESH_TOKEN = "google-refresh-token";
 const MOCK_ACCESS_TOKEN = "google-access-token";
 const MOCK_DRIVE_FILE_ID = "new-drive-file-id";
 
+// Real `document.finished` payload shape (event.data.id / event.data.files.signed).
 const VALID_PAYLOAD = JSON.stringify({
-  document: {
-    id: MOCK_DOC_ID,
-    files: { signed: MOCK_SIGNED_PDF_URL },
+  event: {
+    type: "document.finished",
+    data: {
+      id: MOCK_DOC_ID,
+      files: { signed: MOCK_SIGNED_PDF_URL },
+    },
   },
 });
 
 // ─── Fetch stub builder ───────────────────────────────────────────────────────
 
 type MockFetchOpts = {
+  // Each *Data field uses a sentinel: omit the key (undefined) to get the
+  // default fixture, set to `null` to simulate "no row" (PostgREST returns
+  // null body / maybeSingle returns null), or set to a concrete object to
+  // override the fixture. We cannot use the `??` operator on the option value
+  // because `null` is the "no row" signal — `null ?? default` would
+  // unintentionally fall back to the default.
   sigRequestData?: unknown;
   sigRequestError?: boolean;
   sigRequestStatus?: string;
@@ -77,6 +88,12 @@ type MockFetchOpts = {
   tenantError?: boolean;
   propertyData?: unknown;
   propertyError?: boolean;
+  // The "landlords" lookup happens twice in the handler:
+  //   1. First to fetch `autentique_webhook_secret` BEFORE HMAC verification.
+  //   2. Later to fetch `google_refresh_token` for Drive upload.
+  // The mock distinguishes by which column is requested in the URL.
+  landlordSecretData?: unknown;
+  landlordSecretError?: boolean;
   landlordData?: unknown;
   landlordError?: boolean;
   signatureUpdateError?: boolean;
@@ -84,6 +101,12 @@ type MockFetchOpts = {
   googleTokenOk?: boolean;
   driveUploadOk?: boolean;
 };
+
+// Treat `undefined` as "no override → use default fixture", and any other
+// value (including `null`) as the explicit value the mock should return.
+function pick<T>(override: unknown, defaultValue: T): unknown {
+  return override === undefined ? defaultValue : override;
+}
 
 function buildMockFetch(opts: MockFetchOpts = {}) {
   const {
@@ -94,6 +117,8 @@ function buildMockFetch(opts: MockFetchOpts = {}) {
     tenantError = false,
     propertyData,
     propertyError = false,
+    landlordSecretData,
+    landlordSecretError = false,
     landlordData,
     landlordError = false,
     pdfDownloadOk = true,
@@ -115,6 +140,10 @@ function buildMockFetch(opts: MockFetchOpts = {}) {
 
   const defaultProperty = {
     current_tenant_folder_id: MOCK_FOLDER_ID,
+  };
+
+  const defaultLandlordSecret = {
+    autentique_webhook_secret: WEBHOOK_SECRET,
   };
 
   const defaultLandlord = {
@@ -142,7 +171,7 @@ function buildMockFetch(opts: MockFetchOpts = {}) {
             { status: 500 },
           );
         }
-        const data = sigRequestData ?? defaultSigRequest;
+        const data = pick(sigRequestData, defaultSigRequest);
         // maybeSingle returns the object directly or null
         return new Response(JSON.stringify(data), {
           status: 200,
@@ -168,7 +197,7 @@ function buildMockFetch(opts: MockFetchOpts = {}) {
           { status: 500 },
         );
       }
-      const data = tenantData ?? defaultTenant;
+      const data = pick(tenantData, defaultTenant);
       return new Response(JSON.stringify(data), { status: 200 });
     }
 
@@ -180,19 +209,33 @@ function buildMockFetch(opts: MockFetchOpts = {}) {
           { status: 500 },
         );
       }
-      const data = propertyData ?? defaultProperty;
+      const data = pick(propertyData, defaultProperty);
       return new Response(JSON.stringify(data), { status: 200 });
     }
 
-    // PostgREST: landlords lookup
+    // PostgREST: landlords lookup. The handler queries this table TWICE — once
+    // to read the webhook secret (BEFORE HMAC verification) and once later to
+    // read the Google refresh token. Distinguish by the `select` query param.
     if (url.includes("/rest/v1/landlords")) {
+      const isSecretQuery = url.includes("autentique_webhook_secret");
+      if (isSecretQuery) {
+        if (landlordSecretError) {
+          return new Response(
+            JSON.stringify({ message: "db error", code: "PGRST000" }),
+            { status: 500 },
+          );
+        }
+        const data = pick(landlordSecretData, defaultLandlordSecret);
+        return new Response(JSON.stringify(data), { status: 200 });
+      }
+      // Otherwise it is the refresh-token lookup later in the flow.
       if (landlordError) {
         return new Response(
           JSON.stringify({ message: "db error", code: "PGRST000" }),
           { status: 500 },
         );
       }
-      const data = landlordData ?? defaultLandlord;
+      const data = pick(landlordData, defaultLandlord);
       return new Response(JSON.stringify(data), { status: 200 });
     }
 
@@ -253,9 +296,14 @@ async function makeWebhookRequest(
     signature?: string | null;
     useValidSignature?: boolean;
     secret?: string;
+    landlordId?: string;
   } = {},
 ): Promise<Request> {
-  const { useValidSignature = true, secret = WEBHOOK_SECRET } = opts;
+  const {
+    useValidSignature = true,
+    secret = WEBHOOK_SECRET,
+    landlordId = MOCK_LANDLORD_ID,
+  } = opts;
 
   let signatureHeader: string | undefined;
   if (opts.signature !== undefined) {
@@ -271,7 +319,14 @@ async function makeWebhookRequest(
     headers["x-autentique-signature"] = signatureHeader;
   }
 
-  return new Request("http://localhost/webhooks/autentique", {
+  // Build the path with the landlord_id segment. If landlordId is empty
+  // string we omit the trailing slash to exercise the "missing landlord_id"
+  // path-parsing branch.
+  const path = landlordId
+    ? `/webhooks/autentique/${landlordId}`
+    : `/webhooks/autentique`;
+
+  return new Request(`http://localhost${path}`, {
     method: "POST",
     headers,
     body,
@@ -279,67 +334,186 @@ async function makeWebhookRequest(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// Path parsing — landlord_id extraction
+// ═══════════════════════════════════════════════════════════════════════════════
+
+Deno.test("unit: webhook — 401 when landlord_id missing from URL path", async () => {
+  const originalFetch = globalThis.fetch;
+  // Even if fetch were called, no DB lookup should happen — but guard anyway.
+  globalThis.fetch = buildMockFetch({}) as typeof fetch;
+  try {
+    const req = await makeWebhookRequest(VALID_PAYLOAD, { landlordId: "" });
+    const res = await handleAutentiqueWebhook(req);
+    assertEquals(res.status, 401);
+    const body = await res.json() as Record<string, unknown>;
+    assertEquals(
+      (body.error as Record<string, string>).code,
+      "UNAUTHORIZED",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("unit: webhook — 401 when landlord_id is not a UUID", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({}) as typeof fetch;
+  try {
+    const req = await makeWebhookRequest(VALID_PAYLOAD, {
+      landlordId: "not-a-uuid",
+    });
+    const res = await handleAutentiqueWebhook(req);
+    assertEquals(res.status, 401);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("unit: webhook — 401 when landlord_id not found in DB", async () => {
+  const originalFetch = globalThis.fetch;
+  // landlordSecretData=null → maybeSingle returns no row → 401 (same response
+  // as bad signature so we do not leak landlord existence).
+  globalThis.fetch = buildMockFetch({
+    landlordSecretData: null,
+  }) as typeof fetch;
+  try {
+    const req = await makeWebhookRequest(VALID_PAYLOAD);
+    const res = await handleAutentiqueWebhook(req);
+    assertEquals(res.status, 401);
+    const body = await res.json() as Record<string, unknown>;
+    assertEquals(
+      (body.error as Record<string, string>).code,
+      "UNAUTHORIZED",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("unit: webhook — 401 when DB lookup for landlord secret fails", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({
+    landlordSecretError: true,
+  }) as typeof fetch;
+  try {
+    const req = await makeWebhookRequest(VALID_PAYLOAD);
+    const res = await handleAutentiqueWebhook(req);
+    assertEquals(res.status, 401);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // HMAC verification
 // ═══════════════════════════════════════════════════════════════════════════════
 
 Deno.test("unit: webhook — 401 when x-autentique-signature header is missing", async () => {
-  const req = new Request("http://localhost/webhooks/autentique", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: VALID_PAYLOAD,
-  });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({}) as typeof fetch;
+  try {
+    const req = new Request(
+      `http://localhost/webhooks/autentique/${MOCK_LANDLORD_ID}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: VALID_PAYLOAD,
+      },
+    );
 
-  const res = await handleAutentiqueWebhook(req);
-  assertEquals(res.status, 401);
-  const body = await res.json() as Record<string, unknown>;
-  assertEquals(
-    (body.error as Record<string, string>).code,
-    "UNAUTHORIZED",
-  );
+    const res = await handleAutentiqueWebhook(req);
+    assertEquals(res.status, 401);
+    const body = await res.json() as Record<string, unknown>;
+    assertEquals(
+      (body.error as Record<string, string>).code,
+      "UNAUTHORIZED",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 Deno.test("unit: webhook — 401 when HMAC signature is invalid", async () => {
-  const req = await makeWebhookRequest(VALID_PAYLOAD, {
-    signature:
-      "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
-  });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({}) as typeof fetch;
+  try {
+    const req = await makeWebhookRequest(VALID_PAYLOAD, {
+      signature:
+        "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+    });
 
-  const res = await handleAutentiqueWebhook(req);
-  assertEquals(res.status, 401);
-  const body = await res.json() as Record<string, unknown>;
-  assertEquals(
-    (body.error as Record<string, string>).code,
-    "UNAUTHORIZED",
-  );
+    const res = await handleAutentiqueWebhook(req);
+    assertEquals(res.status, 401);
+    const body = await res.json() as Record<string, unknown>;
+    assertEquals(
+      (body.error as Record<string, string>).code,
+      "UNAUTHORIZED",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 Deno.test("unit: webhook — 401 when HMAC is computed with a different secret", async () => {
-  const req = await makeWebhookRequest(VALID_PAYLOAD, {
-    useValidSignature: true,
-    secret: "wrong-secret-completely-different",
-  });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({}) as typeof fetch;
+  try {
+    const req = await makeWebhookRequest(VALID_PAYLOAD, {
+      useValidSignature: true,
+      secret: "wrong-secret-completely-different",
+    });
 
-  const res = await handleAutentiqueWebhook(req);
-  assertEquals(res.status, 401);
+    const res = await handleAutentiqueWebhook(req);
+    assertEquals(res.status, 401);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 Deno.test("unit: webhook — 401 when signature header has wrong length", async () => {
-  const req = await makeWebhookRequest(VALID_PAYLOAD, {
-    signature: "tooshort",
-  });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({}) as typeof fetch;
+  try {
+    const req = await makeWebhookRequest(VALID_PAYLOAD, {
+      signature: "tooshort",
+    });
 
-  const res = await handleAutentiqueWebhook(req);
-  assertEquals(res.status, 401);
+    const res = await handleAutentiqueWebhook(req);
+    assertEquals(res.status, 401);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 Deno.test("unit: webhook — 401 when signature header is not valid hex", async () => {
-  const req = await makeWebhookRequest(VALID_PAYLOAD, {
-    signature:
-      "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
-  });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({}) as typeof fetch;
+  try {
+    const req = await makeWebhookRequest(VALID_PAYLOAD, {
+      signature:
+        "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    });
 
-  const res = await handleAutentiqueWebhook(req);
-  assertEquals(res.status, 401);
+    const res = await handleAutentiqueWebhook(req);
+    assertEquals(res.status, 401);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("unit: webhook — 401 when landlord row has empty webhook secret", async () => {
+  const originalFetch = globalThis.fetch;
+  // Empty secret cannot produce a meaningful HMAC; treat as unauthenticated.
+  globalThis.fetch = buildMockFetch({
+    landlordSecretData: { autentique_webhook_secret: "" },
+  }) as typeof fetch;
+  try {
+    const req = await makeWebhookRequest(VALID_PAYLOAD);
+    const res = await handleAutentiqueWebhook(req);
+    assertEquals(res.status, 401);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -413,26 +587,69 @@ Deno.test("unit: webhook — 200 silent when autentique_document_id not found in
 // ═══════════════════════════════════════════════════════════════════════════════
 
 Deno.test("unit: webhook — 200 silent when payload is not valid JSON", async () => {
-  const badPayload = "not json at all {{";
-  const req = await makeWebhookRequest(badPayload);
-  const res = await handleAutentiqueWebhook(req);
-  assertEquals(res.status, 200);
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({}) as typeof fetch;
+  try {
+    const badPayload = "not json at all {{";
+    const req = await makeWebhookRequest(badPayload);
+    const res = await handleAutentiqueWebhook(req);
+    assertEquals(res.status, 200);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
-Deno.test("unit: webhook — 200 silent when payload is missing document.id", async () => {
-  const noId = JSON.stringify({
-    document: { files: { signed: MOCK_SIGNED_PDF_URL } },
-  });
-  const req = await makeWebhookRequest(noId);
-  const res = await handleAutentiqueWebhook(req);
-  assertEquals(res.status, 200);
+Deno.test("unit: webhook — 200 silent when payload is missing event.data.id", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({}) as typeof fetch;
+  try {
+    const noId = JSON.stringify({
+      event: { data: { files: { signed: MOCK_SIGNED_PDF_URL } } },
+    });
+    const req = await makeWebhookRequest(noId);
+    const res = await handleAutentiqueWebhook(req);
+    assertEquals(res.status, 200);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 Deno.test("unit: webhook — 200 silent when payload is missing signed PDF URL", async () => {
-  const noUrl = JSON.stringify({ document: { id: MOCK_DOC_ID } });
-  const req = await makeWebhookRequest(noUrl);
-  const res = await handleAutentiqueWebhook(req);
-  assertEquals(res.status, 200);
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({}) as typeof fetch;
+  try {
+    const noUrl = JSON.stringify({
+      event: { data: { id: MOCK_DOC_ID } },
+    });
+    const req = await makeWebhookRequest(noUrl);
+    const res = await handleAutentiqueWebhook(req);
+    assertEquals(res.status, 200);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("unit: webhook — 200 silent when payload uses legacy `document.id` path (no `event` wrapper)", async () => {
+  // Defence against silently regressing back to the old (wrong) parse paths:
+  // a payload shaped like `{ document: { id, files: { signed } } }` must NOT
+  // be accepted as containing a document id/signed_pdf_url.
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({}) as typeof fetch;
+  try {
+    const legacy = JSON.stringify({
+      document: {
+        id: MOCK_DOC_ID,
+        files: { signed: MOCK_SIGNED_PDF_URL },
+      },
+    });
+    const req = await makeWebhookRequest(legacy);
+    const res = await handleAutentiqueWebhook(req);
+    // Auth passes (HMAC is valid against the body), but no documentId is
+    // extracted → silent 200 (no DB lookup for the doc).
+    assertEquals(res.status, 200);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -533,14 +750,18 @@ Deno.test("unit: DB update failure after Drive upload returns 500", async () => 
 
 Deno.test("unit: webhook — 405 when method is GET", async () => {
   const res = await handleAutentiqueWebhook(
-    new Request("http://localhost/webhooks/autentique", { method: "GET" }),
+    new Request(`http://localhost/webhooks/autentique/${MOCK_LANDLORD_ID}`, {
+      method: "GET",
+    }),
   );
   assertEquals(res.status, 405);
 });
 
 Deno.test("unit: webhook — 405 when method is DELETE", async () => {
   const res = await handleAutentiqueWebhook(
-    new Request("http://localhost/webhooks/autentique", { method: "DELETE" }),
+    new Request(`http://localhost/webhooks/autentique/${MOCK_LANDLORD_ID}`, {
+      method: "DELETE",
+    }),
   );
   assertEquals(res.status, 405);
 });

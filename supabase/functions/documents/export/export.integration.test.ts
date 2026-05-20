@@ -84,6 +84,7 @@ async function createTestLandlord(): Promise<string> {
     whatsapp: "+5511999999999",
     google_refresh_token: MOCK_REFRESH_TOKEN,
     autentique_api_key: "test-autentique-key",
+    autentique_webhook_secret: "test-autentique-webhook-secret",
     root_folder_id: "root-folder-id",
     templates_folder_id: "templates-folder-id",
     payment_reminder_frequency: "weekly",

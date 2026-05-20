@@ -67,6 +67,7 @@ async function seedLandlord(userId: string): Promise<void> {
     whatsapp: "+5511999990000",
     google_refresh_token: "mock-refresh-token",
     autentique_api_key: "mock-autentique-key",
+    autentique_webhook_secret: "mock-autentique-webhook-secret",
     root_folder_id: "root-folder-id",
     templates_folder_id: "templates-folder-id",
   });
