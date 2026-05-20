@@ -140,7 +140,7 @@ export async function handleRemind(req: Request): Promise<Response> {
     return errorResponse(404, "TENANT_NOT_FOUND", "Inquilino não encontrado.");
   }
 
-  const ten = tenant as {
+  const ten = tenant as unknown as {
     id: string;
     name: string;
     whatsapp: string | null;
