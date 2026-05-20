@@ -17,6 +17,10 @@ coordena assinaturas e acompanha pagamentos — tudo pelo chat.
 
 See `SYSTEM_PROMPT.md` — paste the full contents into the Instructions field.
 
+## Knowledge files
+
+Upload `gpt/contract-rules.md` as a Knowledge file in the Custom GPT configuration panel (Knowledge → Upload files). The Instructions field references it by name (`contract-rules.md`); the GPT will retrieve the derivation and formatting rules from it at runtime. Re-upload the file whenever `gpt/contract-rules.md` changes.
+
 ## Conversation Starters
 
 - Gerar contrato para um inquilino
