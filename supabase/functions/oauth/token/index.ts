@@ -133,7 +133,10 @@ export async function handleOAuthToken(req: Request): Promise<Response> {
   if (googleRefreshToken) {
     const svc = serviceClient();
     await svc.auth.admin.updateUserById(data.session.user.id, {
-      app_metadata: { google_refresh_token: googleRefreshToken },
+      user_metadata: {
+        ...(data.session.user.user_metadata ?? {}),
+        google_refresh_token: googleRefreshToken,
+      },
     });
   }
 
