@@ -135,7 +135,7 @@ function buildMockFetch(opts: MockFetchOpts) {
       );
     }
 
-    // Google Drive — list files (for upsertGuiaDePlaceholders)
+    // Google Drive — list files (for upsertPlaceholderList)
     if (
       url.includes("www.googleapis.com/drive/v3/files") &&
       method === "GET"
@@ -174,10 +174,14 @@ function makePostRequest(body?: unknown, jwt?: string): Request {
     "Content-Type": "application/json",
   };
   if (jwt) headers["Authorization"] = `Bearer ${jwt}`;
+  // Body is always an array; wrap a single object if needed.
+  const payload = body === undefined
+    ? undefined
+    : Array.isArray(body) ? body : [body];
   return new Request("http://localhost/placeholders", {
     method: "POST",
     headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body: payload !== undefined ? JSON.stringify(payload) : undefined,
   });
 }
 
@@ -186,10 +190,7 @@ function makeDeleteRequest(name: string, jwt?: string): Request {
   if (jwt) headers["Authorization"] = `Bearer ${jwt}`;
   return new Request(
     `http://localhost/placeholders/${encodeURIComponent(name)}`,
-    {
-      method: "DELETE",
-      headers,
-    },
+    { method: "DELETE", headers },
   );
 }
 
@@ -280,6 +281,26 @@ Deno.test("integration: POST /placeholders — 400 when name is missing", async 
   }
 });
 
+// ─── 400 — empty array ───────────────────────────────────────────────────
+
+Deno.test("integration: POST /placeholders — 400 when body is empty array", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({}) as typeof fetch;
+  try {
+    const res = await handlePlaceholders(
+      makePostRequest([], "valid.jwt"),
+    );
+    assertEquals(res.status, 400);
+    const body = await jsonBody(res) as Record<string, unknown>;
+    assertEquals(
+      (body.error as Record<string, string>).code,
+      "INVALID_REQUEST",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 // ─── 409 — duplicate name ─────────────────────────────────────────────────
 
 Deno.test("integration: POST /placeholders — 409 when name already exists", async () => {
@@ -302,7 +323,7 @@ Deno.test("integration: POST /placeholders — 409 when name already exists", as
 
 // ─── 201 — happy path ────────────────────────────────────────────────────
 
-Deno.test("integration: POST /placeholders — 201 creates placeholder and returns id", async () => {
+Deno.test("integration: POST /placeholders — 201 creates placeholders and returns ids", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -311,7 +332,7 @@ Deno.test("integration: POST /placeholders — 201 creates placeholder and retur
     );
     assertEquals(res.status, 201);
     const body = await jsonBody(res) as Record<string, unknown>;
-    assertEquals(typeof body.id, "string");
+    assertEquals(Array.isArray(body.ids), true);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -337,7 +358,7 @@ Deno.test("integration: POST /placeholders — 201 accepts optional fields", asy
     );
     assertEquals(res.status, 201);
     const body = await jsonBody(res) as Record<string, unknown>;
-    assertEquals(typeof body.id, "string");
+    assertEquals(Array.isArray(body.ids), true);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -373,7 +394,7 @@ Deno.test("integration: DELETE /placeholders/:name — 401 when JWT is invalid",
   }
 });
 
-// ─── 204 — happy path (existing placeholder) ─────────────────────────────
+// ─── 204 — happy path ────────────────────────────────────────────────────
 
 Deno.test("integration: DELETE /placeholders/:name — 204 when placeholder exists", async () => {
   const originalFetch = globalThis.fetch;
@@ -388,14 +409,14 @@ Deno.test("integration: DELETE /placeholders/:name — 204 when placeholder exis
   }
 });
 
-// ─── 204 — idempotent (non-existent placeholder) ─────────────────────────
+// ─── 204 — idempotent ────────────────────────────────────────────────────
 
 Deno.test("integration: DELETE /placeholders/:name — 204 even when placeholder does not exist (idempotent)", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
     const res = await handlePlaceholders(
-      makeDeleteRequest("nonexistent placeholder", "valid.jwt"),
+      makeDeleteRequest("nonexistent", "valid.jwt"),
     );
     assertEquals(res.status, 204);
   } finally {
@@ -405,7 +426,7 @@ Deno.test("integration: DELETE /placeholders/:name — 204 even when placeholder
 
 // ─── 204 — URL-encoded name ───────────────────────────────────────────────
 
-Deno.test("integration: DELETE /placeholders/:name — 204 decodes URL-encoded placeholder name", async () => {
+Deno.test("integration: DELETE /placeholders/:name — 204 decodes URL-encoded name", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
