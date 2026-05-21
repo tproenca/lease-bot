@@ -52,11 +52,11 @@ Upload `gpt/contract-rules.md` as a Knowledge file in the Custom GPT configurati
 > hosted on the same domain as the API (`<your-domain>/functions/v1`). They
 > forward requests to Google's real OAuth endpoints
 > (`accounts.google.com/o/oauth2/v2/auth` and `oauth2.googleapis.com/token`).
-> This satisfies OpenAI's requirement that the Authorization URL, Token URL,
-> and API server hostname all share the same root domain. For production, replace
-> `<your-domain>` with your Supabase project URL
+> This setup only works when the Authorization URL, Token URL, and API server
+> are all served from the same root domain in the GPT action config. For
+> production, replace `<your-domain>` with your Supabase project URL
 > (e.g. `https://<project-ref>.supabase.co`). For local development, use your
-> ngrok URL.
+> ngrok URL. If the domain changes, update all three URLs together.
 
 ## Notes for developer
 
@@ -64,6 +64,8 @@ Upload `gpt/contract-rules.md` as a Knowledge file in the Custom GPT configurati
   your Supabase project: `https://<project-ref>.supabase.co/functions/v1`
 - The GPT is shared via a single link with all landlords — do not create separate
   GPTs per landlord
+- The onboarding prompt must point users to `/setup` on the same action domain;
+  do not depend on the model to infer a base URL at runtime
 - Update the Instructions field whenever `gpt/SYSTEM_PROMPT.md` changes
 
 ### Local development
