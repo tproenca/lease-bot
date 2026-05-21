@@ -80,8 +80,10 @@ async function handleSetupPage(req: Request): Promise<Response> {
   }
 
   if (landlord) {
-    const guiaDocId = new URL(req.url).searchParams.get("guia") ?? undefined;
-    return htmlResponse(renderPostSetupHtml(guiaDocId));
+    const searchParams = new URL(req.url).searchParams;
+    const guiaDocId = searchParams.get("guia") ?? undefined;
+    const contratoDocId = searchParams.get("contrato") ?? undefined;
+    return htmlResponse(renderPostSetupHtml(guiaDocId, contratoDocId));
   }
   return htmlResponse(
     renderPostAuthHtml({

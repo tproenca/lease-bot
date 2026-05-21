@@ -23,11 +23,11 @@
 
 import { strictCorsHeaders } from "../../_shared/cors.ts";
 import {
-  createDriveDocIfNotExists,
+  createSampleContract,
   createDriveFolder,
+  createPlaceholderGuide,
   getDriveFolder,
   refreshGoogleAccessToken,
-  upsertGuiaDePlaceholders,
 } from "../../_shared/google.ts";
 import { validateAutentiqueApiKey } from "../../_shared/autentique.ts";
 import {
@@ -48,6 +48,56 @@ interface SetupCompleteBody {
   whatsapp?: unknown;
   autentique_api_key?: unknown;
   autentique_webhook_secret?: unknown;
+}
+
+type StarterDocsResult = {
+  guiaDocId?: string;
+  contratoDocId?: string;
+};
+
+type StarterDocsDeps = {
+  createPlaceholderGuide: typeof createPlaceholderGuide;
+  createSampleContract: typeof createSampleContract;
+  warn: typeof console.warn;
+};
+
+export async function createStarterDocsForSetup(
+  params: {
+    accessToken: string;
+    templatesFolderId: string;
+    logPrefix?: string;
+  },
+  deps: StarterDocsDeps = {
+    createPlaceholderGuide,
+    createSampleContract,
+    warn: console.warn,
+  },
+): Promise<StarterDocsResult> {
+  const result: StarterDocsResult = {};
+  const logPrefix = params.logPrefix ?? "setup/complete";
+
+  try {
+    result.guiaDocId = await deps.createPlaceholderGuide({
+      accessToken: params.accessToken,
+      templatesFolderId: params.templatesFolderId,
+    });
+  } catch (err) {
+    deps.warn(`${logPrefix}: Guia de Placeholders creation failed`, err);
+  }
+
+  try {
+    result.contratoDocId = await deps.createSampleContract({
+      accessToken: params.accessToken,
+      templatesFolderId: params.templatesFolderId,
+    });
+  } catch (err) {
+    deps.warn(
+      `${logPrefix}: Contrato de Locação Residencial (Exemplo) creation failed`,
+      err,
+    );
+  }
+
+  return result;
 }
 
 export async function handleSetupComplete(req: Request): Promise<Response> {
@@ -249,32 +299,16 @@ export async function handleSetupComplete(req: Request): Promise<Response> {
         .eq("id", user.id)
         .maybeSingle();
       if (existing) {
-        // Also (re-)create starter docs so the response always includes guia_doc_id.
-        let guiaDocIdRetry: string | undefined;
-        try {
-          const [guiaId] = await Promise.all([
-            upsertGuiaDePlaceholders({
-              accessToken,
-              templatesFolderId: existing.templates_folder_id as string,
-              placeholders: [],
-            }),
-            createDriveDocIfNotExists({
-              accessToken,
-              name: "Contrato de Locação Residencial (Modelo)",
-              content: await getSampleTemplateContent(),
-              parentFolderId: existing.templates_folder_id as string,
-            }),
-          ]);
-          guiaDocIdRetry = guiaId;
-        } catch (err) {
-          console.warn(
-            "setup/complete 23505 path: Drive doc creation failed",
-            err,
-          );
-        }
+        // Also (re-)create starter docs so the response can link what worked.
+        const starterDocs = await createStarterDocsForSetup({
+          accessToken,
+          templatesFolderId: existing.templates_folder_id as string,
+          logPrefix: "setup/complete 23505 path",
+        });
         return okResp({
           templates_folder_id: existing.templates_folder_id,
-          guia_doc_id: guiaDocIdRetry,
+          guia_doc_id: starterDocs.guiaDocId,
+          contrato_doc_id: starterDocs.contratoDocId,
         });
       }
     }
@@ -287,44 +321,17 @@ export async function handleSetupComplete(req: Request): Promise<Response> {
 
   // 8. Create starter docs in the Templates folder.
   //    Non-fatal: if Drive calls fail here, the landlord row already exists and
-  //    setup is complete — we just won't have a guia_doc_id to link to.
-  let guiaDocId: string | undefined;
-  try {
-    const [guiaId] = await Promise.all([
-      upsertGuiaDePlaceholders({
-        accessToken,
-        templatesFolderId,
-        placeholders: [], // empty on first setup; updated as placeholders are registered
-      }),
-      createDriveDocIfNotExists({
-        accessToken,
-        name: "Contrato de Locação Residencial (Modelo)",
-        content: await getSampleTemplateContent(),
-        parentFolderId: templatesFolderId,
-      }),
-    ]);
-    guiaDocId = guiaId;
-  } catch (err) {
-    // Drive doc creation is best-effort — don't block setup completion.
-    console.warn("setup/complete: Drive starter doc creation failed", err);
-  }
+  //    setup is complete — we just won't have a doc ID to link to.
+  const starterDocs = await createStarterDocsForSetup({
+    accessToken,
+    templatesFolderId,
+  });
 
   return okResp({
     templates_folder_id: templatesFolderId,
-    guia_doc_id: guiaDocId,
+    guia_doc_id: starterDocs.guiaDocId,
+    contrato_doc_id: starterDocs.contratoDocId,
   });
-}
-
-// ─── Sample template ───────────────────────────────────────────────────────
-
-let _sampleTemplateContent: string | undefined;
-async function getSampleTemplateContent(): Promise<string> {
-  if (_sampleTemplateContent === undefined) {
-    _sampleTemplateContent = await Deno.readTextFile(
-      new URL("./sample-template.txt", import.meta.url),
-    );
-  }
-  return _sampleTemplateContent;
 }
 
 // ─── Input sanitization helpers ────────────────────────────────────────────
