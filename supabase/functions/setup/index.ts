@@ -279,8 +279,9 @@ function renderPostAuthHtml(
       var rootInput = document.getElementById('rootFolderId');
       var apiKey = rootInput.getAttribute('data-api-key');
       var clientId = rootInput.getAttribute('data-client-id');
-      var pickerInited = false;
       var oauthToken = null;
+      var pickerReady = false;
+      var tokenClient = null;
 
       function showError(msg) { errorEl.textContent = msg || ''; }
 
@@ -297,15 +298,24 @@ function renderPostAuthHtml(
         });
       }
 
-      function loadPicker() {
-        if (pickerInited) return;
-        pickerInited = true;
+      if (apiKey && clientId) {
         var s1 = document.createElement('script');
         s1.src = 'https://accounts.google.com/gsi/client';
+        s1.onload = function() {
+          tokenClient = google.accounts.oauth2.initTokenClient({
+            client_id: clientId,
+            scope: 'https://www.googleapis.com/auth/drive.readonly',
+            callback: function(resp) {
+              if (resp.error) { showError('Falha ao autorizar o Picker.'); return; }
+              oauthToken = resp.access_token;
+              openPicker();
+            }
+          });
+        };
         document.head.appendChild(s1);
         var s2 = document.createElement('script');
         s2.src = 'https://apis.google.com/js/api.js';
-        s2.onload = function() { gapi.load('picker', function() {}); };
+        s2.onload = function() { gapi.load('picker', function() { pickerReady = true; }); };
         document.head.appendChild(s2);
       }
 
@@ -314,16 +324,10 @@ function renderPostAuthHtml(
           showError('Picker não configurado — informe o ID da pasta manualmente.');
           return;
         }
-        loadPicker();
-        var tokenClient = google.accounts.oauth2.initTokenClient({
-          client_id: clientId,
-          scope: 'https://www.googleapis.com/auth/drive.readonly',
-          callback: function(resp) {
-            if (resp.error) { showError('Falha ao autorizar o Picker.'); return; }
-            oauthToken = resp.access_token;
-            openPicker();
-          }
-        });
+        if (!tokenClient || !pickerReady) {
+          showError('Picker ainda carregando, tente novamente em instantes.');
+          return;
+        }
         tokenClient.requestAccessToken();
       });
 
