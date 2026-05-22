@@ -9,10 +9,8 @@ Closes #
 
 ---
 
-## Doc Review — Round [N] — [✅ APPROVED / ❌ REJECTED / 🚨 ESCALATED]
+## Doc Review — [✅ APPROVED / ❌ REJECTED / 🚨 ESCALATED]
 
-**Reviewed by:** doc-reviewer
-**Issue:** #
 **Round:** [N of 3]
 
 ### Files reviewed

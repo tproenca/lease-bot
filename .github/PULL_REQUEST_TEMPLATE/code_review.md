@@ -16,10 +16,8 @@ Closes #
 
 ---
 
-## Code Review — Round [N] — [✅ APPROVED / ❌ REJECTED / 🚨 ESCALATED]
+## Code Review — [✅ APPROVED / ❌ REJECTED / 🚨 ESCALATED]
 
-**Reviewed by:** issue-reviewer
-**Issue:** #
 **Round:** [N of 3]
 
 ### What was tested
