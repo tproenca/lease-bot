@@ -16,7 +16,7 @@ import {
 } from "../_shared/supabase.ts";
 import {
   refreshGoogleAccessToken,
-  upsertGuiaDePlaceholders,
+  upsertPlaceholderList,
 } from "../_shared/google.ts";
 
 // Allow DELETE in addition to the default methods.
@@ -241,7 +241,7 @@ async function regenerateGuia(
       )
       .order("name");
 
-    await upsertGuiaDePlaceholders({
+    await upsertPlaceholderList({
       accessToken,
       templatesFolderId: (landlord as Record<string, unknown>)
         .templates_folder_id as string,

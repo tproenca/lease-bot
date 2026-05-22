@@ -382,7 +382,10 @@ function renderPostAuthHtml(
 </html>`;
 }
 
-function renderPostSetupHtml(guiaDocId?: string): string {
+function renderPostSetupHtml(
+  guiaDocId?: string,
+  _contratoDocId?: string,
+): string {
   const guiaUrl = guiaDocId
     ? `https://docs.google.com/document/d/${escapeHtml(guiaDocId)}/edit`
     : null;
