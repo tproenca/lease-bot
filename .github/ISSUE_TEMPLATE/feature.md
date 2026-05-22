@@ -1,31 +1,44 @@
 ---
 name: Feature
-about: New functionality or enhancement
-title: ""
-labels: ""
-assignees: ""
+about: New feature or enhancement
+labels: feature
 ---
 
 ## Description
-[What needs to be done and why]
+<!-- What needs to be built and why -->
 
 ## Acceptance Criteria
+<!-- Specific, testable conditions that must be met -->
 - [ ]
 - [ ]
 
 ## Technical Notes
-[Constraints, gotchas, or approach hints]
+<!-- Architecture decisions, constraints, or implementation hints -->
 
 ## Dependencies
-Blocked by: #N (or None)
+<!-- Issues that must be completed before this one -->
+Blocked by: #
 
-## Agent Automation
+---
 
-### Files in Scope
-- `src/`
-
-### Files Out of Scope
--
+## AI Automation
 
 ### Size Estimate
-Size: Medium (Small | Medium | Large — split if Large)
+<!-- XS: trivial change, 1 file | S: small, 2-3 files | M: moderate, several files | L: large, cross-layer | XL: major, consider splitting -->
+
+### Implementation Notes
+<!-- Specific hints for the implementor agent -->
+<!-- e.g. which files to touch, patterns to follow, APIs to use -->
+
+### Review Checklist
+<!-- What the reviewer agent must explicitly verify -->
+- [ ]
+- [ ]
+
+### Doc Impact
+<!-- Which specs/ or docs/ files are affected by this change -->
+<!-- e.g. specs/payment.md > Pix section -->
+
+### Test Requirements
+<!-- Specific tests that must exist or pass -->
+<!-- e.g. unit test for QR generation, integration test for webhook -->
