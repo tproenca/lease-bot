@@ -17,6 +17,11 @@ coordena assinaturas e acompanha pagamentos — tudo pelo chat.
 
 See `SYSTEM_PROMPT.md` — paste the full contents into the Instructions field.
 
+Before uploading, replace the `{SETUP_URL}` placeholder with the actual setup URL
+for your deployment (e.g. `https://<project-ref>.supabase.co/functions/v1/setup`
+for production, or your ngrok URL for local development). The placeholder appears
+twice in the prompt — replace both occurrences.
+
 ## Knowledge files
 
 Upload `gpt/contract-rules.md` as a Knowledge file in the Custom GPT configuration panel (Knowledge → Upload files). The Instructions field references it by name (`contract-rules.md`); the GPT will retrieve the derivation and formatting rules from it at runtime. Re-upload the file whenever `gpt/contract-rules.md` changes.
