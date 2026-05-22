@@ -50,6 +50,7 @@ interface Span {
 }
 
 function parseInline(s: string): { text: string; runs: InlineRun[] } {
+  s = s.trim(); // trim input so run offsets into `text` stay valid
   const runs: InlineRun[] = [];
   let text = "";
   let i = 0;
@@ -90,7 +91,7 @@ function parseInline(s: string): { text: string; runs: InlineRun[] } {
     }
     text += s[i]; i++;
   }
-  return { text: text.trim(), runs };
+  return { text, runs };
 }
 
 function stripInline(s: string): string {
@@ -182,6 +183,7 @@ type DocContent = {
 
 async function docsGet(docId: string, auth: AuthHeaders): Promise<DocContent> {
   const r = await fetch(`https://docs.googleapis.com/v1/documents/${docId}`, auth);
+  if (!r.ok) throw new Error(`docs_get_failed_${r.status}: ${await r.text()}`);
   return r.json();
 }
 
@@ -281,6 +283,9 @@ export async function applyDocStyle(
       if (cellInserts.length > 0) await docsBatch(docId, auth, cellInserts);
     }
 
+    // Re-read after cell inserts so pos reflects the true document end including
+    // all cell content. This means consecutive tables (no text between them)
+    // correctly target the position after the fully-populated first table.
     const snapAfter = await docsGet(docId, auth);
     pos = snapAfter.body.content[snapAfter.body.content.length - 1].endIndex - 1;
   }

@@ -66,12 +66,9 @@ const result = await createStarterDocsForSetup({ accessToken, templatesFolderId 
 
 console.log("\n✅ Done!");
 console.log("  guia_doc_id:    ", result.guiaDocId ?? "failed");
-console.log("  lista_doc_id:   ", result.listaDocId ?? "failed");
 console.log("  exemplo_doc_id: ", result.contratoDocId ?? "failed");
 
 if (result.guiaDocId)
   console.log(`\n  → https://docs.google.com/document/d/${result.guiaDocId}/edit`);
-if (result.listaDocId)
-  console.log(`  → https://docs.google.com/document/d/${result.listaDocId}/edit`);
 if (result.contratoDocId)
   console.log(`  → https://docs.google.com/document/d/${result.contratoDocId}/edit`);
