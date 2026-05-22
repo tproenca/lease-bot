@@ -53,3 +53,5 @@ app-idea.md
 scratch.md
 NOTES.md
 TODO.md
+.claude/scratchpad-*.md
+.claude/spec-review-*.md
