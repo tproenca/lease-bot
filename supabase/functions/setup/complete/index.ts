@@ -199,8 +199,9 @@ export async function handleSetupComplete(req: Request): Promise<Response> {
   }
 
   // 3. Check Google refresh token before making any external API calls.
+  //    Stored in app_metadata (admin-only) by /auth/callback and /oauth/token.
   const refreshToken =
-    (user.user_metadata.google_refresh_token as string | undefined) ??
+    (user.app_metadata.google_refresh_token as string | undefined) ??
       undefined;
   if (!refreshToken) {
     return errResp(
