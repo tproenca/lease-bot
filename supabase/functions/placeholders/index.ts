@@ -164,6 +164,13 @@ async function handleCreatePlaceholder(req: Request): Promise<Response> {
       "Erro ao salvar os placeholders. Tente novamente.",
     );
   }
+  if (!inserted) {
+    return errorResponse(
+      500,
+      "DB_ERROR",
+      "Erro ao salvar os placeholders. Tente novamente.",
+    );
+  }
 
   const ids = (inserted as Array<{ id: string }>).map((r) => r.id);
 
