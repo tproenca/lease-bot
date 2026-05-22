@@ -58,7 +58,7 @@ Deno.env.set(
 Deno.env.set("SUPABASE_URL", SUPABASE_URL);
 Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", SERVICE_ROLE_KEY);
 
-const { refreshGoogleAccessToken } = await import(
+const { refreshGoogleAccessToken, upsertPlaceholderList } = await import(
   "../supabase/functions/_shared/google.ts"
 );
 const { createStarterDocsForSetup } = await import(
@@ -74,7 +74,7 @@ const result = await createStarterDocsForSetup({
   templatesFolderId,
 });
 
-console.log("\n✅ Done!");
+console.log("\n✅ Starter docs done!");
 console.log("  guia_doc_id:    ", result.guiaDocId ?? "failed");
 console.log("  exemplo_doc_id: ", result.contratoDocId ?? "failed");
 
@@ -88,3 +88,38 @@ if (result.contratoDocId) {
     `  → https://docs.google.com/document/d/${result.contratoDocId}/edit`,
   );
 }
+
+// ── 4. Upsert Lista de Placeholders ──────────────────────────────────────────
+console.log("\n🚀 Upserting Lista de Placeholders...\n");
+
+const SAMPLE_PLACEHOLDERS = [
+  { name: "nome_locatario", required: true, format: "texto", case: "title" },
+  { name: "nome_locador", required: true, format: "texto", case: "title" },
+  { name: "endereco_imovel", required: true, format: "texto", case: null },
+  { name: "valor_aluguel", required: true, format: "moeda", case: null },
+  {
+    name: "data_inicio",
+    required: true,
+    format: "data",
+    case: null,
+  },
+  {
+    name: "duracao_contrato",
+    required: false,
+    format: "número",
+    case: null,
+    default: "12",
+  },
+];
+
+const listaDocId = await upsertPlaceholderList({
+  accessToken,
+  templatesFolderId,
+  placeholders: SAMPLE_PLACEHOLDERS,
+});
+
+console.log("\n✅ Lista de Placeholders done!");
+console.log("  lista_doc_id:   ", listaDocId);
+console.log(
+  `\n  → https://docs.google.com/document/d/${listaDocId}/edit`,
+);
