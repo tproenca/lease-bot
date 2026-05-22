@@ -177,7 +177,9 @@ function makePostRequest(body?: unknown, jwt?: string): Request {
   // Body is always an array; wrap a single object if needed.
   const payload = body === undefined
     ? undefined
-    : Array.isArray(body) ? body : [body];
+    : Array.isArray(body)
+    ? body
+    : [body];
   return new Request("http://localhost/placeholders", {
     method: "POST",
     headers,
