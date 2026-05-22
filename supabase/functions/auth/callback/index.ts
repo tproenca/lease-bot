@@ -7,20 +7,18 @@
 //   3. Create a Supabase Auth session by passing Google's id_token to
 //      Supabase's signInWithIdToken — this binds auth.uid() to the landlord's
 //      Google identity.
-//   4. Persist the Google refresh_token into the auth user's metadata so
-//      Edge Functions can later mint Drive access tokens. Per
-//      specs/SECURITY.md the refresh token is encrypted at rest by Supabase
-//      Vault — we never log it.
+//   4. Persist the Google refresh_token in app_metadata (admin-only, not
+//      user-editable) via the service-role admin API so Edge Functions can
+//      later mint Drive access tokens. We never log the token.
 //   5. Set a session cookie (so the server-rendered /setup page can detect
 //      auth state) and redirect to /setup.
 //
 // This file is kept under `supabase/functions/auth/callback/` per issue 1.2;
 // the deployable function is `supabase/functions/auth/` and routes internally.
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../../_shared/cors.ts";
 import { errorResponse } from "../../_shared/errors.ts";
-import { publicFunctionsBaseUrl, requireEnv } from "../../_shared/env.ts";
+import { publicFunctionsBaseUrl } from "../../_shared/env.ts";
 import {
   exchangeCodeForTokens,
   googleRedirectUri,
@@ -34,6 +32,7 @@ import {
   serializeCookie,
   SESSION_COOKIE_TTL_SECONDS,
 } from "../../_shared/cookies.ts";
+import { anonClient, serviceClient } from "../../_shared/supabase.ts";
 
 export async function handleAuthCallback(req: Request): Promise<Response> {
   if (req.method !== "GET") {
@@ -103,12 +102,7 @@ export async function handleAuthCallback(req: Request): Promise<Response> {
   }
 
   // 3. Create Supabase Auth session via id_token.
-  const anonClient = createClient(
-    requireEnv("SUPABASE_URL"),
-    requireEnv("SUPABASE_ANON_KEY"),
-    { auth: { persistSession: false, autoRefreshToken: false } },
-  );
-  const { data: signInData, error: signInError } = await anonClient.auth
+  const { data: signInData, error: signInError } = await anonClient().auth
     .signInWithIdToken({
       provider: "google",
       token: tokens.id_token,
@@ -121,25 +115,24 @@ export async function handleAuthCallback(req: Request): Promise<Response> {
     );
   }
 
-  // 4. Persist the Google refresh token in auth user metadata via the
-  //    service-role admin API. We never log the token.
-  const adminClient = createClient(
-    requireEnv("SUPABASE_URL"),
-    requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
-    { auth: { persistSession: false, autoRefreshToken: false } },
-  );
-  const { error: updateError } = await adminClient.auth.admin.updateUserById(
-    signInData.user.id,
-    {
-      user_metadata: {
-        ...(signInData.user.user_metadata ?? {}),
-        google_refresh_token: tokens.refresh_token,
+  // 4. Persist the Google refresh token in app_metadata via the service-role
+  //    admin API. app_metadata is admin-only (not user-editable) and is
+  //    returned by getUser() so /setup/complete can read it without a separate
+  //    DB query. We never log the token.
+  const { error: updateError } = await serviceClient().auth.admin
+    .updateUserById(
+      signInData.user.id,
+      {
+        // No spread needed: Supabase's admin API performs a shallow merge, so
+        // existing app_metadata keys (e.g. `provider`, `providers`) are preserved.
+        app_metadata: {
+          google_refresh_token: tokens.refresh_token,
+        },
       },
-    },
-  );
+    );
   if (updateError) {
     return errorResponse(
-      500,
+      502,
       "REFRESH_TOKEN_PERSIST_FAILED",
       "Não foi possível salvar o token de acesso. Tente novamente.",
     );

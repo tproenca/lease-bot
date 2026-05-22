@@ -55,7 +55,12 @@ export function extractBearer(req: Request): string | null {
 export async function getAuthenticatedUser(
   jwt: string,
 ): Promise<
-  { id: string; email: string; user_metadata: Record<string, unknown> } | null
+  {
+    id: string;
+    email: string;
+    user_metadata: Record<string, unknown>;
+    app_metadata: Record<string, unknown>;
+  } | null
 > {
   const client = createClient(
     requireEnv("SUPABASE_URL"),
@@ -68,5 +73,6 @@ export async function getAuthenticatedUser(
     id: data.user.id,
     email: data.user.email,
     user_metadata: (data.user.user_metadata ?? {}) as Record<string, unknown>,
+    app_metadata: (data.user.app_metadata ?? {}) as Record<string, unknown>,
   };
 }

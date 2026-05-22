@@ -4,6 +4,10 @@
 // endpoints need. Other endpoints (issues 1.4+) will extend this module.
 
 import { requireEnv } from "./env.ts";
+import { applyDocStyle } from "./docs-style.ts";
+import { PLACEHOLDER_GUIDE_CONTENT } from "./placeholder-guide-content.ts";
+import { PLACEHOLDER_LIST_TEMPLATE } from "./placeholder-list-content.ts";
+import { SAMPLE_CONTRACT_CONTENT } from "./sample-contract-content.ts";
 
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
@@ -358,16 +362,78 @@ export async function createDriveDocIfNotExists(params: {
   return json.id;
 }
 
+/** Find a Google Doc by name in a folder, or create an empty one. Returns the doc ID and whether it was newly created. */
+async function ensureDoc(params: {
+  accessToken: string;
+  name: string;
+  parentFolderId: string;
+}): Promise<{ id: string; created: boolean }> {
+  const files = await listDriveFilesInFolder({
+    accessToken: params.accessToken,
+    folderId: params.parentFolderId,
+  });
+  const existing = files.find((f) => f.name === params.name);
+  if (existing) return { id: existing.id, created: false };
+
+  const res = await fetch(`${DRIVE_FILES_URL}?fields=id`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${params.accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      name: params.name,
+      mimeType: "application/vnd.google-apps.document",
+      parents: [params.parentFolderId],
+    }),
+  });
+  if (!res.ok) throw new Error(`drive_create_doc_failed_${res.status}`);
+  const json = await res.json() as { id: string };
+  return { id: json.id, created: true };
+}
+
 /**
- * Upsert the "Guia de Placeholders" Google Doc in the landlord's Templates
- * Drive folder. Creates it if absent; updates content if present.
+ * Create (or re-style) the "Guia de Placeholders" Google Doc in the Templates
+ * folder. Creates the doc if absent; applies rich styling in both cases.
  * Returns the doc ID.
- *
- * The document is a plain-text file (uploaded as text/plain; Google converts it
- * to a Google Doc via the mimeType hint in the metadata part). Content is sorted
- * alphabetically by placeholder name.
  */
-export async function upsertGuiaDePlaceholders(params: {
+export async function createPlaceholderGuide(params: {
+  accessToken: string;
+  templatesFolderId: string;
+}): Promise<string> {
+  const { id: docId } = await ensureDoc({
+    accessToken: params.accessToken,
+    name: "Guia de Placeholders",
+    parentFolderId: params.templatesFolderId,
+  });
+  await applyDocStyle(docId, params.accessToken, PLACEHOLDER_GUIDE_CONTENT);
+  return docId;
+}
+
+/**
+ * Create (or re-style) the "Contrato de Locação Residencial (Exemplo)" Google Doc
+ * in the Templates folder. Creates the doc if absent; applies rich styling in both
+ * cases. Returns the doc ID.
+ */
+export async function createSampleContract(params: {
+  accessToken: string;
+  templatesFolderId: string;
+}): Promise<string> {
+  const { id: docId } = await ensureDoc({
+    accessToken: params.accessToken,
+    name: "Contrato de Locação Residencial (Exemplo)",
+    parentFolderId: params.templatesFolderId,
+  });
+  await applyDocStyle(docId, params.accessToken, SAMPLE_CONTRACT_CONTENT);
+  return docId;
+}
+
+/**
+ * Create or overwrite the "Lista de Placeholders" Google Doc in the Templates
+ * folder. Always rewrites content from the current placeholder list so the doc
+ * stays in sync with the DB. Returns the doc ID.
+ */
+export async function upsertPlaceholderList(params: {
   accessToken: string;
   templatesFolderId: string;
   placeholders: Array<{
@@ -382,80 +448,42 @@ export async function upsertGuiaDePlaceholders(params: {
 }): Promise<string> {
   const { accessToken, templatesFolderId, placeholders } = params;
 
-  // 1. List files in the Templates folder to find "Guia de Placeholders".
-  const driveFiles = await listDriveFilesInFolder({
+  const { id: docId } = await ensureDoc({
     accessToken,
-    folderId: templatesFolderId,
+    name: "Lista de Placeholders",
+    parentFolderId: templatesFolderId,
   });
-  const guia = driveFiles.find((f) => f.name === "Guia de Placeholders");
 
-  // 2. Build plain-text content sorted by placeholder name.
+  await applyDocStyle(
+    docId,
+    accessToken,
+    buildPlaceholderListContent(placeholders),
+  );
+  return docId;
+}
+
+/** Build the markdown content for the Lista de Placeholders document. */
+export function buildPlaceholderListContent(
+  placeholders: Array<{
+    name: string;
+    required: boolean;
+    format: string;
+    case?: string | null;
+    default?: string | null;
+    derived_from?: string | null;
+  }>,
+): string {
   const sorted = [...placeholders].sort((a, b) => a.name.localeCompare(b.name));
-  const lines: string[] = ["Guia de Placeholders", ""];
-  for (const p of sorted) {
-    let line = `{{${p.name}}} — format: ${p.format} | required: ${
-      p.required ? "sim" : "não"
-    }`;
-    if (p.case != null) line += ` | case: ${p.case}`;
-    if (p.default != null) line += ` | default: ${p.default}`;
-    if (p.derived_from != null) line += ` | derived_from: ${p.derived_from}`;
-    lines.push(line);
-  }
-  const content = lines.join("\n");
-
-  if (guia) {
-    // 3a. File exists — update content in-place via media upload PATCH.
-    const patchUrl = `https://www.googleapis.com/upload/drive/v3/files/${
-      encodeURIComponent(guia.id)
-    }?uploadType=media`;
-    const res = await fetch(patchUrl, {
-      method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "text/plain",
-      },
-      body: content,
-    });
-    if (!res.ok) {
-      throw new Error(`drive_guia_update_failed_${res.status}`);
-    }
-    return guia.id;
-  } else {
-    // 3b. File not found — create via multipart upload.
-    const boundary = "guia_boundary_lease_assistant";
-    const metadata = JSON.stringify({
-      name: "Guia de Placeholders",
-      mimeType: "application/vnd.google-apps.document",
-      parents: [templatesFolderId],
-    });
-    const body = [
-      `--${boundary}`,
-      "Content-Type: application/json; charset=UTF-8",
-      "",
-      metadata,
-      `--${boundary}`,
-      "Content-Type: text/plain; charset=UTF-8",
-      "",
-      content,
-      `--${boundary}--`,
-    ].join("\r\n");
-
-    const createUrl =
-      `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id`;
-    const res = await fetch(createUrl, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": `multipart/related; boundary=${boundary}`,
-      },
-      body,
-    });
-    if (!res.ok) {
-      throw new Error(`drive_guia_create_failed_${res.status}`);
-    }
-    const json = await res.json() as { id: string };
-    return json.id;
-  }
+  const rows = sorted.map((p) => {
+    const req = p.required ? "sim" : "não";
+    const caseVal = p.case ?? "—";
+    const base = p.derived_from ?? "—";
+    const def = p.default ?? "—";
+    return `| {{${p.name}}} | ${p.format} | ${req} | ${caseVal} | ${base} | ${def} |`;
+  });
+  return rows.length > 0
+    ? `${PLACEHOLDER_LIST_TEMPLATE}\n${rows.join("\n")}`
+    : PLACEHOLDER_LIST_TEMPLATE;
 }
 
 /**
