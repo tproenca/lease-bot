@@ -132,14 +132,13 @@ export async function handleAuthCallback(req: Request): Promise<Response> {
     signInData.user.id,
     {
       user_metadata: {
-        ...(signInData.user.user_metadata ?? {}),
         google_refresh_token: tokens.refresh_token,
       },
     },
   );
   if (updateError) {
     return errorResponse(
-      500,
+      502,
       "REFRESH_TOKEN_PERSIST_FAILED",
       "Não foi possível salvar o token de acesso. Tente novamente.",
     );
