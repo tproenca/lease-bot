@@ -7,10 +7,9 @@
 //   3. Create a Supabase Auth session by passing Google's id_token to
 //      Supabase's signInWithIdToken — this binds auth.uid() to the landlord's
 //      Google identity.
-//   4. Persist the Google refresh_token into the auth user's metadata so
-//      Edge Functions can later mint Drive access tokens. Per
-//      specs/SECURITY.md the refresh token is encrypted at rest by Supabase
-//      Vault — we never log it.
+//   4. Persist the Google refresh_token in app_metadata (admin-only, not
+//      user-editable) via the service-role admin API so Edge Functions can
+//      later mint Drive access tokens. We never log the token.
 //   5. Set a session cookie (so the server-rendered /setup page can detect
 //      auth state) and redirect to /setup.
 //

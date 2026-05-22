@@ -134,6 +134,8 @@ export async function handleOAuthToken(req: Request): Promise<Response> {
   if (googleRefreshToken) {
     const svc = serviceClient();
     await svc.auth.admin.updateUserById(data.session.user.id, {
+      // No spread needed: Supabase's admin API performs a shallow merge, so
+      // existing app_metadata keys (e.g. `provider`, `providers`) are preserved.
       app_metadata: { google_refresh_token: googleRefreshToken },
     });
   }
