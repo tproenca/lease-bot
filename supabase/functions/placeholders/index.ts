@@ -35,12 +35,11 @@ export async function handlePlaceholders(req: Request): Promise<Response> {
 
   const url = new URL(req.url);
   const pathParts = url.pathname.replace(/^\/+/, "").split("/").filter(Boolean);
-  // pathParts: ["placeholders"] → POST, ["placeholders", ":name"] → DELETE
   const lastPart = pathParts[pathParts.length - 1];
   const hasName = lastPart !== "placeholders" && lastPart !== "" &&
     pathParts.length >= 2;
 
-  if (req.method === "POST" && !hasName) {
+  if (req.method === "POST") {
     return handleCreatePlaceholder(req);
   }
 
@@ -72,7 +71,7 @@ async function handleCreatePlaceholder(req: Request): Promise<Response> {
     );
   }
 
-  // 2. Parse body.
+  // 2. Parse body — always an array.
   let body: unknown;
   try {
     body = await req.json();
@@ -80,39 +79,55 @@ async function handleCreatePlaceholder(req: Request): Promise<Response> {
     return errorResponse(400, "INVALID_JSON", "Corpo da requisição inválido.");
   }
 
-  const {
-    name,
-    required,
-    format,
-    case: caseField,
-    default: defaultField,
-    derived_from,
-    derived_formula,
-  } = (body ?? {}) as Record<string, unknown>;
-
-  // 3. Validate.
-  if (typeof name !== "string" || name.trim() === "") {
+  if (!Array.isArray(body) || body.length === 0) {
     return errorResponse(
       400,
       "INVALID_REQUEST",
-      "O campo 'name' é obrigatório.",
-    );
-  }
-  if (!VALID_FORMATS.has(format as string)) {
-    return errorResponse(
-      400,
-      "INVALID_FORMAT",
-      `Formato inválido: '${
-        String(format)
-      }'. Use text, date, cpf, integer ou currency.`,
+      "Envie um array com pelo menos um placeholder.",
     );
   }
 
-  // 4. Insert placeholder row.
-  const db = userClient(jwt);
-  const { data: placeholder, error: insertError } = await db
-    .from("placeholders")
-    .insert({
+  // 3. Validate each item and build rows.
+  const rows: Array<{
+    landlord_id: string;
+    name: string;
+    required: boolean;
+    format: string;
+    case: string | null;
+    default: string | null;
+    derived_from: string | null;
+    derived_formula: string | null;
+  }> = [];
+
+  for (const item of body) {
+    const {
+      name,
+      required,
+      format,
+      case: caseField,
+      default: defaultField,
+      derived_from,
+      derived_formula,
+    } = (item ?? {}) as Record<string, unknown>;
+
+    if (typeof name !== "string" || name.trim() === "") {
+      return errorResponse(
+        400,
+        "INVALID_REQUEST",
+        "O campo 'name' é obrigatório em todos os placeholders.",
+      );
+    }
+    if (!VALID_FORMATS.has(format as string)) {
+      return errorResponse(
+        400,
+        "INVALID_FORMAT",
+        `Formato inválido: '${
+          String(format)
+        }'. Use text, date, cpf, integer ou currency.`,
+      );
+    }
+
+    rows.push({
       landlord_id: user.id,
       name: name.trim(),
       required: required === true || required === undefined
@@ -123,41 +138,46 @@ async function handleCreatePlaceholder(req: Request): Promise<Response> {
       default: (defaultField ?? null) as string | null,
       derived_from: (derived_from ?? null) as string | null,
       derived_formula: (derived_formula ?? null) as string | null,
-    })
-    .select("id")
-    .single();
+    });
+  }
+
+  // 4. Bulk insert.
+  const db = userClient(jwt);
+  const { data: inserted, error: insertError } = await db
+    .from("placeholders")
+    .insert(rows)
+    .select("id");
 
   if (insertError) {
-    // Postgres unique constraint violation
     if (
       (insertError as unknown as Record<string, unknown>).code === "23505"
     ) {
       return errorResponse(
         409,
         "DUPLICATE_PLACEHOLDER",
-        "Já existe um placeholder com esse nome.",
+        "Um ou mais placeholders já existem com esse nome.",
       );
     }
     return errorResponse(
       500,
       "DB_ERROR",
-      "Erro ao salvar o placeholder. Tente novamente.",
+      "Erro ao salvar os placeholders. Tente novamente.",
     );
   }
-  if (!placeholder) {
+  if (!inserted) {
     return errorResponse(
       500,
       "DB_ERROR",
-      "Erro ao salvar o placeholder. Tente novamente.",
+      "Erro ao salvar os placeholders. Tente novamente.",
     );
   }
 
-  const placeholderId = (placeholder as Record<string, unknown>).id as string;
+  const ids = (inserted as Array<{ id: string }>).map((r) => r.id);
 
-  // 5. Regenerate Guia de Placeholders (best-effort — do not fail the request).
-  await regenerateGuia(db, user.id);
+  // 5. Create Lista if absent (best-effort).
+  await regeneratePlaceholderList(db, user.id);
 
-  return new Response(JSON.stringify({ id: placeholderId }), {
+  return new Response(JSON.stringify({ ids }), {
     status: 201,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
@@ -205,8 +225,8 @@ async function handleDeletePlaceholder(
     );
   }
 
-  // 3. Regenerate Guia de Placeholders (best-effort).
-  await regenerateGuia(db, user.id);
+  // 3. Regenerate Lista (best-effort).
+  await regeneratePlaceholderList(db, user.id);
 
   return new Response(null, {
     status: 204,
@@ -214,9 +234,9 @@ async function handleDeletePlaceholder(
   });
 }
 
-// ─── Guia regeneration helper ────────────────────────────────────────────────
+// ─── Lista regeneration helper ───────────────────────────────────────────────
 
-async function regenerateGuia(
+async function regeneratePlaceholderList(
   // deno-lint-ignore no-explicit-any
   db: any,
   userId: string,
@@ -256,7 +276,7 @@ async function regenerateGuia(
       }>,
     });
   } catch {
-    // Best-effort: Guia regeneration failure does not fail the API response.
+    // Best-effort: Lista regeneration failure does not fail the API response.
   }
 }
 
