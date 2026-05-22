@@ -6,7 +6,7 @@ Regras de derivação e formatação de placeholders para geração de contratos
 
 ## Regras de derivação
 
-- **Data de término:** data de início + duração em meses (ex: 01/06/2026 + 30 meses = 30/11/2028)
+- **Data de término:** data de início + duração em meses (ex: 01/06/2026 + 30 meses = 31/11/2028 → ajuste para último dia do mês anterior: 30/11/2028)
 - **Valor por extenso:** converta o valor numérico para texto (ex: R$ 2.500,00 → "dois mil e quinhentos reais")
 - **CPF formatado:** aplique a máscara XXX.XXX.XXX-XX
 - **Data por extenso:** ex: "01 de junho de 2026"
