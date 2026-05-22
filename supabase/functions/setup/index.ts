@@ -82,8 +82,7 @@ async function handleSetupPage(req: Request): Promise<Response> {
   if (landlord) {
     const searchParams = new URL(req.url).searchParams;
     const guiaDocId = searchParams.get("guia") ?? undefined;
-    const contratoDocId = searchParams.get("contrato") ?? undefined;
-    return htmlResponse(renderPostSetupHtml(guiaDocId, contratoDocId));
+    return htmlResponse(renderPostSetupHtml(guiaDocId));
   }
   return htmlResponse(
     renderPostAuthHtml({
@@ -382,10 +381,7 @@ function renderPostAuthHtml(
 </html>`;
 }
 
-function renderPostSetupHtml(
-  guiaDocId?: string,
-  _contratoDocId?: string,
-): string {
+function renderPostSetupHtml(guiaDocId?: string): string {
   const guiaUrl = guiaDocId
     ? `https://docs.google.com/document/d/${escapeHtml(guiaDocId)}/edit`
     : null;
