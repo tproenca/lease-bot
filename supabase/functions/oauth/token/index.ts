@@ -125,18 +125,16 @@ export async function handleOAuthToken(req: Request): Promise<Response> {
     );
   }
 
-  // Store the Google refresh token in user metadata so /setup/complete can
-  // refresh a Google access token to validate Drive folders. Google only
-  // returns a refresh_token on first authorization, so we only update when
-  // present — subsequent logins leave the stored token intact.
+  // Store the Google refresh token in app_metadata so /setup/complete can
+  // refresh a Google access token to validate Drive folders. app_metadata is
+  // admin-only (not user-editable). Google only returns a refresh_token on
+  // first authorization, so we only update when present — subsequent logins
+  // leave the stored token intact.
   const googleRefreshToken = googleData.refresh_token as string | undefined;
   if (googleRefreshToken) {
     const svc = serviceClient();
     await svc.auth.admin.updateUserById(data.session.user.id, {
-      user_metadata: {
-        ...(data.session.user.user_metadata ?? {}),
-        google_refresh_token: googleRefreshToken,
-      },
+      app_metadata: { google_refresh_token: googleRefreshToken },
     });
   }
 

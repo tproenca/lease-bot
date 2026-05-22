@@ -121,8 +121,10 @@ export async function handleAuthCallback(req: Request): Promise<Response> {
     );
   }
 
-  // 4. Persist the Google refresh token in auth user metadata via the
-  //    service-role admin API. We never log the token.
+  // 4. Persist the Google refresh token in app_metadata via the service-role
+  //    admin API. app_metadata is admin-only (not user-editable) and is
+  //    returned by getUser() so /setup/complete can read it without a separate
+  //    DB query. We never log the token.
   const adminClient = createClient(
     requireEnv("SUPABASE_URL"),
     requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
@@ -131,7 +133,7 @@ export async function handleAuthCallback(req: Request): Promise<Response> {
   const { error: updateError } = await adminClient.auth.admin.updateUserById(
     signInData.user.id,
     {
-      user_metadata: {
+      app_metadata: {
         google_refresh_token: tokens.refresh_token,
       },
     },
