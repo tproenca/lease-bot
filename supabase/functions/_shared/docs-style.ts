@@ -18,9 +18,9 @@ function pt(n: number) {
 }
 
 const TABLE_HEADER_BG = hexRgb("#595959"); // dark grey header
-const TABLE_BAND_BG   = hexRgb("#F2F2F2"); // light grey zebra rows
-const WHITE           = hexRgb("#FFFFFF");
-const BLACK           = hexRgb("#000000");
+const TABLE_BAND_BG = hexRgb("#F2F2F2"); // light grey zebra rows
+const WHITE = hexRgb("#FFFFFF");
+const BLACK = hexRgb("#000000");
 
 // ── Markdown parser ───────────────────────────────────────────────────────────
 
@@ -61,7 +61,8 @@ function parseInline(s: string): { text: string; runs: InlineRun[] } {
         const start = text.length;
         text += s.slice(i + 2, close);
         runs.push({ start, end: text.length, bold: true });
-        i = close + 2; continue;
+        i = close + 2;
+        continue;
       }
     }
     if (s[i] === "`") {
@@ -70,7 +71,8 @@ function parseInline(s: string): { text: string; runs: InlineRun[] } {
         const start = text.length;
         text += s.slice(i + 1, close);
         runs.push({ start, end: text.length, code: true });
-        i = close + 1; continue;
+        i = close + 1;
+        continue;
       }
     }
     if (s[i] === "*" && !s.startsWith("**", i)) {
@@ -79,17 +81,23 @@ function parseInline(s: string): { text: string; runs: InlineRun[] } {
         const start = text.length;
         text += s.slice(i + 1, close);
         runs.push({ start, end: text.length, italic: true });
-        i = close + 1; continue;
+        i = close + 1;
+        continue;
       }
     }
     if (s[i] === "[") {
       const textEnd = s.indexOf("]", i);
       if (textEnd !== -1 && s[textEnd + 1] === "(") {
         const urlEnd = s.indexOf(")", textEnd + 2);
-        if (urlEnd !== -1) { text += s.slice(i + 1, textEnd); i = urlEnd + 1; continue; }
+        if (urlEnd !== -1) {
+          text += s.slice(i + 1, textEnd);
+          i = urlEnd + 1;
+          continue;
+        }
       }
     }
-    text += s[i]; i++;
+    text += s[i];
+    i++;
   }
   return { text, runs };
 }
@@ -115,47 +123,75 @@ export function parseMarkdown(md: string): Block[] {
     const line = lines[i];
     if (line.startsWith("# ")) {
       const { text, runs } = parseInline(line.slice(2));
-      blocks.push({ kind: "title", text, runs }); i++; continue;
+      blocks.push({ kind: "title", text, runs });
+      i++;
+      continue;
     }
     if (line.startsWith("## ")) {
       const { text, runs } = parseInline(line.slice(3));
-      blocks.push({ kind: "h1", text, runs }); i++; continue;
+      blocks.push({ kind: "h1", text, runs });
+      i++;
+      continue;
     }
     if (line.startsWith("### ")) {
       const { text, runs } = parseInline(line.slice(4));
-      blocks.push({ kind: "h2", text, runs }); i++; continue;
+      blocks.push({ kind: "h2", text, runs });
+      i++;
+      continue;
     }
     if (line.startsWith("> ")) {
       const { text, runs } = parseInline(line.slice(2));
-      blocks.push({ kind: "blockquote", text, runs }); i++; continue;
+      blocks.push({ kind: "blockquote", text, runs });
+      i++;
+      continue;
     }
     if (line.startsWith("|")) {
       const tableLines: string[] = [];
-      while (i < lines.length && lines[i].startsWith("|")) { tableLines.push(lines[i]); i++; }
+      while (i < lines.length && lines[i].startsWith("|")) {
+        tableLines.push(lines[i]);
+        i++;
+      }
       const [headerLine, , ...dataLines] = tableLines;
-      blocks.push({ kind: "table", headers: parseTableRow(headerLine), rows: dataLines.map(parseTableRow) });
+      blocks.push({
+        kind: "table",
+        headers: parseTableRow(headerLine),
+        rows: dataLines.map(parseTableRow),
+      });
       continue;
     }
     const olMatch = line.match(/^(\d+)\. (.+)/);
     if (olMatch) {
       const { text, runs } = parseInline(olMatch[2]);
-      blocks.push({ kind: "list_item", text, runs, index: parseInt(olMatch[1]) }); i++; continue;
+      blocks.push({
+        kind: "list_item",
+        text,
+        runs,
+        index: parseInt(olMatch[1]),
+      });
+      i++;
+      continue;
     }
     if (line.trim() === "") {
       let count = 0;
-      while (i < lines.length && lines[i].trim() === "") { i++; count++; }
+      while (i < lines.length && lines[i].trim() === "") {
+        i++;
+        count++;
+      }
       if (count >= 2) blocks.push({ kind: "spacer" });
       continue;
     }
     const { text, runs } = parseInline(line);
-    blocks.push({ kind: "paragraph", text, runs }); i++;
+    blocks.push({ kind: "paragraph", text, runs });
+    i++;
   }
   return blocks;
 }
 
 // ── Docs API helpers ──────────────────────────────────────────────────────────
 
-type AuthHeaders = { headers: { Authorization: string; "Content-Type": string } };
+type AuthHeaders = {
+  headers: { Authorization: string; "Content-Type": string };
+};
 
 type DocContent = {
   body: {
@@ -166,14 +202,22 @@ type DocContent = {
             content: Array<{
               startIndex: number;
               endIndex: number;
-              paragraph: { elements: Array<{ startIndex: number; endIndex: number }> };
+              paragraph: {
+                elements: Array<{ startIndex: number; endIndex: number }>;
+              };
             }>;
           }>;
         }>;
         startIndex: number;
       };
       paragraph?: {
-        elements: Array<{ textRun?: { content: string }; startIndex: number; endIndex: number }>;
+        elements: Array<
+          {
+            textRun?: { content: string };
+            startIndex: number;
+            endIndex: number;
+          }
+        >;
       };
       startIndex: number;
       endIndex: number;
@@ -182,18 +226,30 @@ type DocContent = {
 };
 
 async function docsGet(docId: string, auth: AuthHeaders): Promise<DocContent> {
-  const r = await fetch(`https://docs.googleapis.com/v1/documents/${docId}`, auth);
+  const r = await fetch(
+    `https://docs.googleapis.com/v1/documents/${docId}`,
+    auth,
+  );
   if (!r.ok) throw new Error(`docs_get_failed_${r.status}: ${await r.text()}`);
   return r.json();
 }
 
-async function docsBatch(docId: string, auth: AuthHeaders, requests: unknown[]): Promise<void> {
-  const r = await fetch(`https://docs.googleapis.com/v1/documents/${docId}:batchUpdate`, {
-    method: "POST",
-    ...auth,
-    body: JSON.stringify({ requests }),
-  });
-  if (!r.ok) throw new Error(`docs_batchUpdate_failed_${r.status}: ${await r.text()}`);
+async function docsBatch(
+  docId: string,
+  auth: AuthHeaders,
+  requests: unknown[],
+): Promise<void> {
+  const r = await fetch(
+    `https://docs.googleapis.com/v1/documents/${docId}:batchUpdate`,
+    {
+      method: "POST",
+      ...auth,
+      body: JSON.stringify({ requests }),
+    },
+  );
+  if (!r.ok) {
+    throw new Error(`docs_batchUpdate_failed_${r.status}: ${await r.text()}`);
+  }
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -244,8 +300,15 @@ export async function applyDocStyle(
     }
     if (block.kind !== "table") {
       const content = block.text + "\n";
-      textBatch.push({ insertText: { location: { index: pos }, text: content } });
-      spans.push({ start: pos, end: pos + content.length, kind: block.kind, runs: block.runs });
+      textBatch.push({
+        insertText: { location: { index: pos }, text: content },
+      });
+      spans.push({
+        start: pos,
+        end: pos + content.length,
+        kind: block.kind,
+        runs: block.runs,
+      });
       pos += content.length;
       continue;
     }
@@ -261,7 +324,9 @@ export async function applyDocStyle(
     }]);
 
     const snap = await docsGet(docId, auth);
-    const tblEntry = snap.body.content.find((b) => b.table && b.startIndex >= pos);
+    const tblEntry = snap.body.content.find((b) =>
+      b.table && b.startIndex >= pos
+    );
     if (tblEntry?.table) {
       const allRows = [block.headers, ...block.rows];
       const cellInserts: unknown[] = [];
@@ -271,13 +336,19 @@ export async function applyDocStyle(
           if (!cell) continue;
           const cellStart = cell.content[0]?.paragraph.elements[0]?.startIndex;
           if (cellStart != null) {
-            cellInserts.push({ insertText: { location: { index: cellStart }, text: allRows[ri][ci] } });
+            cellInserts.push({
+              insertText: {
+                location: { index: cellStart },
+                text: allRows[ri][ci],
+              },
+            });
           }
         }
       }
       cellInserts.sort((a, b) => {
         const idx = (r: unknown) =>
-          (r as { insertText: { location: { index: number } } }).insertText.location.index;
+          (r as { insertText: { location: { index: number } } }).insertText
+            .location.index;
         return idx(b) - idx(a);
       });
       if (cellInserts.length > 0) await docsBatch(docId, auth, cellInserts);
@@ -287,7 +358,8 @@ export async function applyDocStyle(
     // all cell content. This means consecutive tables (no text between them)
     // correctly target the position after the fully-populated first table.
     const snapAfter = await docsGet(docId, auth);
-    pos = snapAfter.body.content[snapAfter.body.content.length - 1].endIndex - 1;
+    pos = snapAfter.body.content[snapAfter.body.content.length - 1].endIndex -
+      1;
   }
 
   await flushText();
@@ -307,13 +379,19 @@ export async function applyDocStyle(
     const span = spans.find((sp) => sp.start === s);
     if (!span) continue;
 
-    const prevSpan = bi > 0 ? spans.find((sp) => sp.start === paraBlocks[bi - 1].startIndex) : null;
-    const nextSpan = bi < paraBlocks.length - 1 ? spans.find((sp) => sp.start === paraBlocks[bi + 1].startIndex) : null;
+    const prevSpan = bi > 0
+      ? spans.find((sp) => sp.start === paraBlocks[bi - 1].startIndex)
+      : null;
+    const nextSpan = bi < paraBlocks.length - 1
+      ? spans.find((sp) => sp.start === paraBlocks[bi + 1].startIndex)
+      : null;
 
-    const namedStyle =
-      span.kind === "title" ? "TITLE"
-      : span.kind === "h1"  ? "HEADING_1"
-      : span.kind === "h2"  ? "HEADING_2"
+    const namedStyle = span.kind === "title"
+      ? "TITLE"
+      : span.kind === "h1"
+      ? "HEADING_1"
+      : span.kind === "h2"
+      ? "HEADING_2"
       : null;
 
     if (namedStyle) {
@@ -354,8 +432,14 @@ export async function applyDocStyle(
     // Push spacing onto neighbours so shading doesn't swallow the gap.
     const extraFields: string[] = [];
     const extra: Record<string, unknown> = {};
-    if (nextSpan?.kind === "blockquote") { extra.spaceBelow = pt(10); extraFields.push("spaceBelow"); }
-    if (prevSpan?.kind === "blockquote") { extra.spaceAbove = pt(10); extraFields.push("spaceAbove"); }
+    if (nextSpan?.kind === "blockquote") {
+      extra.spaceBelow = pt(10);
+      extraFields.push("spaceBelow");
+    }
+    if (prevSpan?.kind === "blockquote") {
+      extra.spaceAbove = pt(10);
+      extraFields.push("spaceAbove");
+    }
     if (extraFields.length > 0) {
       styleRequests.push({
         updateParagraphStyle: {
@@ -369,7 +453,9 @@ export async function applyDocStyle(
 
   // Tables
   const border = (color: ReturnType<typeof hexRgb>) => ({
-    color: rgbColor(color), width: pt(1), dashStyle: "SOLID",
+    color: rgbColor(color),
+    width: pt(1),
+    dashStyle: "SOLID",
   });
 
   for (const tblBlock of docFinal.body.content.filter((b) => b.table)) {
@@ -380,10 +466,20 @@ export async function applyDocStyle(
     styleRequests.push({
       updateTableCellStyle: {
         tableRange: {
-          tableCellLocation: { tableStartLocation: { index: tblBlock.startIndex }, rowIndex: 0, columnIndex: 0 },
-          rowSpan: totalRows, columnSpan: totalCols,
+          tableCellLocation: {
+            tableStartLocation: { index: tblBlock.startIndex },
+            rowIndex: 0,
+            columnIndex: 0,
+          },
+          rowSpan: totalRows,
+          columnSpan: totalCols,
         },
-        tableCellStyle: { borderLeft: border(BLACK), borderRight: border(BLACK), borderTop: border(BLACK), borderBottom: border(BLACK) },
+        tableCellStyle: {
+          borderLeft: border(BLACK),
+          borderRight: border(BLACK),
+          borderTop: border(BLACK),
+          borderBottom: border(BLACK),
+        },
         fields: "borderLeft,borderRight,borderTop,borderBottom",
       },
     });
@@ -397,7 +493,10 @@ export async function applyDocStyle(
           if (isHeader) {
             styleRequests.push({
               updateTextStyle: {
-                range: { startIndex: cellBlock.startIndex, endIndex: cellBlock.endIndex },
+                range: {
+                  startIndex: cellBlock.startIndex,
+                  endIndex: cellBlock.endIndex,
+                },
                 textStyle: { bold: true, foregroundColor: rgbColor(WHITE) },
                 fields: "bold,foregroundColor",
               },
@@ -408,10 +507,19 @@ export async function applyDocStyle(
           styleRequests.push({
             updateTableCellStyle: {
               tableRange: {
-                tableCellLocation: { tableStartLocation: { index: tblBlock.startIndex }, rowIndex: ri, columnIndex: ci },
-                rowSpan: 1, columnSpan: 1,
+                tableCellLocation: {
+                  tableStartLocation: { index: tblBlock.startIndex },
+                  rowIndex: ri,
+                  columnIndex: ci,
+                },
+                rowSpan: 1,
+                columnSpan: 1,
               },
-              tableCellStyle: { backgroundColor: rgbColor(isHeader ? TABLE_HEADER_BG : TABLE_BAND_BG) },
+              tableCellStyle: {
+                backgroundColor: rgbColor(
+                  isHeader ? TABLE_HEADER_BG : TABLE_BAND_BG,
+                ),
+              },
               fields: "backgroundColor",
             },
           });
@@ -431,8 +539,14 @@ export async function applyDocStyle(
       if (runStart >= runEnd) continue;
       const textStyle: Record<string, unknown> = {};
       const fields: string[] = [];
-      if (run.bold) { textStyle.bold = true; fields.push("bold"); }
-      if (run.italic) { textStyle.italic = true; fields.push("italic"); }
+      if (run.bold) {
+        textStyle.bold = true;
+        fields.push("bold");
+      }
+      if (run.italic) {
+        textStyle.italic = true;
+        fields.push("italic");
+      }
       if (run.code) {
         textStyle.weightedFontFamily = { fontFamily: "Courier New" };
         textStyle.fontSize = pt(10);

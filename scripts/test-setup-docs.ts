@@ -18,7 +18,9 @@ const userRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${USER_ID}`, {
     Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
   },
 });
-const user = await userRes.json() as { user_metadata?: { google_refresh_token?: string } };
+const user = await userRes.json() as {
+  user_metadata?: { google_refresh_token?: string };
+};
 const refreshToken = user.user_metadata?.google_refresh_token;
 if (!refreshToken) {
   console.error("❌ No google_refresh_token found in user metadata.");
@@ -36,7 +38,9 @@ const landlordRes = await fetch(
     },
   },
 );
-const [landlord] = await landlordRes.json() as Array<{ templates_folder_id: string }>;
+const [landlord] = await landlordRes.json() as Array<
+  { templates_folder_id: string }
+>;
 if (!landlord?.templates_folder_id) {
   console.error("❌ No landlord row found.");
   Deno.exit(1);
@@ -47,7 +51,10 @@ console.log("✓ Templates folder:", templatesFolderId);
 // ── 3. Import and call ────────────────────────────────────────────────────────
 // Set env vars the shared modules expect
 Deno.env.set("GOOGLE_CLIENT_ID", Deno.env.get("GOOGLE_CLIENT_ID") ?? "");
-Deno.env.set("GOOGLE_CLIENT_SECRET", Deno.env.get("GOOGLE_CLIENT_SECRET") ?? "");
+Deno.env.set(
+  "GOOGLE_CLIENT_SECRET",
+  Deno.env.get("GOOGLE_CLIENT_SECRET") ?? "",
+);
 Deno.env.set("SUPABASE_URL", SUPABASE_URL);
 Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", SERVICE_ROLE_KEY);
 
@@ -62,13 +69,22 @@ const accessToken = await refreshGoogleAccessToken(refreshToken);
 console.log("✓ Google access token refreshed");
 
 console.log("\n🚀 Creating starter docs in Templates folder...\n");
-const result = await createStarterDocsForSetup({ accessToken, templatesFolderId });
+const result = await createStarterDocsForSetup({
+  accessToken,
+  templatesFolderId,
+});
 
 console.log("\n✅ Done!");
 console.log("  guia_doc_id:    ", result.guiaDocId ?? "failed");
 console.log("  exemplo_doc_id: ", result.contratoDocId ?? "failed");
 
-if (result.guiaDocId)
-  console.log(`\n  → https://docs.google.com/document/d/${result.guiaDocId}/edit`);
-if (result.contratoDocId)
-  console.log(`  → https://docs.google.com/document/d/${result.contratoDocId}/edit`);
+if (result.guiaDocId) {
+  console.log(
+    `\n  → https://docs.google.com/document/d/${result.guiaDocId}/edit`,
+  );
+}
+if (result.contratoDocId) {
+  console.log(
+    `  → https://docs.google.com/document/d/${result.contratoDocId}/edit`,
+  );
+}

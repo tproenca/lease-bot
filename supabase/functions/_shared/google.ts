@@ -473,9 +473,7 @@ export function buildPlaceholderListContent(
     derived_from?: string | null;
   }>,
 ): string {
-  const sorted = [...placeholders].sort((a, b) =>
-    a.name.localeCompare(b.name)
-  );
+  const sorted = [...placeholders].sort((a, b) => a.name.localeCompare(b.name));
   const rows = sorted.map((p) => {
     const req = p.required ? "sim" : "não";
     const caseVal = p.case ?? "—";

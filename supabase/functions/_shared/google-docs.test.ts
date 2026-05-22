@@ -141,13 +141,19 @@ function buildMockFetch(opts: MockOpts = {}) {
     // Drive — list files
     if (url.includes("www.googleapis.com/drive/v3/files") && method === "GET") {
       const files = opts.existingDocName
-        ? [{ id: existingDocId, name: opts.existingDocName, modifiedTime: "2024-01-01T00:00:00Z" }]
+        ? [{
+          id: existingDocId,
+          name: opts.existingDocName,
+          modifiedTime: "2024-01-01T00:00:00Z",
+        }]
         : [];
       return new Response(JSON.stringify({ files }), { status: 200 });
     }
 
     // Drive — create doc
-    if (url.includes("www.googleapis.com/drive/v3/files") && method === "POST") {
+    if (
+      url.includes("www.googleapis.com/drive/v3/files") && method === "POST"
+    ) {
       return new Response(JSON.stringify({ id: newDocId }), { status: 200 });
     }
 
@@ -157,7 +163,10 @@ function buildMockFetch(opts: MockOpts = {}) {
     }
 
     // Docs — batchUpdate
-    if (url.includes("docs.googleapis.com") && url.includes(":batchUpdate") && method === "POST") {
+    if (
+      url.includes("docs.googleapis.com") && url.includes(":batchUpdate") &&
+      method === "POST"
+    ) {
       opts.onBatchUpdate?.();
       // Consume body to avoid resource leak in tests
       await (init?.body as BodyInit as Blob)?.text?.();
@@ -176,7 +185,10 @@ Deno.test("unit: createPlaceholderGuide — creates doc when absent, returns new
   const original = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ newDocId: "guia-new" }) as typeof fetch;
   try {
-    const id = await createPlaceholderGuide({ accessToken: "tok", templatesFolderId: "folder" });
+    const id = await createPlaceholderGuide({
+      accessToken: "tok",
+      templatesFolderId: "folder",
+    });
     assertEquals(id, "guia-new");
   } finally {
     globalThis.fetch = original;
@@ -190,7 +202,10 @@ Deno.test("unit: createPlaceholderGuide — reuses existing doc ID when found", 
     existingDocId: "guia-existing",
   }) as typeof fetch;
   try {
-    const id = await createPlaceholderGuide({ accessToken: "tok", templatesFolderId: "folder" });
+    const id = await createPlaceholderGuide({
+      accessToken: "tok",
+      templatesFolderId: "folder",
+    });
     assertEquals(id, "guia-existing");
   } finally {
     globalThis.fetch = original;
@@ -201,10 +216,15 @@ Deno.test("unit: createPlaceholderGuide — always calls Docs batchUpdate to app
   const original = globalThis.fetch;
   let batchUpdateCalled = false;
   globalThis.fetch = buildMockFetch({
-    onBatchUpdate: () => { batchUpdateCalled = true; },
+    onBatchUpdate: () => {
+      batchUpdateCalled = true;
+    },
   }) as typeof fetch;
   try {
-    await createPlaceholderGuide({ accessToken: "tok", templatesFolderId: "folder" });
+    await createPlaceholderGuide({
+      accessToken: "tok",
+      templatesFolderId: "folder",
+    });
     assertEquals(batchUpdateCalled, true);
   } finally {
     globalThis.fetch = original;
@@ -217,9 +237,14 @@ Deno.test("unit: createPlaceholderGuide — always calls Docs batchUpdate to app
 
 Deno.test("unit: createSampleContract — creates doc when absent, returns new ID", async () => {
   const original = globalThis.fetch;
-  globalThis.fetch = buildMockFetch({ newDocId: "contract-new" }) as typeof fetch;
+  globalThis.fetch = buildMockFetch({
+    newDocId: "contract-new",
+  }) as typeof fetch;
   try {
-    const id = await createSampleContract({ accessToken: "tok", templatesFolderId: "folder" });
+    const id = await createSampleContract({
+      accessToken: "tok",
+      templatesFolderId: "folder",
+    });
     assertEquals(id, "contract-new");
   } finally {
     globalThis.fetch = original;
@@ -233,7 +258,10 @@ Deno.test("unit: createSampleContract — reuses existing doc with correct name"
     existingDocId: "contract-existing",
   }) as typeof fetch;
   try {
-    const id = await createSampleContract({ accessToken: "tok", templatesFolderId: "folder" });
+    const id = await createSampleContract({
+      accessToken: "tok",
+      templatesFolderId: "folder",
+    });
     assertEquals(id, "contract-existing");
   } finally {
     globalThis.fetch = original;
@@ -244,10 +272,15 @@ Deno.test("unit: createSampleContract — always calls Docs batchUpdate to apply
   const original = globalThis.fetch;
   let batchUpdateCalled = false;
   globalThis.fetch = buildMockFetch({
-    onBatchUpdate: () => { batchUpdateCalled = true; },
+    onBatchUpdate: () => {
+      batchUpdateCalled = true;
+    },
   }) as typeof fetch;
   try {
-    await createSampleContract({ accessToken: "tok", templatesFolderId: "folder" });
+    await createSampleContract({
+      accessToken: "tok",
+      templatesFolderId: "folder",
+    });
     assertEquals(batchUpdateCalled, true);
   } finally {
     globalThis.fetch = original;
@@ -277,7 +310,9 @@ Deno.test("unit: upsertPlaceholderList — always calls Docs batchUpdate even wi
   const original = globalThis.fetch;
   let batchUpdateCalled = false;
   globalThis.fetch = buildMockFetch({
-    onBatchUpdate: () => { batchUpdateCalled = true; },
+    onBatchUpdate: () => {
+      batchUpdateCalled = true;
+    },
   }) as typeof fetch;
   try {
     await upsertPlaceholderList({

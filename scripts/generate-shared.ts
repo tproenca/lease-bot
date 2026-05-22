@@ -30,7 +30,9 @@ function tableSection(md: string, heading: string): Record<string, string>[] {
   const start = lines.findIndex((l) => l.startsWith("|"));
   if (start === -1) return [];
   const rows: string[] = [];
-  for (let i = start; i < lines.length && lines[i].startsWith("|"); i++) rows.push(lines[i]);
+  for (let i = start; i < lines.length && lines[i].startsWith("|"); i++) {
+    rows.push(lines[i]);
+  }
   const headers = rows[0].split("|").slice(1, -1).map((h) => h.trim());
   return rows.slice(2).map((row) => {
     const cells = row.split("|").slice(1, -1).map((c) => c.trim());
@@ -40,7 +42,9 @@ function tableSection(md: string, heading: string): Record<string, string>[] {
 
 function prop(md: string, heading: string, property: string): string {
   const rows = tableSection(md, heading);
-  const row = rows.find((r) => Object.values(r)[0]?.toLowerCase() === property.toLowerCase());
+  const row = rows.find((r) =>
+    Object.values(r)[0]?.toLowerCase() === property.toLowerCase()
+  );
   return row?.[Object.keys(rows[0] ?? {})[1] ?? ""] ?? "";
 }
 
@@ -49,8 +53,15 @@ function parseStyleGuide(md: string) {
   const bodySize = firstPt(prop(md, "## 2.", "Size"), 11);
 
   const headings = tableSection(md, "## 3.");
-  function headingCfg(name: string, sizeDef: number, colorDef: string, spaceDef: number) {
-    const row = headings.find((r) => r["Style"]?.toLowerCase() === name.toLowerCase()) ?? {};
+  function headingCfg(
+    name: string,
+    sizeDef: number,
+    colorDef: string,
+    spaceDef: number,
+  ) {
+    const row =
+      headings.find((r) => r["Style"]?.toLowerCase() === name.toLowerCase()) ??
+        {};
     return {
       size: firstPt(row["Size"] ?? "", sizeDef),
       bold: (row["Weight"] ?? "").includes("bold"),
@@ -63,7 +74,8 @@ function parseStyleGuide(md: string) {
   const bandRowVal = prop(md, "7c.", "Alternating rows (band1Horz)");
 
   // "fill `#4F81BD`" — extract the hex that follows the word "fill"
-  const tableHeaderFill = headerRowVal.match(/fill[^#]*(#[0-9A-Fa-f]{6})/i)?.[1] ?? "#4F81BD";
+  const tableHeaderFill =
+    headerRowVal.match(/fill[^#]*(#[0-9A-Fa-f]{6})/i)?.[1] ?? "#4F81BD";
   // white text is always the first hex in the header row value
   const tableHeaderText = firstHex(headerRowVal, "#FFFFFF");
 
@@ -86,9 +98,15 @@ function emitStyleConstants(style: ReturnType<typeof parseStyleGuide>): string {
     `export const STYLE = {`,
     `  bodyFont: ${s(style.bodyFont)},`,
     `  bodySize: ${style.bodySize},`,
-    `  title:    { size: ${style.title.size}, bold: ${style.title.bold}, color: ${s(style.title.color)}, spaceAbove: ${style.title.spaceAbove} },`,
-    `  h1:       { size: ${style.h1.size}, bold: ${style.h1.bold}, color: ${s(style.h1.color)}, spaceAbove: ${style.h1.spaceAbove} },`,
-    `  h2:       { size: ${style.h2.size}, bold: ${style.h2.bold}, color: ${s(style.h2.color)}, spaceAbove: ${style.h2.spaceAbove} },`,
+    `  title:    { size: ${style.title.size}, bold: ${style.title.bold}, color: ${
+      s(style.title.color)
+    }, spaceAbove: ${style.title.spaceAbove} },`,
+    `  h1:       { size: ${style.h1.size}, bold: ${style.h1.bold}, color: ${
+      s(style.h1.color)
+    }, spaceAbove: ${style.h1.spaceAbove} },`,
+    `  h2:       { size: ${style.h2.size}, bold: ${style.h2.bold}, color: ${
+      s(style.h2.color)
+    }, spaceAbove: ${style.h2.spaceAbove} },`,
     `  tableHeaderFill: ${s(style.tableHeaderFill)},`,
     `  tableHeaderText: ${s(style.tableHeaderText)},`,
     `  tableBandFill:   ${s(style.tableBandFill)},`,
@@ -98,7 +116,10 @@ function emitStyleConstants(style: ReturnType<typeof parseStyleGuide>): string {
 }
 
 function emitContent(src: string, exportName: string, md: string): string {
-  const escaped = md.replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$\{/g, "\\${");
+  const escaped = md.replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(
+    /\$\{/g,
+    "\\${",
+  );
   return `${HEADER(src)}export const ${exportName} = \`${escaped}\`;\n`;
 }
 
@@ -119,18 +140,30 @@ console.log("✓ _shared/docs-style-constants.ts");
 
 await Deno.writeTextFile(
   "supabase/functions/_shared/placeholder-guide-content.ts",
-  emitContent("docs/placeholder-guide.md", "PLACEHOLDER_GUIDE_CONTENT", placeholderGuideMd),
+  emitContent(
+    "docs/placeholder-guide.md",
+    "PLACEHOLDER_GUIDE_CONTENT",
+    placeholderGuideMd,
+  ),
 );
 console.log("✓ _shared/placeholder-guide-content.ts");
 
 await Deno.writeTextFile(
   "supabase/functions/_shared/placeholder-list-content.ts",
-  emitContent("docs/placeholder-list.md", "PLACEHOLDER_LIST_TEMPLATE", placeholderListMd),
+  emitContent(
+    "docs/placeholder-list.md",
+    "PLACEHOLDER_LIST_TEMPLATE",
+    placeholderListMd,
+  ),
 );
 console.log("✓ _shared/placeholder-list-content.ts");
 
 await Deno.writeTextFile(
   "supabase/functions/_shared/sample-contract-content.ts",
-  emitContent("docs/sample-contract.md", "SAMPLE_CONTRACT_CONTENT", sampleContractMd),
+  emitContent(
+    "docs/sample-contract.md",
+    "SAMPLE_CONTRACT_CONTENT",
+    sampleContractMd,
+  ),
 );
 console.log("✓ _shared/sample-contract-content.ts");

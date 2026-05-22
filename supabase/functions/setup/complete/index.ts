@@ -23,9 +23,9 @@
 
 import { strictCorsHeaders } from "../../_shared/cors.ts";
 import {
-  createSampleContract,
   createDriveFolder,
   createPlaceholderGuide,
+  createSampleContract,
   getDriveFolder,
   refreshGoogleAccessToken,
 } from "../../_shared/google.ts";
