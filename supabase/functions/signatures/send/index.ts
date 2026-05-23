@@ -267,7 +267,7 @@ export async function handleSend(req: Request): Promise<Response> {
     return errorResponse(
       422,
       "SIGNATURE_MARKERS_NOT_FOUND",
-      `Marcadores de assinatura não encontrados no PDF (${detectResult.error}). Verifique se os marcadores [[LOCADOR]] e [[LOCATARIO]] estão presentes nos documentos.`,
+      `Campos de assinatura não encontrados no PDF (${detectResult.error}). Verifique se o template contém linhas de assinatura (______) com os rótulos "Locador", "Locatário" e "Testemunha" logo abaixo de cada linha.`,
     );
   }
 

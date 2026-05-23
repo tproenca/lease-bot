@@ -1,27 +1,20 @@
 // unit: documents/signatures/detect
 //
-// Unit tests for detectSignaturePositions (marker-based, [[ROLE]] approach).
-// All PDFs are constructed synthetically in-memory — no disk I/O.
-//
-// Test names follow the "unit:" / "integration:" prefix convention.
+// Unit tests for detectSignaturePositions (content-stream parsing approach).
+// All PDFs are constructed synthetically in-memory using pdf-lib — no disk I/O.
 //
 // Strategy:
-//   The detect.ts implementation scans raw PDF bytes using TextDecoder("latin1")
-//   for [[ROLE]] marker strings.  pdf-lib's drawText() encodes text through
-//   font glyph maps, making markers invisible to the raw byte scanner.
-//
-//   To produce PDFs where the markers are present as literal ASCII in the raw
-//   bytes we hand-build minimal PDF structures with uncompressed content
-//   streams.  Each "page" section is separated by a /Type /Page dictionary
-//   entry so the implementation's page-splitting logic works correctly.
-//
-//   For failure cases we use blank PDFs created with pdf-lib (no markers).
+//   pdf-lib's drawText() produces real, compressed content streams that our
+//   parser reads back via getPageContentStream → zlibDecompress → extractTextElements.
+//   We construct PDFs with known underline and label positions, run detection,
+//   and assert that the returned coordinates match the drawText() positions —
+//   verifying that actual coordinates are used, not hardcoded defaults.
 
 import {
   assertEquals,
-  assertStringIncludes,
+  assertAlmostEquals,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument, StandardFonts } from "https://esm.sh/pdf-lib@1.17.1";
 import {
   DetectResult,
   detectSignaturePositions,
@@ -30,207 +23,434 @@ import {
 
 // ─── Fixture helpers ──────────────────────────────────────────────────────
 
+const UNDERLINE = "_____________________________"; // 29 underscores (≥ 20)
+
+interface TextEntry {
+  text: string;
+  x: number;
+  y: number;
+}
+
 /**
- * Build a minimal but valid PDF whose raw bytes contain the given marker
- * strings verbatim.  Each entry in `pages` is a list of marker strings to
- * embed on that page (0-based).
+ * Build a PDF where the last page contains the given text entries drawn with
+ * Helvetica at size 12. Earlier pages (if pageCount > 1) are blank.
  *
- * The PDF is hand-crafted to keep it small while still passing pdf-lib's
- * parser (used by detectSignaturePositions to determine page count and
- * dimensions).  Content streams are stored uncompressed so the raw-text
- * scanner in detect.ts can find [[ROLE]] patterns directly.
- *
- * Page dimensions: A4 (595 × 842 pt).
+ * Using pdf-lib's drawText() produces real compressed content streams that
+ * our parser reads back, validating the full parsing pipeline end-to-end.
  */
-function buildRawPdf(pages: string[][]): Uint8Array {
-  // We build a cross-reference table manually.
-  // Object layout:
-  //   1 0 obj  — catalog
-  //   2 0 obj  — pages dict
-  //   3 0 obj  — page 0
-  //   4 0 obj  — content stream for page 0
-  //   5 0 obj  — page 1 (if present)
-  //   6 0 obj  — content stream for page 1 (if present)
-  //   … etc.
-
-  const encoder = new TextEncoder();
-  const parts: Uint8Array[] = [];
-  let offset = 0;
-  // offsets tracked in objOffsets below (1-indexed)
-
-  function emit(s: string): void {
-    const bytes = encoder.encode(s);
-    parts.push(bytes);
-    offset += bytes.length;
+async function buildPdf(
+  entries: TextEntry[],
+  pageCount = 1,
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  for (let p = 0; p < pageCount; p++) {
+    const page = doc.addPage([595, 842]); // A4
+    if (p === pageCount - 1) {
+      for (const { text, x, y } of entries) {
+        page.drawText(text, { x, y, size: 12, font });
+      }
+    }
   }
-
-  // PDF header.
-  emit("%PDF-1.4\n");
-
-  const pageCount = pages.length;
-  // Object numbers:
-  //   1 → catalog
-  //   2 → pages
-  //   3+2*i → page i
-  //   4+2*i → content stream for page i
-  const catalogObj = 1;
-  const pagesObj = 2;
-  const pageObjBase = 3; // page i → pageObjBase + 2*i
-  const contentObjBase = 4; // content for page i → contentObjBase + 2*i
-
-  const totalObjs = 2 + pageCount * 2; // catalog + pages + N pages + N streams
-
-  // Placeholder array for offsets (filled in as we emit objects).
-  const objOffsets = new Array<number>(totalObjs + 1).fill(0);
-
-  // ── Object 1: Catalog ──────────────────────────────────────────────────
-  objOffsets[catalogObj] = offset;
-  emit(`${catalogObj} 0 obj\n`);
-  emit(`<< /Type /Catalog /Pages ${pagesObj} 0 R >>\n`);
-  emit("endobj\n");
-
-  // ── Object 2: Pages ───────────────────────────────────────────────────
-  objOffsets[pagesObj] = offset;
-  emit(`${pagesObj} 0 obj\n`);
-  const kidRefs = Array.from(
-    { length: pageCount },
-    (_, i) => `${pageObjBase + 2 * i} 0 R`,
-  ).join(" ");
-  emit(
-    `<< /Type /Pages /Kids [${kidRefs}] /Count ${pageCount} >>\n`,
-  );
-  emit("endobj\n");
-
-  // ── One object pair per page ───────────────────────────────────────────
-  for (let i = 0; i < pageCount; i++) {
-    const pageObj = pageObjBase + 2 * i;
-    const contentObj = contentObjBase + 2 * i;
-
-    // Build content stream — embed each marker on its own line as a PDF
-    // comment so the raw-text scanner finds it without font encoding.
-    // PDF comments start with %; they are preserved in uncompressed streams
-    // and readable by latin1 decode.  We also emit the markers as bare
-    // text tokens outside any text block so they survive the raw scan.
-    const markers = pages[i] ?? [];
-    const streamBody = markers.map((m) => `% ${m}\n${m}\n`).join("");
-    const streamLen = encoder.encode(streamBody).length;
-
-    // Page dictionary.
-    objOffsets[pageObj] = offset;
-    emit(`${pageObj} 0 obj\n`);
-    emit(
-      `<< /Type /Page /Parent ${pagesObj} 0 R ` +
-        `/MediaBox [0 0 595 842] ` +
-        `/Contents ${contentObj} 0 R >>\n`,
-    );
-    emit("endobj\n");
-
-    // Content stream.
-    objOffsets[contentObj] = offset;
-    emit(`${contentObj} 0 obj\n`);
-    emit(`<< /Length ${streamLen} >>\n`);
-    emit("stream\n");
-    emit(streamBody);
-    emit("endstream\n");
-    emit("endobj\n");
-  }
-
-  // ── Cross-reference table ──────────────────────────────────────────────
-  const xrefOffset = offset;
-  emit("xref\n");
-  emit(`0 ${totalObjs + 1}\n`);
-  emit("0000000000 65535 f \n"); // free list head
-
-  for (let n = 1; n <= totalObjs; n++) {
-    emit(`${String(objOffsets[n]).padStart(10, "0")} 00000 n \n`);
-  }
-
-  // ── Trailer ───────────────────────────────────────────────────────────
-  emit("trailer\n");
-  emit(`<< /Size ${totalObjs + 1} /Root ${catalogObj} 0 R >>\n`);
-  emit("startxref\n");
-  emit(`${xrefOffset}\n`);
-  emit("%%EOF\n");
-
-  // Concatenate all parts.
-  const totalLen = parts.reduce((acc, p) => acc + p.length, 0);
-  const result = new Uint8Array(totalLen);
-  let pos = 0;
-  for (const p of parts) {
-    result.set(p, pos);
-    pos += p.length;
-  }
-  return result;
+  return doc.save();
 }
 
-/** Convenience: 1-page PDF with [[LOCADOR]] and [[LOCATARIO]] markers. */
-function buildMinimalValidPdf(): Uint8Array {
-  return buildRawPdf([["[[LOCADOR]]", "[[LOCATARIO]]"]]);
+async function detect(bytes: Uint8Array): Promise<DetectResult> {
+  return detectSignaturePositions(bytes);
 }
 
-/** Run detection on raw bytes and return the result. */
-async function detect(pdfBytes: Uint8Array): Promise<DetectResult> {
-  return detectSignaturePositions(pdfBytes);
-}
+// ─── Coordinate tolerance ─────────────────────────────────────────────────
+// pdf-lib text matrices may carry sub-point floating-point noise; allow ±1pt.
+const COORD_TOLERANCE = 1;
 
 // ═══════════════════════════════════════════════════════════════════════════
-// unit: basic valid case — both required markers present
+// unit: 2-signer layout (Locador + Locatário)
 // ═══════════════════════════════════════════════════════════════════════════
 
-Deno.test("unit: detect — valid PDF with required markers returns ok:true", async () => {
-  const pdf = buildMinimalValidPdf();
+Deno.test("unit: detect — Locador + Locatário returns ok:true", async () => {
+  const pdf = await buildPdf([
+    { text: UNDERLINE, x: 50, y: 200 },
+    { text: "Locador", x: 50, y: 182 },
+    { text: UNDERLINE, x: 200, y: 200 },
+    { text: "Locatário", x: 200, y: 182 },
+  ]);
   const result = await detect(pdf);
   assertEquals(result.ok, true);
 });
 
-Deno.test("unit: detect — valid PDF returns positions array", async () => {
-  const pdf = buildMinimalValidPdf();
+Deno.test("unit: detect — 2-signer layout returns 2 positions", async () => {
+  const pdf = await buildPdf([
+    { text: UNDERLINE, x: 50, y: 200 },
+    { text: "Locador", x: 50, y: 182 },
+    { text: UNDERLINE, x: 200, y: 200 },
+    { text: "Locatário", x: 200, y: 182 },
+  ]);
   const result = await detect(pdf);
   assertEquals(result.ok, true);
-  if (result.ok) {
-    assertEquals(Array.isArray(result.positions), true);
-  }
+  if (result.ok) assertEquals(result.positions.length, 2);
 });
 
-Deno.test("unit: detect — valid PDF returns 2 positions for required roles", async () => {
-  const pdf = buildMinimalValidPdf();
+Deno.test("unit: detect — LOCADOR role is present", async () => {
+  const pdf = await buildPdf([
+    { text: UNDERLINE, x: 50, y: 200 },
+    { text: "Locador", x: 50, y: 182 },
+    { text: UNDERLINE, x: 200, y: 200 },
+    { text: "Locatário", x: 200, y: 182 },
+  ]);
   const result = await detect(pdf);
   assertEquals(result.ok, true);
   if (result.ok) {
-    assertEquals(result.positions.length, 2);
-  }
-});
-
-Deno.test("unit: detect — LOCADOR position has role LOCADOR", async () => {
-  const pdf = buildMinimalValidPdf();
-  const result = await detect(pdf);
-  assertEquals(result.ok, true);
-  if (result.ok) {
-    const pos = result.positions.find((p: SignerPosition) =>
-      p.role === "LOCADOR"
-    );
+    const pos = result.positions.find((p: SignerPosition) => p.role === "LOCADOR");
     assertEquals(pos !== undefined, true);
   }
 });
 
-Deno.test("unit: detect — LOCATARIO position has role LOCATARIO", async () => {
-  const pdf = buildMinimalValidPdf();
+Deno.test("unit: detect — LOCATARIO role is present", async () => {
+  const pdf = await buildPdf([
+    { text: UNDERLINE, x: 50, y: 200 },
+    { text: "Locador", x: 50, y: 182 },
+    { text: UNDERLINE, x: 200, y: 200 },
+    { text: "Locatário", x: 200, y: 182 },
+  ]);
   const result = await detect(pdf);
   assertEquals(result.ok, true);
   if (result.ok) {
-    const pos = result.positions.find((p: SignerPosition) =>
-      p.role === "LOCATARIO"
-    );
+    const pos = result.positions.find((p: SignerPosition) => p.role === "LOCATARIO");
     assertEquals(pos !== undefined, true);
   }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// unit: coordinate shape
+// unit: coordinates match the drawText position (not hardcoded defaults)
 // ═══════════════════════════════════════════════════════════════════════════
 
-Deno.test("unit: detect — each position has numeric x and y", async () => {
-  const pdf = buildMinimalValidPdf();
+Deno.test("unit: detect — LOCADOR x coordinate matches underline drawText position", async () => {
+  const pdf = await buildPdf([
+    { text: UNDERLINE, x: 50, y: 200 },
+    { text: "Locador", x: 50, y: 182 },
+    { text: UNDERLINE, x: 200, y: 150 },
+    { text: "Locatário", x: 200, y: 132 },
+  ]);
+  const result = await detect(pdf);
+  assertEquals(result.ok, true);
+  if (result.ok) {
+    const pos = result.positions.find((p: SignerPosition) => p.role === "LOCADOR")!;
+    assertAlmostEquals(pos.x, 50, COORD_TOLERANCE);
+  }
+});
+
+Deno.test("unit: detect — LOCADOR y coordinate matches underline drawText position", async () => {
+  const pdf = await buildPdf([
+    { text: UNDERLINE, x: 50, y: 200 },
+    { text: "Locador", x: 50, y: 182 },
+    { text: UNDERLINE, x: 200, y: 150 },
+    { text: "Locatário", x: 200, y: 132 },
+  ]);
+  const result = await detect(pdf);
+  assertEquals(result.ok, true);
+  if (result.ok) {
+    const pos = result.positions.find((p: SignerPosition) => p.role === "LOCADOR")!;
+    assertAlmostEquals(pos.y, 200, COORD_TOLERANCE);
+  }
+});
+
+Deno.test("unit: detect — LOCATARIO coordinates match its underline position", async () => {
+  const pdf = await buildPdf([
+    { text: UNDERLINE, x: 50, y: 200 },
+    { text: "Locador", x: 50, y: 182 },
+    { text: UNDERLINE, x: 200, y: 150 },
+    { text: "Locatário", x: 200, y: 132 },
+  ]);
+  const result = await detect(pdf);
+  assertEquals(result.ok, true);
+  if (result.ok) {
+    const pos = result.positions.find((p: SignerPosition) => p.role === "LOCATARIO")!;
+    assertAlmostEquals(pos.x, 200, COORD_TOLERANCE);
+    assertAlmostEquals(pos.y, 150, COORD_TOLERANCE);
+  }
+});
+
+Deno.test("unit: detect — coordinates are distinct when underlines are at different positions", async () => {
+  const pdf = await buildPdf([
+    { text: UNDERLINE, x: 50, y: 300 },
+    { text: "Locador", x: 50, y: 282 },
+    { text: UNDERLINE, x: 50, y: 200 },
+    { text: "Locatário", x: 50, y: 182 },
+  ]);
+  const result = await detect(pdf);
+  assertEquals(result.ok, true);
+  if (result.ok) {
+    const locador = result.positions.find((p: SignerPosition) => p.role === "LOCADOR")!;
+    const locatario = result.positions.find((p: SignerPosition) => p.role === "LOCATARIO")!;
+    assertEquals(locador.y !== locatario.y, true);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// unit: 3-signer layout (+ Testemunha)
+// ═══════════════════════════════════════════════════════════════════════════
+
+Deno.test("unit: detect — 3-signer layout returns ok:true with 3 positions", async () => {
+  const pdf = await buildPdf([
+    { text: UNDERLINE, x: 50, y: 300 },
+    { text: "Locador", x: 50, y: 282 },
+    { text: UNDERLINE, x: 50, y: 230 },
+    { text: "Locatário", x: 50, y: 212 },
+    { text: UNDERLINE, x: 50, y: 160 },
+    { text: "Testemunha", x: 50, y: 142 },
+  ]);
+  const result = await detect(pdf);
+  assertEquals(result.ok, true);
+  if (result.ok) assertEquals(result.positions.length, 3);
+});
+
+Deno.test("unit: detect — single witness becomes TESTEMUNHA_1", async () => {
+  const pdf = await buildPdf([
+    { text: UNDERLINE, x: 50, y: 300 },
+    { text: "Locador", x: 50, y: 282 },
+    { text: UNDERLINE, x: 50, y: 230 },
+    { text: "Locatário", x: 50, y: 212 },
+    { text: UNDERLINE, x: 50, y: 160 },
+    { text: "Testemunha", x: 50, y: 142 },
+  ]);
+  const result = await detect(pdf);
+  assertEquals(result.ok, true);
+  if (result.ok) {
+    const t1 = result.positions.find((p: SignerPosition) => p.role === "TESTEMUNHA_1");
+    assertEquals(t1 !== undefined, true);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// unit: 4-signer layout (2 witnesses)
+// ═══════════════════════════════════════════════════════════════════════════
+
+Deno.test("unit: detect — 4-signer layout returns 4 positions", async () => {
+  const pdf = await buildPdf([
+    { text: UNDERLINE, x: 50, y: 380 },
+    { text: "Locador", x: 50, y: 362 },
+    { text: UNDERLINE, x: 50, y: 310 },
+    { text: "Locatário", x: 50, y: 292 },
+    { text: UNDERLINE, x: 50, y: 240 },
+    { text: "Testemunha", x: 50, y: 222 },
+    { text: UNDERLINE, x: 50, y: 170 },
+    { text: "Testemunha", x: 50, y: 152 },
+  ]);
+  const result = await detect(pdf);
+  assertEquals(result.ok, true);
+  if (result.ok) assertEquals(result.positions.length, 4);
+});
+
+Deno.test("unit: detect — first witness (higher y) is TESTEMUNHA_1", async () => {
+  const pdf = await buildPdf([
+    { text: UNDERLINE, x: 50, y: 380 },
+    { text: "Locador", x: 50, y: 362 },
+    { text: UNDERLINE, x: 50, y: 310 },
+    { text: "Locatário", x: 50, y: 292 },
+    { text: UNDERLINE, x: 50, y: 240 },
+    { text: "Testemunha", x: 50, y: 222 },
+    { text: UNDERLINE, x: 50, y: 170 },
+    { text: "Testemunha", x: 50, y: 152 },
+  ]);
+  const result = await detect(pdf);
+  assertEquals(result.ok, true);
+  if (result.ok) {
+    const t1 = result.positions.find((p: SignerPosition) => p.role === "TESTEMUNHA_1")!;
+    const t2 = result.positions.find((p: SignerPosition) => p.role === "TESTEMUNHA_2")!;
+    assertEquals(t1.y > t2.y, true); // TESTEMUNHA_1 is higher on the page
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// unit: realistic label — "Nome — Locador" (full name + role keyword)
+// ═══════════════════════════════════════════════════════════════════════════
+
+Deno.test("unit: detect — label 'Nome — Locador' maps to LOCADOR", async () => {
+  const pdf = await buildPdf([
+    { text: UNDERLINE, x: 50, y: 200 },
+    { text: "Elenice Proenca — Locador", x: 50, y: 182 },
+    { text: UNDERLINE, x: 50, y: 140 },
+    { text: "Hamilton Xavier — Locatario", x: 50, y: 122 },
+  ]);
+  const result = await detect(pdf);
+  assertEquals(result.ok, true);
+  if (result.ok) {
+    const pos = result.positions.find((p: SignerPosition) => p.role === "LOCADOR");
+    assertEquals(pos !== undefined, true);
+  }
+});
+
+Deno.test("unit: detect — label 'Nome — Locatario' maps to LOCATARIO", async () => {
+  const pdf = await buildPdf([
+    { text: UNDERLINE, x: 50, y: 200 },
+    { text: "Elenice Proenca — Locador", x: 50, y: 182 },
+    { text: UNDERLINE, x: 50, y: 140 },
+    { text: "Hamilton Xavier — Locatario", x: 50, y: 122 },
+  ]);
+  const result = await detect(pdf);
+  assertEquals(result.ok, true);
+  if (result.ok) {
+    const pos = result.positions.find((p: SignerPosition) => p.role === "LOCATARIO");
+    assertEquals(pos !== undefined, true);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// unit: case-insensitive role matching
+// ═══════════════════════════════════════════════════════════════════════════
+
+Deno.test("unit: detect — uppercase LOCADOR label maps to LOCADOR role", async () => {
+  const pdf = await buildPdf([
+    { text: UNDERLINE, x: 50, y: 200 },
+    { text: "LOCADOR", x: 50, y: 182 },
+    { text: UNDERLINE, x: 50, y: 140 },
+    { text: "LOCATARIO", x: 50, y: 122 },
+  ]);
+  const result = await detect(pdf);
+  assertEquals(result.ok, true);
+  if (result.ok) {
+    const pos = result.positions.find((p: SignerPosition) => p.role === "LOCADOR");
+    assertEquals(pos !== undefined, true);
+  }
+});
+
+Deno.test("unit: detect — uppercase LOCATARIO label maps to LOCATARIO role", async () => {
+  const pdf = await buildPdf([
+    { text: UNDERLINE, x: 50, y: 200 },
+    { text: "LOCADOR", x: 50, y: 182 },
+    { text: UNDERLINE, x: 50, y: 140 },
+    { text: "LOCATARIO", x: 50, y: 122 },
+  ]);
+  const result = await detect(pdf);
+  assertEquals(result.ok, true);
+  if (result.ok) {
+    const pos = result.positions.find((p: SignerPosition) => p.role === "LOCATARIO");
+    assertEquals(pos !== undefined, true);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// unit: multi-page PDF — signatures on last page
+// ═══════════════════════════════════════════════════════════════════════════
+
+Deno.test("unit: detect — multi-page PDF returns correct 1-based page number", async () => {
+  const pdf = await buildPdf([
+    { text: UNDERLINE, x: 50, y: 200 },
+    { text: "Locador", x: 50, y: 182 },
+    { text: UNDERLINE, x: 50, y: 140 },
+    { text: "Locatário", x: 50, y: 122 },
+  ], 3);
+  const result = await detect(pdf);
+  assertEquals(result.ok, true);
+  if (result.ok) {
+    for (const pos of result.positions) {
+      assertEquals(pos.page, 3);
+    }
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// unit: failure — short underscores (< 20) are not detected
+// ═══════════════════════════════════════════════════════════════════════════
+
+Deno.test("unit: detect — short underscores (5 chars) not detected → ok:false", async () => {
+  const pdf = await buildPdf([
+    { text: "_____", x: 50, y: 200 },
+    { text: "Locador", x: 50, y: 182 },
+    { text: "_____", x: 50, y: 140 },
+    { text: "Locatário", x: 50, y: 122 },
+  ]);
+  const result = await detect(pdf);
+  assertEquals(result.ok, false);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// unit: failure — label outside search window
+// ═══════════════════════════════════════════════════════════════════════════
+
+Deno.test("unit: detect — label more than 40pt below underline is not matched → ok:false", async () => {
+  const pdf = await buildPdf([
+    { text: UNDERLINE, x: 50, y: 200 },
+    // 60pt below — outside the 40pt LABEL_SEARCH_WINDOW_PT
+    { text: "Locador", x: 50, y: 140 },
+    { text: UNDERLINE, x: 50, y: 100 },
+    { text: "Locatário", x: 50, y: 40 },
+  ]);
+  const result = await detect(pdf);
+  assertEquals(result.ok, false);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// unit: failure — missing required roles
+// ═══════════════════════════════════════════════════════════════════════════
+
+Deno.test("unit: detect — only LOCADOR present → ok:false (LOCATARIO missing)", async () => {
+  const pdf = await buildPdf([
+    { text: UNDERLINE, x: 50, y: 200 },
+    { text: "Locador", x: 50, y: 182 },
+  ]);
+  const result = await detect(pdf);
+  assertEquals(result.ok, false);
+  if (!result.ok) assertEquals(result.error, "detect_missing_role_LOCATARIO");
+});
+
+Deno.test("unit: detect — only LOCATARIO present → ok:false (LOCADOR missing)", async () => {
+  const pdf = await buildPdf([
+    { text: UNDERLINE, x: 50, y: 200 },
+    { text: "Locatário", x: 50, y: 182 },
+  ]);
+  const result = await detect(pdf);
+  assertEquals(result.ok, false);
+  if (!result.ok) assertEquals(result.error, "detect_missing_role_LOCADOR");
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// unit: failure — empty or invalid input
+// ═══════════════════════════════════════════════════════════════════════════
+
+Deno.test("unit: detect — empty bytes returns ok:false with detect_empty_pdf", async () => {
+  const result = await detect(new Uint8Array(0));
+  assertEquals(result.ok, false);
+  if (!result.ok) assertEquals(result.error, "detect_empty_pdf");
+});
+
+Deno.test("unit: detect — invalid bytes returns ok:false with detect_invalid_pdf", async () => {
+  const result = await detect(new Uint8Array([0x00, 0x01, 0x02, 0x03, 0xFF]));
+  assertEquals(result.ok, false);
+  if (!result.ok) assertEquals(result.error, "detect_invalid_pdf");
+});
+
+Deno.test("unit: detect — blank PDF (no text) returns ok:false", async () => {
+  const doc = await PDFDocument.create();
+  doc.addPage();
+  const bytes = await doc.save();
+  const result = await detect(bytes);
+  assertEquals(result.ok, false);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// unit: result shape conformance
+// ═══════════════════════════════════════════════════════════════════════════
+
+Deno.test("unit: detect — success result has ok:true and positions array", async () => {
+  const pdf = await buildPdf([
+    { text: UNDERLINE, x: 50, y: 200 },
+    { text: "Locador", x: 50, y: 182 },
+    { text: UNDERLINE, x: 50, y: 140 },
+    { text: "Locatário", x: 50, y: 122 },
+  ]);
+  const result = await detect(pdf);
+  assertEquals(result.ok, true);
+  if (result.ok) assertEquals(Array.isArray(result.positions), true);
+});
+
+Deno.test("unit: detect — each position has numeric x, y, and 1-based page", async () => {
+  const pdf = await buildPdf([
+    { text: UNDERLINE, x: 50, y: 200 },
+    { text: "Locador", x: 50, y: 182 },
+    { text: UNDERLINE, x: 50, y: 140 },
+    { text: "Locatário", x: 50, y: 122 },
+  ]);
   const result = await detect(pdf);
   assertEquals(result.ok, true);
   if (result.ok) {
@@ -239,39 +459,6 @@ Deno.test("unit: detect — each position has numeric x and y", async () => {
       assertEquals(typeof pos.y, "number");
       assertEquals(isNaN(pos.x), false);
       assertEquals(isNaN(pos.y), false);
-    }
-  }
-});
-
-Deno.test("unit: detect — each position has x > 0", async () => {
-  const pdf = buildMinimalValidPdf();
-  const result = await detect(pdf);
-  assertEquals(result.ok, true);
-  if (result.ok) {
-    for (const pos of result.positions) {
-      assertEquals(pos.x > 0, true);
-    }
-  }
-});
-
-Deno.test("unit: detect — each position has y > 0", async () => {
-  const pdf = buildMinimalValidPdf();
-  const result = await detect(pdf);
-  assertEquals(result.ok, true);
-  if (result.ok) {
-    for (const pos of result.positions) {
-      assertEquals(pos.y > 0, true);
-    }
-  }
-});
-
-Deno.test("unit: detect — each position has a 1-based page number", async () => {
-  const pdf = buildMinimalValidPdf();
-  const result = await detect(pdf);
-  assertEquals(result.ok, true);
-  if (result.ok) {
-    for (const pos of result.positions) {
-      assertEquals(typeof pos.page, "number");
       assertEquals(pos.page >= 1, true);
     }
   }
