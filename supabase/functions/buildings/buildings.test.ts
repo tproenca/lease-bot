@@ -83,8 +83,8 @@ function buildMockFetch(opts: {
     }
 
     // PostgREST: buildings INSERT (user client)
-    // PostgREST returns an array when Prefer: return=representation is set.
-    // The Supabase JS .single() unwraps the first element.
+    // .single() sends Accept: application/vnd.pgrst.object+json, so PostgREST
+    // returns a single JSON object (not an array). The mock must match.
     if (url.includes("/rest/v1/buildings")) {
       if (opts.dbInsertFail) {
         return new Response(
@@ -93,8 +93,8 @@ function buildMockFetch(opts: {
         );
       }
       return new Response(
-        JSON.stringify([MOCK_BUILDING_INSERT]),
-        { status: 201 },
+        JSON.stringify(MOCK_BUILDING_INSERT),
+        { status: 201, headers: { "Content-Type": "application/json" } },
       );
     }
 

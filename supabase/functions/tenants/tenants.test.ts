@@ -166,8 +166,8 @@ function buildMockFetch(opts: MockFetchOpts) {
           return new Response(JSON.stringify(null), { status: 500 });
         }
         return new Response(
-          JSON.stringify([opts.tenantInsert ?? MOCK_TENANT_INSERT]),
-          { status: 201 },
+          JSON.stringify(opts.tenantInsert ?? MOCK_TENANT_INSERT),
+          { status: 201, headers: { "Content-Type": "application/json" } },
         );
       }
       if (method === "GET") {

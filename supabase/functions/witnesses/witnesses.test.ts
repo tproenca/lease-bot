@@ -82,8 +82,8 @@ function buildMockFetch(opts: MockFetchOpts) {
           );
         }
         return new Response(
-          JSON.stringify([opts.witnessInsert ?? { id: MOCK_WITNESS_ID }]),
-          { status: 201 },
+          JSON.stringify(opts.witnessInsert ?? { id: MOCK_WITNESS_ID }),
+          { status: 201, headers: { "Content-Type": "application/json" } },
         );
       }
     }

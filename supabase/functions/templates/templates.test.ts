@@ -81,8 +81,8 @@ function buildMockFetch(opts: MockFetchOpts) {
           );
         }
         return new Response(
-          JSON.stringify([opts.templateInsert ?? { id: MOCK_TEMPLATE_ID }]),
-          { status: 201 },
+          JSON.stringify(opts.templateInsert ?? { id: MOCK_TEMPLATE_ID }),
+          { status: 201, headers: { "Content-Type": "application/json" } },
         );
       }
       if (method === "GET") {
