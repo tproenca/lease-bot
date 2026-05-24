@@ -1,4 +1,4 @@
-// integration: POST /payments + GET /payments?month=YYYY-MM
+// unit: POST /payments + GET /payments?month=YYYY-MM
 //
 // Tests call handlePayments() directly. Network calls to Supabase Auth and
 // PostgREST are intercepted via globalThis.fetch stubs.
@@ -231,7 +231,7 @@ async function jsonBody(res: Response): Promise<unknown> {
 // OPTIONS / CORS
 // ═══════════════════════════════════════════════════════════════════════════
 
-Deno.test("integration: payments OPTIONS — returns 200 with CORS headers", async () => {
+Deno.test("unit: payments OPTIONS — returns 200 with CORS headers", async () => {
   const res = await handlePayments(
     new Request("http://localhost/payments", { method: "OPTIONS" }),
   );
@@ -245,7 +245,7 @@ Deno.test("integration: payments OPTIONS — returns 200 with CORS headers", asy
 
 // ─── 201 — on_time=true (paid on 3rd, before 5th) ────────────────────────
 
-Deno.test("integration: POST /payments — 201 with on_time=true when paid on 3rd of month", async () => {
+Deno.test("unit: POST /payments — 201 with on_time=true when paid on 3rd of month", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -271,7 +271,7 @@ Deno.test("integration: POST /payments — 201 with on_time=true when paid on 3r
 
 // ─── 201 — on_time=false (paid on 8th, after 5th) ────────────────────────
 
-Deno.test("integration: POST /payments — 201 with on_time=false when paid on 8th of month", async () => {
+Deno.test("unit: POST /payments — 201 with on_time=false when paid on 8th of month", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -297,7 +297,7 @@ Deno.test("integration: POST /payments — 201 with on_time=false when paid on 8
 
 // ─── 201 — reference_month as YYYY-MM-DD ─────────────────────────────────
 
-Deno.test("integration: POST /payments — 201 accepts YYYY-MM-DD reference_month format", async () => {
+Deno.test("unit: POST /payments — 201 accepts YYYY-MM-DD reference_month format", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -322,7 +322,7 @@ Deno.test("integration: POST /payments — 201 accepts YYYY-MM-DD reference_mont
 
 // ─── 401 — missing JWT ────────────────────────────────────────────────────
 
-Deno.test("integration: POST /payments — 401 when no JWT provided", async () => {
+Deno.test("unit: POST /payments — 401 when no JWT provided", async () => {
   const res = await handlePayments(
     makePostRequest({
       tenant_id: MOCK_TENANT_ID,
@@ -338,7 +338,7 @@ Deno.test("integration: POST /payments — 401 when no JWT provided", async () =
 
 // ─── 401 — invalid JWT ────────────────────────────────────────────────────
 
-Deno.test("integration: POST /payments — 401 when JWT is invalid or expired", async () => {
+Deno.test("unit: POST /payments — 401 when JWT is invalid or expired", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ authUser: null }) as typeof fetch;
   try {
@@ -363,7 +363,7 @@ Deno.test("integration: POST /payments — 401 when JWT is invalid or expired", 
 
 // ─── 400 — invalid reference_month format ────────────────────────────────
 
-Deno.test("integration: POST /payments — 400 when reference_month format is invalid", async () => {
+Deno.test("unit: POST /payments — 400 when reference_month format is invalid", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -391,7 +391,7 @@ Deno.test("integration: POST /payments — 400 when reference_month format is in
 
 // ─── 400 — missing tenant_id ──────────────────────────────────────────────
 
-Deno.test("integration: POST /payments — 400 when tenant_id is missing", async () => {
+Deno.test("unit: POST /payments — 400 when tenant_id is missing", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -418,7 +418,7 @@ Deno.test("integration: POST /payments — 400 when tenant_id is missing", async
 
 // ─── 400 — missing amount ─────────────────────────────────────────────────
 
-Deno.test("integration: POST /payments — 400 when amount is missing or not a positive number", async () => {
+Deno.test("unit: POST /payments — 400 when amount is missing or not a positive number", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -446,7 +446,7 @@ Deno.test("integration: POST /payments — 400 when amount is missing or not a p
 
 // ─── 400 — missing paid_at ────────────────────────────────────────────────
 
-Deno.test("integration: POST /payments — 400 when paid_at is missing", async () => {
+Deno.test("unit: POST /payments — 400 when paid_at is missing", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -473,7 +473,7 @@ Deno.test("integration: POST /payments — 400 when paid_at is missing", async (
 
 // ─── 400 — invalid paid_at format ────────────────────────────────────────
 
-Deno.test("integration: POST /payments — 400 when paid_at is not a valid datetime", async () => {
+Deno.test("unit: POST /payments — 400 when paid_at is not a valid datetime", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -501,7 +501,7 @@ Deno.test("integration: POST /payments — 400 when paid_at is not a valid datet
 
 // ─── 201 — on_time boundary tests ────────────────────────────────────────
 
-Deno.test("integration: POST /payments — on_time=true when paid exactly at boundary (5th 23:59:59Z)", async () => {
+Deno.test("unit: POST /payments — on_time=true when paid exactly at boundary (5th 23:59:59Z)", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({
     paymentInsert: { id: "pay-boundary" },
@@ -526,7 +526,7 @@ Deno.test("integration: POST /payments — on_time=true when paid exactly at bou
   }
 });
 
-Deno.test("integration: POST /payments — on_time=false when paid one second after boundary (6th 00:00:00Z)", async () => {
+Deno.test("unit: POST /payments — on_time=false when paid one second after boundary (6th 00:00:00Z)", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({
     paymentInsert: { id: "pay-late" },
@@ -553,7 +553,7 @@ Deno.test("integration: POST /payments — on_time=false when paid one second af
 
 // ─── CORS headers ─────────────────────────────────────────────────────────
 
-Deno.test("integration: POST /payments — success response includes CORS headers", async () => {
+Deno.test("unit: POST /payments — success response includes CORS headers", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -580,7 +580,7 @@ Deno.test("integration: POST /payments — success response includes CORS header
 
 // ─── 200 — correct paid/overdue split ────────────────────────────────────
 
-Deno.test("integration: GET /payments — 200 returns correct paid and overdue split", async () => {
+Deno.test("unit: GET /payments — 200 returns correct paid and overdue split", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({
     payments: MOCK_PAYMENTS,
@@ -630,7 +630,7 @@ Deno.test("integration: GET /payments — 200 returns correct paid and overdue s
 
 // ─── 200 — empty month (no payments, no active tenants) ──────────────────
 
-Deno.test("integration: GET /payments — 200 returns empty paid and overdue when no data", async () => {
+Deno.test("unit: GET /payments — 200 returns empty paid and overdue when no data", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({
     payments: [],
@@ -651,7 +651,7 @@ Deno.test("integration: GET /payments — 200 returns empty paid and overdue whe
 
 // ─── 400 — invalid month format ───────────────────────────────────────────
 
-Deno.test("integration: GET /payments — 400 when month format is invalid", async () => {
+Deno.test("unit: GET /payments — 400 when month format is invalid", async () => {
   const res = await handlePayments(makeGetRequest("2026-5", "valid.jwt"));
   assertEquals(res.status, 400);
   const body = await jsonBody(res) as Record<string, unknown>;
@@ -660,7 +660,7 @@ Deno.test("integration: GET /payments — 400 when month format is invalid", asy
 
 // ─── 400 — missing month param ────────────────────────────────────────────
 
-Deno.test("integration: GET /payments — 400 when month param is missing", async () => {
+Deno.test("unit: GET /payments — 400 when month param is missing", async () => {
   const res = await handlePayments(makeGetRequest(undefined, "valid.jwt"));
   assertEquals(res.status, 400);
   const body = await jsonBody(res) as Record<string, unknown>;
@@ -669,7 +669,7 @@ Deno.test("integration: GET /payments — 400 when month param is missing", asyn
 
 // ─── 401 — missing JWT ────────────────────────────────────────────────────
 
-Deno.test("integration: GET /payments — 401 when no JWT provided", async () => {
+Deno.test("unit: GET /payments — 401 when no JWT provided", async () => {
   const res = await handlePayments(makeGetRequest("2026-05"));
   assertEquals(res.status, 401);
   const body = await jsonBody(res) as Record<string, unknown>;
@@ -678,7 +678,7 @@ Deno.test("integration: GET /payments — 401 when no JWT provided", async () =>
 
 // ─── 401 — invalid JWT ────────────────────────────────────────────────────
 
-Deno.test("integration: GET /payments — 401 when JWT is invalid or expired", async () => {
+Deno.test("unit: GET /payments — 401 when JWT is invalid or expired", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ authUser: null }) as typeof fetch;
   try {
@@ -695,7 +695,7 @@ Deno.test("integration: GET /payments — 401 when JWT is invalid or expired", a
 
 // ─── CORS headers ─────────────────────────────────────────────────────────
 
-Deno.test("integration: GET /payments — response includes CORS headers", async () => {
+Deno.test("unit: GET /payments — response includes CORS headers", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({
     payments: MOCK_PAYMENTS,
@@ -713,7 +713,7 @@ Deno.test("integration: GET /payments — response includes CORS headers", async
 
 // ─── 405 — wrong method ───────────────────────────────────────────────────
 
-Deno.test("integration: payments — 405 when DELETE is used", async () => {
+Deno.test("unit: payments — 405 when DELETE is used", async () => {
   const res = await handlePayments(
     new Request("http://localhost/payments", { method: "DELETE" }),
   );

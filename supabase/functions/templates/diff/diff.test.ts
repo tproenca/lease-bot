@@ -1,4 +1,4 @@
-// integration: GET /templates/diff
+// unit: GET /templates/diff
 //
 // Tests call handleTemplatesDiff() directly. Network calls to Supabase Auth,
 // PostgREST, and Google APIs are intercepted via globalThis.fetch stubs —
@@ -311,7 +311,7 @@ async function jsonBody(res: Response): Promise<Record<string, unknown>> {
 
 // ─── 401 — no JWT ─────────────────────────────────────────────────────────
 
-Deno.test("integration: GET /templates/diff — 401 when no JWT provided", async () => {
+Deno.test("unit: GET /templates/diff — 401 when no JWT provided", async () => {
   const res = await handleTemplatesDiff(makeRequest());
   assertEquals(res.status, 401);
   const body = await jsonBody(res);
@@ -320,7 +320,7 @@ Deno.test("integration: GET /templates/diff — 401 when no JWT provided", async
 
 // ─── 401 — invalid JWT ────────────────────────────────────────────────────
 
-Deno.test("integration: GET /templates/diff — 401 when JWT is invalid", async () => {
+Deno.test("unit: GET /templates/diff — 401 when JWT is invalid", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ authUser: null }) as typeof fetch;
   try {
@@ -335,7 +335,7 @@ Deno.test("integration: GET /templates/diff — 401 when JWT is invalid", async 
 
 // ─── 405 — wrong method ───────────────────────────────────────────────────
 
-Deno.test("integration: GET /templates/diff — 405 when POST is used", async () => {
+Deno.test("unit: GET /templates/diff — 405 when POST is used", async () => {
   const res = await handleTemplatesDiff(makeRequest(undefined, "POST"));
   assertEquals(res.status, 405);
   const body = await jsonBody(res);
@@ -347,7 +347,7 @@ Deno.test("integration: GET /templates/diff — 405 when POST is used", async ()
 
 // ─── OPTIONS preflight ────────────────────────────────────────────────────
 
-Deno.test("integration: GET /templates/diff — OPTIONS returns 200 with CORS headers", async () => {
+Deno.test("unit: GET /templates/diff — OPTIONS returns 200 with CORS headers", async () => {
   const res = await handleTemplatesDiff(makeRequest(undefined, "OPTIONS"));
   assertEquals(res.status, 200);
   assertEquals(res.headers.get("Access-Control-Allow-Origin") !== null, true);
@@ -355,7 +355,7 @@ Deno.test("integration: GET /templates/diff — OPTIONS returns 200 with CORS he
 
 // ─── CORS headers on success ──────────────────────────────────────────────
 
-Deno.test("integration: GET /templates/diff — success response includes CORS headers", async () => {
+Deno.test("unit: GET /templates/diff — success response includes CORS headers", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -368,14 +368,14 @@ Deno.test("integration: GET /templates/diff — success response includes CORS h
 
 // ─── CORS headers on error ────────────────────────────────────────────────
 
-Deno.test("integration: GET /templates/diff — error response includes CORS headers", async () => {
+Deno.test("unit: GET /templates/diff — error response includes CORS headers", async () => {
   const res = await handleTemplatesDiff(makeRequest());
   assertEquals(res.headers.get("Access-Control-Allow-Origin") !== null, true);
 });
 
 // ─── Fast path: no changes ────────────────────────────────────────────────
 
-Deno.test("integration: GET /templates/diff — 200 with empty diff when no templates changed (fast path)", async () => {
+Deno.test("unit: GET /templates/diff — 200 with empty diff when no templates changed (fast path)", async () => {
   const originalFetch = globalThis.fetch;
   // MOCK_TEMPLATES has drive_last_modified_at === MODIFIED_TIME_CACHED === MODIFIED_TIME_CURRENT
   // MOCK_DRIVE_FILES returns the same modifiedTime → no change → fast path
@@ -399,7 +399,7 @@ Deno.test("integration: GET /templates/diff — 200 with empty diff when no temp
 
 // ─── Fast path: Drive not hit when times match ────────────────────────────
 
-Deno.test("integration: GET /templates/diff — fast path does not export Drive file content", async () => {
+Deno.test("unit: GET /templates/diff — fast path does not export Drive file content", async () => {
   let exportCalled = false;
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: string | URL | Request) => {
@@ -426,7 +426,7 @@ Deno.test("integration: GET /templates/diff — fast path does not export Drive 
 
 // ─── Slow path: changed template ─────────────────────────────────────────
 
-Deno.test("integration: GET /templates/diff — 200 with placeholder diff when template changed (slow path)", async () => {
+Deno.test("unit: GET /templates/diff — 200 with placeholder diff when template changed (slow path)", async () => {
   const originalFetch = globalThis.fetch;
   // MOCK_TEMPLATES_CHANGED has drive_last_modified_at older than Drive's modifiedTime
   globalThis.fetch = buildMockFetch({
@@ -452,7 +452,7 @@ Deno.test("integration: GET /templates/diff — 200 with placeholder diff when t
 
 // ─── Slow path: witness detection ────────────────────────────────────────
 
-Deno.test("integration: GET /templates/diff — witnesses detected from signature blocks", async () => {
+Deno.test("unit: GET /templates/diff — witnesses detected from signature blocks", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({
     templates: MOCK_TEMPLATES_CHANGED,
@@ -472,7 +472,7 @@ Deno.test("integration: GET /templates/diff — witnesses detected from signatur
 
 // ─── Guia de Placeholders exclusion ──────────────────────────────────────
 
-Deno.test("integration: GET /templates/diff — Guia de Placeholders is never included in diff", async () => {
+Deno.test("unit: GET /templates/diff — Guia de Placeholders is never included in diff", async () => {
   const originalFetch = globalThis.fetch;
   const templatesWithGuia = [
     ...MOCK_TEMPLATES_CHANGED,
@@ -522,7 +522,7 @@ Deno.test("integration: GET /templates/diff — Guia de Placeholders is never in
 
 // ─── 404 — landlord not found ─────────────────────────────────────────────
 
-Deno.test("integration: GET /templates/diff — 404 when landlord row does not exist", async () => {
+Deno.test("unit: GET /templates/diff — 404 when landlord row does not exist", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ landlord: null }) as typeof fetch;
   try {
@@ -540,7 +540,7 @@ Deno.test("integration: GET /templates/diff — 404 when landlord row does not e
 
 // ─── 502 — Google auth failure ────────────────────────────────────────────
 
-Deno.test("integration: GET /templates/diff — 502 when Google token refresh fails", async () => {
+Deno.test("unit: GET /templates/diff — 502 when Google token refresh fails", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ googleTokenFail: true }) as typeof fetch;
   try {
@@ -558,7 +558,7 @@ Deno.test("integration: GET /templates/diff — 502 when Google token refresh fa
 
 // ─── 502 — Drive list failure ─────────────────────────────────────────────
 
-Deno.test("integration: GET /templates/diff — 502 when Drive file listing fails", async () => {
+Deno.test("unit: GET /templates/diff — 502 when Drive file listing fails", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ driveListFail: true }) as typeof fetch;
   try {
@@ -576,7 +576,7 @@ Deno.test("integration: GET /templates/diff — 502 when Drive file listing fail
 
 // ─── 502 — Drive export failure ──────────────────────────────────────────
 
-Deno.test("integration: GET /templates/diff — 502 when Drive file export fails", async () => {
+Deno.test("unit: GET /templates/diff — 502 when Drive file export fails", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({
     templates: MOCK_TEMPLATES_CHANGED,
@@ -597,7 +597,7 @@ Deno.test("integration: GET /templates/diff — 502 when Drive file export fails
 
 // ─── No templates → all-empty diff ───────────────────────────────────────
 
-Deno.test("integration: GET /templates/diff — 200 with all-empty arrays when landlord has no templates", async () => {
+Deno.test("unit: GET /templates/diff — 200 with all-empty arrays when landlord has no templates", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({
     templates: [],
@@ -622,7 +622,7 @@ Deno.test("integration: GET /templates/diff — 200 with all-empty arrays when l
 
 // ─── Removed templates: new shape { name, property_types } ───────────────
 
-Deno.test("integration: GET /templates/diff — removed.templates is Array<{ name, property_types }>", async () => {
+Deno.test("unit: GET /templates/diff — removed.templates is Array<{ name, property_types }>", async () => {
   const originalFetch = globalThis.fetch;
   // MOCK_TEMPLATES_WITH_REMOVED has drive-file-id-deleted which is absent from MOCK_DRIVE_FILES
   globalThis.fetch = buildMockFetch({
@@ -651,7 +651,7 @@ Deno.test("integration: GET /templates/diff — removed.templates is Array<{ nam
   }
 });
 
-Deno.test("integration: GET /templates/diff — removed.templates has empty property_types when none configured", async () => {
+Deno.test("unit: GET /templates/diff — removed.templates has empty property_types when none configured", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({
     templates: MOCK_TEMPLATES_WITH_REMOVED,

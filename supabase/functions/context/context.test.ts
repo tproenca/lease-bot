@@ -1,4 +1,4 @@
-// integration: GET /context
+// unit: GET /context
 //
 // Tests call handleContext() directly, following the same pattern as
 // supabase/functions/setup/complete/complete.test.ts. Network calls to
@@ -188,7 +188,7 @@ async function jsonBody(res: Response): Promise<Record<string, unknown>> {
 
 // ─── 401 — no JWT ─────────────────────────────────────────────────────────
 
-Deno.test("integration: GET /context — 401 when no JWT provided", async () => {
+Deno.test("unit: GET /context — 401 when no JWT provided", async () => {
   const res = await handleContext(makeRequest());
   assertEquals(res.status, 401);
   const body = await jsonBody(res);
@@ -197,7 +197,7 @@ Deno.test("integration: GET /context — 401 when no JWT provided", async () => 
 
 // ─── 401 — invalid JWT ────────────────────────────────────────────────────
 
-Deno.test("integration: GET /context — 401 when JWT is invalid", async () => {
+Deno.test("unit: GET /context — 401 when JWT is invalid", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ authUser: null }) as typeof fetch;
   try {
@@ -212,7 +212,7 @@ Deno.test("integration: GET /context — 401 when JWT is invalid", async () => {
 
 // ─── 200 — happy path with full data ─────────────────────────────────────
 
-Deno.test("integration: GET /context — 200 returns full landlord context", async () => {
+Deno.test("unit: GET /context — 200 returns full landlord context", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -261,7 +261,7 @@ Deno.test("integration: GET /context — 200 returns full landlord context", asy
 
 // ─── 200 — account_config reflects actual payment_reminder_frequency ──────
 
-Deno.test("integration: GET /context — account_config reflects daily frequency", async () => {
+Deno.test("unit: GET /context — account_config reflects daily frequency", async () => {
   const originalFetch = globalThis.fetch;
   const customLandlord = {
     ...MOCK_LANDLORD,
@@ -283,7 +283,7 @@ Deno.test("integration: GET /context — account_config reflects daily frequency
 
 // ─── 200 — empty arrays when no child data exists ─────────────────────────
 
-Deno.test("integration: GET /context — returns empty arrays when no data exists", async () => {
+Deno.test("unit: GET /context — returns empty arrays when no data exists", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: string | URL | Request) => {
     const url = typeof input === "string"
@@ -322,7 +322,7 @@ Deno.test("integration: GET /context — returns empty arrays when no data exist
 
 // ─── 404 — landlord row not found ────────────────────────────────────────
 
-Deno.test("integration: GET /context — 404 when landlord row does not exist", async () => {
+Deno.test("unit: GET /context — 404 when landlord row does not exist", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ landlord: null }) as typeof fetch;
   try {
@@ -340,7 +340,7 @@ Deno.test("integration: GET /context — 404 when landlord row does not exist", 
 
 // ─── CORS headers on success ──────────────────────────────────────────────
 
-Deno.test("integration: GET /context — success response includes CORS headers", async () => {
+Deno.test("unit: GET /context — success response includes CORS headers", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -353,14 +353,14 @@ Deno.test("integration: GET /context — success response includes CORS headers"
 
 // ─── CORS headers on error ────────────────────────────────────────────────
 
-Deno.test("integration: GET /context — error response includes CORS headers", async () => {
+Deno.test("unit: GET /context — error response includes CORS headers", async () => {
   const res = await handleContext(makeRequest());
   assertEquals(res.headers.get("Access-Control-Allow-Origin") !== null, true);
 });
 
 // ─── OPTIONS preflight ────────────────────────────────────────────────────
 
-Deno.test("integration: GET /context — OPTIONS returns 200 with CORS headers", async () => {
+Deno.test("unit: GET /context — OPTIONS returns 200 with CORS headers", async () => {
   const res = await handleContext(makeRequest(undefined, "OPTIONS"));
   assertEquals(res.status, 200);
   assertEquals(res.headers.get("Access-Control-Allow-Origin") !== null, true);
@@ -368,7 +368,7 @@ Deno.test("integration: GET /context — OPTIONS returns 200 with CORS headers",
 
 // ─── 405 — wrong HTTP method ──────────────────────────────────────────────
 
-Deno.test("integration: GET /context — 405 when POST is used", async () => {
+Deno.test("unit: GET /context — 405 when POST is used", async () => {
   const res = await handleContext(makeRequest(undefined, "POST"));
   assertEquals(res.status, 405);
   const body = await jsonBody(res);
@@ -380,7 +380,7 @@ Deno.test("integration: GET /context — 405 when POST is used", async () => {
 
 // ─── Template with multiple property types ────────────────────────────────
 
-Deno.test("integration: GET /context — template mapped to multiple property types", async () => {
+Deno.test("unit: GET /context — template mapped to multiple property types", async () => {
   const multiPtt = [
     { template_id: "tmpl-uuid-1", property_type: "apartment" },
     { template_id: "tmpl-uuid-1", property_type: "house" },
@@ -404,7 +404,7 @@ Deno.test("integration: GET /context — template mapped to multiple property ty
 
 // ─── Template with no property types ─────────────────────────────────────
 
-Deno.test("integration: GET /context — template with no property type mapping returns empty array", async () => {
+Deno.test("unit: GET /context — template with no property type mapping returns empty array", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ ptt: [] }) as typeof fetch;
   try {

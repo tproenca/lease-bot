@@ -1,4 +1,4 @@
-// integration: POST /setup/complete — input rejection tests
+// unit: POST /setup/complete — input rejection tests
 //
 // These tests call handleSetupComplete() directly. They exercise the JWT
 // verification + input validation layers without needing a real Supabase
@@ -40,7 +40,7 @@ async function jsonBody(res: Response): Promise<Record<string, unknown>> {
 
 // ─── No JWT ───────────────────────────────────────────────────────────────
 
-Deno.test("integration: /setup/complete — 401 when no JWT provided", async () => {
+Deno.test("unit: /setup/complete — 401 when no JWT provided", async () => {
   const res = await handleSetupComplete(
     new Request("http://localhost/setup/complete", {
       method: "POST",
@@ -58,7 +58,7 @@ Deno.test("integration: /setup/complete — 401 when no JWT provided", async () 
 // getAuthenticatedUser calls Supabase Auth. We intercept fetch so it returns
 // an error, simulating an invalid/expired token.
 
-Deno.test("integration: /setup/complete — 401 when JWT is invalid", async () => {
+Deno.test("unit: /setup/complete — 401 when JWT is invalid", async () => {
   // Intercept calls to Supabase Auth endpoints.
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (input: string | URL | Request) => {
@@ -88,7 +88,7 @@ Deno.test("integration: /setup/complete — 401 when JWT is invalid", async () =
 
 // ─── Input validation (bad Drive ID) ─────────────────────────────────────
 
-Deno.test("integration: /setup/complete — 400 when root_folder_id is invalid", async () => {
+Deno.test("unit: /setup/complete — 400 when root_folder_id is invalid", async () => {
   // Mock a valid auth user response so we get past JWT check.
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (input: string | URL | Request) => {
@@ -138,7 +138,7 @@ Deno.test("integration: /setup/complete — 400 when root_folder_id is invalid",
 
 // ─── Input validation (bad WhatsApp) ─────────────────────────────────────
 
-Deno.test("integration: /setup/complete — 400 when whatsapp is not a Brazilian number", async () => {
+Deno.test("unit: /setup/complete — 400 when whatsapp is not a Brazilian number", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (input: string | URL | Request) => {
     const url = typeof input === "string"
@@ -186,7 +186,7 @@ Deno.test("integration: /setup/complete — 400 when whatsapp is not a Brazilian
 
 // ─── Input validation (empty API key) ────────────────────────────────────
 
-Deno.test("integration: /setup/complete — 400 when autentique_api_key is empty", async () => {
+Deno.test("unit: /setup/complete — 400 when autentique_api_key is empty", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (input: string | URL | Request) => {
     const url = typeof input === "string"
@@ -233,7 +233,7 @@ Deno.test("integration: /setup/complete — 400 when autentique_api_key is empty
 
 // ─── Input validation (API key with injection chars) ─────────────────────
 
-Deno.test("integration: /setup/complete — 400 when autentique_api_key contains newline", async () => {
+Deno.test("unit: /setup/complete — 400 when autentique_api_key contains newline", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (input: string | URL | Request) => {
     const url = typeof input === "string"
@@ -280,7 +280,7 @@ Deno.test("integration: /setup/complete — 400 when autentique_api_key contains
 
 // ─── Input validation (missing webhook secret) ──────────────────────────
 
-Deno.test("integration: /setup/complete — 400 when autentique_webhook_secret is missing", async () => {
+Deno.test("unit: /setup/complete — 400 when autentique_webhook_secret is missing", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (input: string | URL | Request) => {
     const url = typeof input === "string"
@@ -326,7 +326,7 @@ Deno.test("integration: /setup/complete — 400 when autentique_webhook_secret i
   }
 });
 
-Deno.test("integration: /setup/complete — 400 when autentique_webhook_secret contains newline", async () => {
+Deno.test("unit: /setup/complete — 400 when autentique_webhook_secret contains newline", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (input: string | URL | Request) => {
     const url = typeof input === "string"
@@ -374,7 +374,7 @@ Deno.test("integration: /setup/complete — 400 when autentique_webhook_secret c
 
 // ─── CORS headers on error responses ─────────────────────────────────────
 
-Deno.test("integration: /setup/complete — error response carries CORS headers", async () => {
+Deno.test("unit: /setup/complete — error response carries CORS headers", async () => {
   const res = await handleSetupComplete(
     new Request("http://localhost/setup/complete", {
       method: "POST",
