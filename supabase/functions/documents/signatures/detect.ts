@@ -123,13 +123,20 @@ function decodePdfString(literal: string): string {
   const inner = literal.slice(1, -1);
   return inner.replace(/\\(.)/g, (_: string, ch: string) => {
     switch (ch) {
-      case "n": return "\n";
-      case "r": return "\r";
-      case "t": return "\t";
-      case "\\": return "\\";
-      case "(": return "(";
-      case ")": return ")";
-      default: return ch;
+      case "n":
+        return "\n";
+      case "r":
+        return "\r";
+      case "t":
+        return "\t";
+      case "\\":
+        return "\\";
+      case "(":
+        return "(";
+      case ")":
+        return ")";
+      default:
+        return ch;
     }
   });
 }
@@ -138,7 +145,10 @@ function* tokenise(stream: string): Generator<string> {
   let i = 0;
   while (i < stream.length) {
     const ch = stream[i];
-    if (ch === " " || ch === "\t" || ch === "\n" || ch === "\r") { i++; continue; }
+    if (ch === " " || ch === "\t" || ch === "\n" || ch === "\r") {
+      i++;
+      continue;
+    }
     if (ch === "%") {
       while (i < stream.length && stream[i] !== "\n" && stream[i] !== "\r") i++;
       continue;
@@ -148,25 +158,43 @@ function* tokenise(stream: string): Generator<string> {
       let literal = "(";
       while (j < stream.length && depth > 0) {
         if (stream[j] === "\\" && j + 1 < stream.length) {
-          literal += stream[j] + stream[j + 1]; j += 2; continue;
+          literal += stream[j] + stream[j + 1];
+          j += 2;
+          continue;
         }
         if (stream[j] === "(") depth++;
         if (stream[j] === ")") depth--;
-        literal += stream[j]; j++;
+        literal += stream[j];
+        j++;
       }
-      yield literal; i = j; continue;
-    }
-    if (ch === "<") {
-      if (i + 1 < stream.length && stream[i + 1] === "<") { yield "<<"; i += 2; continue; }
-      let j = i + 1;
-      while (j < stream.length && stream[j] !== ">") j++;
-      yield stream.slice(i, j + 1); i = j + 1; continue;
-    }
-    if (ch === ">") {
-      if (i + 1 < stream.length && stream[i + 1] === ">") { yield ">>"; i += 2; } else i++;
+      yield literal;
+      i = j;
       continue;
     }
-    if (ch === "[" || ch === "]") { yield ch; i++; continue; }
+    if (ch === "<") {
+      if (i + 1 < stream.length && stream[i + 1] === "<") {
+        yield "<<";
+        i += 2;
+        continue;
+      }
+      let j = i + 1;
+      while (j < stream.length && stream[j] !== ">") j++;
+      yield stream.slice(i, j + 1);
+      i = j + 1;
+      continue;
+    }
+    if (ch === ">") {
+      if (i + 1 < stream.length && stream[i + 1] === ">") {
+        yield ">>";
+        i += 2;
+      } else i++;
+      continue;
+    }
+    if (ch === "[" || ch === "]") {
+      yield ch;
+      i++;
+      continue;
+    }
     let j = i;
     while (j < stream.length && !" \t\n\r()/<>[]%{".includes(stream[j])) j++;
     if (j > i) yield stream.slice(i, j);
@@ -194,42 +222,76 @@ function extractTextElements(stream: string): TextElement[] {
     const tok = tokens[i];
 
     if (tok === "BT") {
-      inTextBlock = true; curX = curY = lineX = lineY = 0; i++; continue;
+      inTextBlock = true;
+      curX =
+        curY =
+        lineX =
+        lineY =
+          0;
+      i++;
+      continue;
     }
-    if (tok === "ET") { inTextBlock = false; i++; continue; }
-    if (!inTextBlock) { i++; continue; }
+    if (tok === "ET") {
+      inTextBlock = false;
+      i++;
+      continue;
+    }
+    if (!inTextBlock) {
+      i++;
+      continue;
+    }
 
     if (tok === "Tm" && i >= 6) {
       const e = parseFloat(tokens[i - 2]), f = parseFloat(tokens[i - 1]);
-      if (!isNaN(e) && !isNaN(f)) { curX = lineX = e; curY = lineY = f; }
-      i++; continue;
+      if (!isNaN(e) && !isNaN(f)) {
+        curX = lineX = e;
+        curY = lineY = f;
+      }
+      i++;
+      continue;
     }
     if (tok === "Tf" && i >= 2) {
       const sz = parseFloat(tokens[i - 1]);
       if (!isNaN(sz) && sz > 0) fontSize = sz;
-      i++; continue;
+      i++;
+      continue;
     }
     if (tok === "TL" && i >= 1) {
       const l = parseFloat(tokens[i - 1]);
       if (!isNaN(l)) leading = l;
-      i++; continue;
+      i++;
+      continue;
     }
     if (tok === "Td" && i >= 2) {
       const tx = parseFloat(tokens[i - 2]), ty = parseFloat(tokens[i - 1]);
-      if (!isNaN(tx) && !isNaN(ty)) { lineX += tx; lineY += ty; curX = lineX; curY = lineY; }
-      i++; continue;
+      if (!isNaN(tx) && !isNaN(ty)) {
+        lineX += tx;
+        lineY += ty;
+        curX = lineX;
+        curY = lineY;
+      }
+      i++;
+      continue;
     }
     if (tok === "TD" && i >= 2) {
       const tx = parseFloat(tokens[i - 2]), ty = parseFloat(tokens[i - 1]);
       if (!isNaN(tx) && !isNaN(ty)) {
-        lineX += tx; lineY += ty; curX = lineX; curY = lineY; leading = -ty;
+        lineX += tx;
+        lineY += ty;
+        curX = lineX;
+        curY = lineY;
+        leading = -ty;
       }
-      i++; continue;
+      i++;
+      continue;
     }
     if (tok === "T*") {
       const ld = leading !== 0 ? leading : fontSize;
-      lineY -= ld; curX = lineX; curY = lineY;
-      i++; continue;
+      lineY -= ld;
+      curX = lineX;
+      curY = lineY;
+      i++;
+      continue;
     }
     if (tok === "Tj" && i >= 1) {
       const op = tokens[i - 1];
@@ -237,7 +299,8 @@ function extractTextElements(stream: string): TextElement[] {
         const text = decodeTokenText(op);
         if (text.length > 0) elements.push({ text, x: curX, y: curY });
       }
-      i++; continue;
+      i++;
+      continue;
     }
     if (tok === "TJ") {
       let combined = "", j = i - 1;
@@ -251,8 +314,11 @@ function extractTextElements(stream: string): TextElement[] {
           j--;
         }
       }
-      if (combined.length > 0) elements.push({ text: combined, x: curX, y: curY });
-      i++; continue;
+      if (combined.length > 0) {
+        elements.push({ text: combined, x: curX, y: curY });
+      }
+      i++;
+      continue;
     }
     i++;
   }
