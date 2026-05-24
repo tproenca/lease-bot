@@ -11,8 +11,8 @@
 //   verifying that actual coordinates are used, not hardcoded defaults.
 
 import {
-  assertEquals,
   assertAlmostEquals,
+  assertEquals,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { PDFDocument, StandardFonts } from "https://esm.sh/pdf-lib@1.17.1";
 import {
@@ -100,7 +100,9 @@ Deno.test("unit: detect — LOCADOR role is present", async () => {
   const result = await detect(pdf);
   assertEquals(result.ok, true);
   if (result.ok) {
-    const pos = result.positions.find((p: SignerPosition) => p.role === "LOCADOR");
+    const pos = result.positions.find((p: SignerPosition) =>
+      p.role === "LOCADOR"
+    );
     assertEquals(pos !== undefined, true);
   }
 });
@@ -115,7 +117,9 @@ Deno.test("unit: detect — LOCATARIO role is present", async () => {
   const result = await detect(pdf);
   assertEquals(result.ok, true);
   if (result.ok) {
-    const pos = result.positions.find((p: SignerPosition) => p.role === "LOCATARIO");
+    const pos = result.positions.find((p: SignerPosition) =>
+      p.role === "LOCATARIO"
+    );
     assertEquals(pos !== undefined, true);
   }
 });
@@ -134,7 +138,9 @@ Deno.test("unit: detect — LOCADOR x coordinate matches underline drawText posi
   const result = await detect(pdf);
   assertEquals(result.ok, true);
   if (result.ok) {
-    const pos = result.positions.find((p: SignerPosition) => p.role === "LOCADOR")!;
+    const pos = result.positions.find((p: SignerPosition) =>
+      p.role === "LOCADOR"
+    )!;
     assertAlmostEquals(pos.x, 50, COORD_TOLERANCE);
   }
 });
@@ -149,7 +155,9 @@ Deno.test("unit: detect — LOCADOR y coordinate matches underline drawText posi
   const result = await detect(pdf);
   assertEquals(result.ok, true);
   if (result.ok) {
-    const pos = result.positions.find((p: SignerPosition) => p.role === "LOCADOR")!;
+    const pos = result.positions.find((p: SignerPosition) =>
+      p.role === "LOCADOR"
+    )!;
     assertAlmostEquals(pos.y, 200, COORD_TOLERANCE);
   }
 });
@@ -164,7 +172,9 @@ Deno.test("unit: detect — LOCATARIO coordinates match its underline position",
   const result = await detect(pdf);
   assertEquals(result.ok, true);
   if (result.ok) {
-    const pos = result.positions.find((p: SignerPosition) => p.role === "LOCATARIO")!;
+    const pos = result.positions.find((p: SignerPosition) =>
+      p.role === "LOCATARIO"
+    )!;
     assertAlmostEquals(pos.x, 200, COORD_TOLERANCE);
     assertAlmostEquals(pos.y, 150, COORD_TOLERANCE);
   }
@@ -180,8 +190,12 @@ Deno.test("unit: detect — coordinates are distinct when underlines are at diff
   const result = await detect(pdf);
   assertEquals(result.ok, true);
   if (result.ok) {
-    const locador = result.positions.find((p: SignerPosition) => p.role === "LOCADOR")!;
-    const locatario = result.positions.find((p: SignerPosition) => p.role === "LOCATARIO")!;
+    const locador = result.positions.find((p: SignerPosition) =>
+      p.role === "LOCADOR"
+    )!;
+    const locatario = result.positions.find((p: SignerPosition) =>
+      p.role === "LOCATARIO"
+    )!;
     assertEquals(locador.y !== locatario.y, true);
   }
 });
@@ -216,7 +230,9 @@ Deno.test("unit: detect — single witness becomes TESTEMUNHA_1", async () => {
   const result = await detect(pdf);
   assertEquals(result.ok, true);
   if (result.ok) {
-    const t1 = result.positions.find((p: SignerPosition) => p.role === "TESTEMUNHA_1");
+    const t1 = result.positions.find((p: SignerPosition) =>
+      p.role === "TESTEMUNHA_1"
+    );
     assertEquals(t1 !== undefined, true);
   }
 });
@@ -255,8 +271,12 @@ Deno.test("unit: detect — first witness (higher y) is TESTEMUNHA_1", async () 
   const result = await detect(pdf);
   assertEquals(result.ok, true);
   if (result.ok) {
-    const t1 = result.positions.find((p: SignerPosition) => p.role === "TESTEMUNHA_1")!;
-    const t2 = result.positions.find((p: SignerPosition) => p.role === "TESTEMUNHA_2")!;
+    const t1 = result.positions.find((p: SignerPosition) =>
+      p.role === "TESTEMUNHA_1"
+    )!;
+    const t2 = result.positions.find((p: SignerPosition) =>
+      p.role === "TESTEMUNHA_2"
+    )!;
     assertEquals(t1.y > t2.y, true); // TESTEMUNHA_1 is higher on the page
   }
 });
@@ -275,7 +295,9 @@ Deno.test("unit: detect — label 'Nome — Locador' maps to LOCADOR", async () 
   const result = await detect(pdf);
   assertEquals(result.ok, true);
   if (result.ok) {
-    const pos = result.positions.find((p: SignerPosition) => p.role === "LOCADOR");
+    const pos = result.positions.find((p: SignerPosition) =>
+      p.role === "LOCADOR"
+    );
     assertEquals(pos !== undefined, true);
   }
 });
@@ -290,7 +312,9 @@ Deno.test("unit: detect — label 'Nome — Locatario' maps to LOCATARIO", async
   const result = await detect(pdf);
   assertEquals(result.ok, true);
   if (result.ok) {
-    const pos = result.positions.find((p: SignerPosition) => p.role === "LOCATARIO");
+    const pos = result.positions.find((p: SignerPosition) =>
+      p.role === "LOCATARIO"
+    );
     assertEquals(pos !== undefined, true);
   }
 });
@@ -309,7 +333,9 @@ Deno.test("unit: detect — uppercase LOCADOR label maps to LOCADOR role", async
   const result = await detect(pdf);
   assertEquals(result.ok, true);
   if (result.ok) {
-    const pos = result.positions.find((p: SignerPosition) => p.role === "LOCADOR");
+    const pos = result.positions.find((p: SignerPosition) =>
+      p.role === "LOCADOR"
+    );
     assertEquals(pos !== undefined, true);
   }
 });
@@ -324,7 +350,9 @@ Deno.test("unit: detect — uppercase LOCATARIO label maps to LOCATARIO role", a
   const result = await detect(pdf);
   assertEquals(result.ok, true);
   if (result.ok) {
-    const pos = result.positions.find((p: SignerPosition) => p.role === "LOCATARIO");
+    const pos = result.positions.find((p: SignerPosition) =>
+      p.role === "LOCATARIO"
+    );
     assertEquals(pos !== undefined, true);
   }
 });
@@ -480,7 +508,9 @@ Deno.test("unit: detect — TESTEMUNHA_1 coordinates match its underline drawTex
   const result = await detect(pdf);
   assertEquals(result.ok, true);
   if (result.ok) {
-    const t1 = result.positions.find((p: SignerPosition) => p.role === "TESTEMUNHA_1")!;
+    const t1 = result.positions.find((p: SignerPosition) =>
+      p.role === "TESTEMUNHA_1"
+    )!;
     assertAlmostEquals(t1.x, 50, COORD_TOLERANCE);
     assertAlmostEquals(t1.y, 240, COORD_TOLERANCE);
   }
@@ -500,7 +530,9 @@ Deno.test("unit: detect — TESTEMUNHA_2 coordinates match its underline drawTex
   const result = await detect(pdf);
   assertEquals(result.ok, true);
   if (result.ok) {
-    const t2 = result.positions.find((p: SignerPosition) => p.role === "TESTEMUNHA_2")!;
+    const t2 = result.positions.find((p: SignerPosition) =>
+      p.role === "TESTEMUNHA_2"
+    )!;
     assertAlmostEquals(t2.x, 50, COORD_TOLERANCE);
     assertAlmostEquals(t2.y, 170, COORD_TOLERANCE);
   }
