@@ -157,7 +157,8 @@ const BASE_STYLES = `
     margin-top: 4px;
   }
   .helper { font-size: 13px; color: #666; margin-top: 4px; }
-  .btn { display: inline-block; padding: 10px 18px; border-radius: 6px;
+  .btn { display: inline-flex; align-items: center; gap: 8px;
+         padding: 10px 18px; border-radius: 6px;
          background: #1a73e8; color: #fff; border: none; font-size: 15px;
          cursor: pointer; text-decoration: none; }
   .btn:disabled { background: #999; cursor: not-allowed; }
@@ -168,6 +169,12 @@ const BASE_STYLES = `
   hr { border: none; border-top: 1px solid #eee; margin: 24px 0; }
   .success { background: #e6f4ea; border: 1px solid #b7e1cd; padding: 16px;
              border-radius: 6px; }
+  @keyframes btn-spin { to { transform: rotate(360deg); } }
+  .btn-spinner { display: none; width: 16px; height: 16px; flex-shrink: 0;
+                 border: 2px solid rgba(255,255,255,0.4);
+                 border-top-color: #fff; border-radius: 50%;
+                 animation: btn-spin 0.7s linear infinite; }
+  .btn-spinner.visible { display: inline-block; }
 `;
 
 function renderPreAuthHtml(authUrl: string): string {
@@ -266,7 +273,11 @@ function renderPostAuthHtml(
     <p class="error" id="formError" role="alert"></p>
 
     <p style="margin-top: 24px;">
-      <button type="submit" class="btn" id="submitBtn">Concluir configuração</button>
+      <button type="submit" class="btn" id="submitBtn">
+        <svg class="btn-spinner" id="submitSpinner" aria-hidden="true"
+             viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"></svg>
+        <span id="submitLabel">Concluir configuração</span>
+      </button>
     </p>
   </form>
 
@@ -348,10 +359,24 @@ function renderPostAuthHtml(
         picker.setVisible(true);
       }
 
+      var submitSpinner = document.getElementById('submitSpinner');
+      var submitLabel = document.getElementById('submitLabel');
+
+      function setSubmitting(loading) {
+        submitBtn.disabled = loading;
+        if (loading) {
+          submitSpinner.classList.add('visible');
+          submitLabel.textContent = 'Aguarde…';
+        } else {
+          submitSpinner.classList.remove('visible');
+          submitLabel.textContent = 'Concluir configuração';
+        }
+      }
+
       form.addEventListener('submit', async function(ev) {
         ev.preventDefault();
         showError('');
-        submitBtn.disabled = true;
+        setSubmitting(true);
         try {
           var payload = {
             root_folder_id: rootInput.value.trim(),
@@ -369,14 +394,15 @@ function renderPostAuthHtml(
           var json = await res.json().catch(function(){ return {}; });
           if (!res.ok) {
             showError((json.error && json.error.message) || 'Erro ao concluir a configuração.');
-            submitBtn.disabled = false;
+            setSubmitting(false);
             return;
           }
+          // Keep spinner visible — page will navigate away on success.
           var guiaParam = json.guia_doc_id ? '?guia=' + encodeURIComponent(json.guia_doc_id) : '';
           window.location.href = window.location.pathname + guiaParam;
         } catch (e) {
           showError('Erro de rede. Tente novamente.');
-          submitBtn.disabled = false;
+          setSubmitting(false);
         }
       });
     })();
