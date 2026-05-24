@@ -137,6 +137,30 @@ const MOCK_DRIVE_FILES = [
   },
 ];
 
+// Template that is in DB but no longer in Drive (removed).
+const MOCK_TEMPLATES_WITH_REMOVED = [
+  {
+    id: "tmpl-uuid-1",
+    name: "Contrato Residencial",
+    drive_file_id: "drive-file-id-1",
+    drive_last_modified_at: MODIFIED_TIME_CACHED,
+    placeholder_names: ["nome do inquilino", "cpf"],
+  },
+  {
+    id: "tmpl-uuid-removed",
+    name: "Contrato Comercial",
+    drive_file_id: "drive-file-id-deleted",
+    drive_last_modified_at: MODIFIED_TIME_CACHED,
+    placeholder_names: [],
+  },
+];
+
+// property_type_templates rows for the removed template.
+const MOCK_PT_ROWS_FOR_REMOVED = [
+  { template_id: "tmpl-uuid-removed", property_type: "apartment" },
+  { template_id: "tmpl-uuid-removed", property_type: "house" },
+];
+
 // Drive file content for changed template slow-path test.
 const MOCK_CHANGED_DOC_TEXT = [
   "Contrato de Locação",
@@ -162,6 +186,7 @@ function buildMockFetch(opts: {
   driveListFail?: boolean;
   driveExportFail?: boolean;
   dbUpdateFail?: boolean;
+  propertyTypeTemplates?: Array<{ template_id: string; property_type: string }>;
 }) {
   return async function mockFetch(
     input: string | URL | Request,
@@ -183,6 +208,14 @@ function buildMockFetch(opts: {
       return new Response(JSON.stringify(opts.authUser ?? MOCK_USER), {
         status: 200,
       });
+    }
+
+    // PostgREST: property_type_templates
+    if (url.includes("/rest/v1/property_type_templates")) {
+      return new Response(
+        JSON.stringify(opts.propertyTypeTemplates ?? []),
+        { status: 200 },
+      );
     }
 
     // PostgREST: templates
@@ -582,6 +615,60 @@ Deno.test("integration: GET /templates/diff — 200 with all-empty arrays when l
     assertEquals(placeholders.added.length, 0);
     assertEquals(placeholders.removed.length, 0);
     assertEquals(witnesses.added.length, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// ─── Removed templates: new shape { name, property_types } ───────────────
+
+Deno.test("integration: GET /templates/diff — removed.templates is Array<{ name, property_types }>", async () => {
+  const originalFetch = globalThis.fetch;
+  // MOCK_TEMPLATES_WITH_REMOVED has drive-file-id-deleted which is absent from MOCK_DRIVE_FILES
+  globalThis.fetch = buildMockFetch({
+    templates: MOCK_TEMPLATES_WITH_REMOVED,
+    driveFiles: MOCK_DRIVE_FILES,
+    propertyTypeTemplates: MOCK_PT_ROWS_FOR_REMOVED,
+  }) as typeof fetch;
+  try {
+    const res = await handleTemplatesDiff(makeRequest("valid.jwt"));
+    assertEquals(res.status, 200);
+    const body = await jsonBody(res);
+    const templates = body.templates as {
+      added: string[];
+      removed: Array<{ name: string; property_types: string[] }>;
+    };
+    assertEquals(templates.removed.length, 1);
+    const removed = templates.removed[0];
+    assertEquals(removed.name, "Contrato Comercial");
+    assertEquals(removed.property_types.includes("apartment"), true);
+    assertEquals(removed.property_types.includes("house"), true);
+    assertEquals(removed.property_types.length, 2);
+    // added shape is still string[]
+    assertEquals(templates.added.length, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("integration: GET /templates/diff — removed.templates has empty property_types when none configured", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({
+    templates: MOCK_TEMPLATES_WITH_REMOVED,
+    driveFiles: MOCK_DRIVE_FILES,
+    propertyTypeTemplates: [], // no rows for this template
+  }) as typeof fetch;
+  try {
+    const res = await handleTemplatesDiff(makeRequest("valid.jwt"));
+    assertEquals(res.status, 200);
+    const body = await jsonBody(res);
+    const templates = body.templates as {
+      added: string[];
+      removed: Array<{ name: string; property_types: string[] }>;
+    };
+    assertEquals(templates.removed.length, 1);
+    assertEquals(templates.removed[0].name, "Contrato Comercial");
+    assertEquals(templates.removed[0].property_types.length, 0);
   } finally {
     globalThis.fetch = originalFetch;
   }
