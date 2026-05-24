@@ -59,6 +59,71 @@ GPT (OpenAI) ──GET──► /oauth/authorize ──302──► accounts.goo
 
 ---
 
+## Conversation Conventions
+
+### Numbered options
+
+Whenever the GPT presents a set of choices, it **always** uses a numbered list — never bullets. The landlord can reply with just a number, a range, or a comma-separated list of numbers.
+
+```
+GPT: Para quais tipos de imóvel este template se aplica?
+     1. Apartamento
+     2. Casa
+     3. Imóvel comercial
+
+Proprietário: 1 e 2
+```
+
+This applies to every choice prompt in the flows, including:
+- Property type selection (Flows 2, 8, 9)
+- Tenant selection (Flows 3, 5, 6, 7)
+- Building selection — existing vs. new (Flow 9)
+- Overdue tenants to remind (Flow 6)
+- Main menu items (Flow 1)
+
+### Post-flow behavior
+
+After completing any flow that doesn't chain directly into another, the GPT re-shows the menu with a short prompt:
+
+```
+Feito! Posso ajudar com mais alguma coisa?
+
+1. Registrar pagamento
+2. Ver inadimplentes
+3. Gerar documento
+4. Enviar para assinatura
+5. Adicionar inquilino
+6. Adicionar imóvel
+7. Criar template
+```
+
+**Exception — chained flows:** flows that naturally lead into another do NOT re-show the menu between steps. The menu only appears at the end of the full chain or when the landlord declines to continue:
+
+- Add Tenant (Flow 7) → Generate Document (Flow 3) → Send for Signature (Flow 4) → **menu**
+- Generate Document (Flow 3) → Send for Signature (Flow 4) → **menu**
+
+If the landlord declines a chain step (e.g. "não" to generating a contract after adding a tenant), the GPT re-shows the menu immediately.
+
+---
+
+### Confirmation protocol
+
+Before any write API call, the GPT shows a summary and waits for explicit confirmation:
+
+```
+GPT: Resumo:
+     - Template: Contrato Residencial
+     - Tipos: apartamento, casa
+
+     Confirma? (Sim para continuar)
+
+Proprietário: Sim
+```
+
+Only "Sim" (or equivalent) triggers the API call. Any other response prompts the GPT to ask what to change.
+
+---
+
 ## Flow 0 — Onboarding (first conversation, landlord not yet set up)
 
 **Trigger:** GPT calls `getContext` and receives `HTTP 404 LANDLORD_NOT_FOUND`.
@@ -116,11 +181,11 @@ GPT                         Edge Functions              Browser (landlord)
 
 ---
 
-## Flow 1 — Session Start (every conversation)
+## Flow 1 — Session Start (every session)
 
 **Trigger:** Any message, including "oi", "menu", "ajuda", or any other first message.
 
-The GPT **always** calls `getContext` before responding. This is enforced by the `## OBRIGATÓRIO` section of the system prompt.
+The GPT **always** calls `getContext` before responding.
 
 ```
 GPT ──GET /context──────────────────────────────────────────────►
@@ -136,7 +201,19 @@ GPT ──GET /templates/diff ────────────────�
 
 - If `cron_errors` is non-empty, GPT warns the landlord about failed automated reminders.
 - If `templates/diff` returns non-empty changes, GPT enters **Flow 2** before showing the menu.
-- If both are clean, GPT greets the landlord by name and shows the menu.
+- If both are clean, GPT greets the landlord by name and shows the menu:
+
+```
+Olá, [nome]! O que você quer fazer?
+
+1. Registrar pagamento
+2. Ver inadimplentes
+3. Gerar documento
+4. Enviar para assinatura
+5. Adicionar inquilino
+6. Adicionar imóvel
+7. Criar template
+```
 
 **API calls:**
 
@@ -151,10 +228,36 @@ GPT ──GET /templates/diff ────────────────�
 
 **Trigger:** `GET /templates/diff` returns at least one change. Runs before the main menu.
 
-The diff compares the landlord's Google Drive templates folder against the cached DB state. The GPT walks through each change interactively before continuing.
+The diff compares the landlord's Google Drive templates folder against the cached DB state. The GPT **lists all detected changes upfront**, then walks through each one interactively before showing the main menu.
+
+**Opening message (example — 3 changes):**
 
 ```
-templates.added      → GPT asks: which property types apply?
+Detectei mudanças nos templates:
+- Novos: Contrato Residencial, Contrato Comercial
+- Removidos: Aditivo Antigo
+
+Vamos configurar cada um. Começando com Contrato Residencial — para quais tipos de imóvel ele se aplica?
+1. Apartamento
+2. Casa
+3. Imóvel comercial
+```
+
+**Re-upload detection:** If the same template name appears in both `added` and `removed`, the GPT treats it as a re-upload (file deleted and re-uploaded to Drive, producing a new Drive file ID). Instead of asking property types from scratch, it asks:
+
+```
+O template "Contrato Residencial" parece ter sido re-enviado para o Drive.
+Deseja manter as configurações anteriores? (tipos: Apartamento, Casa)
+```
+
+If the landlord confirms, the GPT uses the `property_types` from the `removed` entry (returned by the API — see #78) to call `POST /templates` without asking again. If they decline, the GPT asks for property types normally.
+
+> **Note:** Re-upload detection requires `GET /templates/diff` to return `removed.templates` as `Array<{ name, property_types }>` instead of `string[]`. Tracked in [#78](https://github.com/tproenca/lease-bot/issues/78). Until that ships, the GPT will ask for property types even on re-uploads.
+
+**Per-change actions:**
+
+```
+templates.added      → GPT asks: which property types apply? (numbered list)
                         ──POST /templates──────────────────────►
                           { drive_file_id, name,
                             placeholder_names[],
@@ -186,16 +289,21 @@ placeholders.removed → GPT informs landlord (no confirmation required)
 
 ---
 
-## Flow 3 — Generate Contract
+## Flow 3a — Generate Document (new tenant)
 
-**Trigger:** Menu item "Gerar contrato" or user intent.
+**Trigger:** Chained from Flow 7 (Add Tenant) when tenant was just added.
 
 ```
-1. GPT identifies property and tenant from context (already loaded in Flow 1)
-2. GPT asks for each required placeholder not marked as derived
-3. GPT computes derived values (end date, amount in words, formatted CPF, etc.)
-4. GPT shows complete summary of all placeholder values
-5. Landlord confirms with "Sim"
+1. GPT identifies property and tenant (just created in Flow 7 — no selection needed)
+2. GPT asks which template to use (shows numbered list filtered by property type)
+3. GPT asks for each required placeholder not marked as derived AND not already
+   known from context. Values available from context (tenant name, CPF, WhatsApp,
+   property address) are filled automatically — the landlord is never asked to
+   repeat information already in the system.
+4. GPT computes derived values (end date, amount in words, formatted CPF, etc.)
+5. GPT shows complete summary of all placeholder values
+6. GPT asks if want to generate the document
+7. Landlord confirms with "Sim"
 
 ──POST /documents/generate───────────────────────────────────────►
   { tenant_id,
@@ -203,7 +311,37 @@ placeholders.removed → GPT informs landlord (no confirmation required)
 ◄──200 [{ doc_id, url }] ────────────────────────────────────────
   (Drive URLs of generated documents)
 
-6. GPT shows Drive links and asks if landlord wants to send for signature
+7. GPT shows Drive links and asks if landlord wants to send for signature → Flow 4
+```
+
+---
+
+## Flow 3b — Generate Document (existing tenant)
+
+**Trigger:** Menu item "Gerar documento" when tenant already exists (renewal, addendum, or any other document).
+
+```
+1. GPT asks: which property? (shows numbered list)
+2. GPT identifies the active tenant for that property from context (no need to
+   ask for tenant name — it is already known)
+3. GPT asks which template to use (shows numbered list filtered by property type)
+   e.g.: 1. Contrato Residencial
+         2. Aditivo de Renovação
+4. GPT asks for each required placeholder not marked as derived AND not already
+   known from context. Values available from context (tenant name, CPF, WhatsApp,
+   property address) are filled automatically — the landlord is never asked to
+   repeat information already in the system.
+5. GPT computes derived values
+6. GPT shows complete summary
+7. GPT asks if want to generate the document
+8. Landlord confirms with "Sim"
+
+──POST /documents/generate───────────────────────────────────────►
+  { tenant_id,
+    values: { placeholder_name: value, ... } }
+◄──200 [{ doc_id, url }] ────────────────────────────────────────
+
+8. GPT shows Drive links and asks if landlord wants to send for signature → Flow 4
 ```
 
 **Derived value rules** (from `contract-rules.md`):
@@ -225,7 +363,7 @@ placeholders.removed → GPT informs landlord (no confirmation required)
 
 ## Flow 4 — Send for Signature
 
-**Trigger:** Menu item "Enviar para assinatura" or after generating a contract.
+**Trigger:** Menu item "Enviar para assinatura" or after generating a document.
 
 ```
 1. GPT confirms documents exist for the tenant (from context)
@@ -271,7 +409,7 @@ Autentique ──POST /webhooks/autentique/:landlord_id────────�
 
 ```
 1. GPT asks: which tenant? (from context)
-2. GPT asks: reference month (YYYY-MM)
+2. GPT asks: reference month (MM/YYYY) (default: current month)
 3. GPT asks: amount and payment date
 4. GPT shows summary + "Confirma? (Sim para continuar)"
 
@@ -329,7 +467,7 @@ For each tenant to remind:
 **Trigger:** Menu item "Adicionar inquilino".
 
 ```
-1. GPT asks: which property? (from context — shows list)
+1. GPT asks: which property? (from context — shows numbered list)
 2. GPT asks: name, CPF, WhatsApp (optional)
 3. GPT shows summary + "Confirma? (Sim para continuar)"
    Note: if property already has an active tenant, GPT warns the
@@ -340,8 +478,17 @@ For each tenant to remind:
 ◄──201 { id, drive_folder_id } ──────────────────────────────────
   (Drive folder created: Root/{Property}/{TenantName}/)
 
-4. GPT confirms and shows Drive folder link
+4. GPT confirms
+5. GPT proceeds directly to contract generation (Flow 3)
+   GPT: "Inquilino adicionado! Vamos gerar o contrato agora?
+         (Diga "não" para fazer isso depois)"
+   → if "não": return to menu
+   → otherwise: continue to Flow 3 without requiring any extra input
 ```
+
+**Happy path chain:** Add Tenant → Generate Contract (Flow 3) → Send for Signature (Flow 4)
+
+**"Gerar contrato" stays in the menu** for cases where the landlord skipped it earlier, needs to regenerate after a template update, or rent/terms changed.
 
 **API calls:**
 
@@ -424,6 +571,76 @@ If new building:
 | Method | Path | Auth | Key fields |
 |--------|------|------|------------|
 | PATCH | `/account/config` | Bearer JWT | `payment_reminder_frequency` |
+
+---
+
+## Flow 11 — Create Template _(planned)_
+
+> **Status:** Not yet implemented. Tracked in [#77](https://github.com/tproenca/lease-bot/issues/77).
+
+**Trigger:** Menu item "Criar template" or user intent ("quero criar um novo template", "preciso de um aditivo de renovação").
+
+```
+1. GPT asks: what kind of document? (e.g. contrato residencial, aditivo de renovação,
+   recibo de entrega de chaves, contrato de comodato...)
+
+2. GPT brainstorms with landlord:
+   - What is the purpose of this document?
+   - What clauses are mandatory? (e.g. prazo, valor, reajuste, multa)
+   - What information needs to be captured per tenant?
+     (name, CPF, address, rent amount, start date, duration...)
+   - Are there any special clauses? (pets, guarantor, inventory list...)
+
+3. GPT drafts the document in the chat, using {{placeholder}} tokens for
+   dynamic fields and hardcoded text for fixed clauses.
+
+4. Landlord reviews and iterates:
+   - "adiciona uma cláusula sobre animais de estimação"
+   - "remove a parte do fiador"
+   - "o reajuste deve ser pelo IGPM anual"
+   GPT updates the draft in the chat after each request.
+
+5. GPT asks: which property types does this template apply to?
+   1. Apartamento
+   2. Casa
+   3. Imóvel comercial
+
+6. GPT asks: confirm the template name (shown as the Google Doc filename in Drive)
+
+7. Landlord confirms with "Sim"
+
+──POST /templates/create (new endpoint)──────────────────────────►
+  { name, content (raw text with {{placeholders}}), property_types[] }
+◄──201 { drive_file_id, template_id } ───────────────────────────
+  (Google Doc created in landlord's templates folder)
+
+8. GPT informs: "Template criado no Drive. Na próxima conversa vou detectar
+   os placeholders automaticamente e pedir para configurá-los."
+
+--- next session start ---
+
+GET /templates/diff detects the new file → Flow 2 handles placeholder
+configuration automatically (format, required, derived, etc.)
+```
+
+**Disclaimer:** GPT must remind the landlord that AI-generated legal text is a starting point and should be reviewed by a lawyer before use.
+
+**New endpoint required:** `POST /templates/create`
+- Accepts document name, raw text content, and property types
+- Creates a Google Doc in the landlord's templates folder via Drive API
+- Inserts the landlord row in the `templates` table
+- Returns `{ drive_file_id, template_id }`
+
+**What's already built (no changes needed):**
+- `/templates/diff` automatically detects the new file on the next session
+- Flow 2 handles placeholder metadata configuration
+- `/documents/generate` handles substitution once placeholders are configured
+
+**API calls:**
+
+| Method | Path | Auth | Key fields |
+|--------|------|------|------------|
+| POST | `/templates/create` _(new)_ | Bearer JWT | `name`, `content`, `property_types[]` |
 
 ---
 
