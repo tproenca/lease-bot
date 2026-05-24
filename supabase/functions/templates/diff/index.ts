@@ -200,10 +200,29 @@ export async function handleTemplatesDiff(req: Request): Promise<Response> {
     .filter((f) => !dbFileIds.has(f.id) && f.name !== GUIA_EXACT_NAME)
     .map((f) => f.name)
     .sort();
-  const removedTemplates = templates
-    .filter((t) => !driveFileIds.has(t.drive_file_id))
-    .map((t) => t.name)
-    .sort();
+
+  const removedDbTemplates = templates.filter(
+    (t) => !driveFileIds.has(t.drive_file_id),
+  );
+  const removedIds = removedDbTemplates.map((t) => t.id);
+
+  // Fetch property types for removed templates (skip query when there are none).
+  const ptMap = new Map<string, string[]>();
+  if (removedIds.length > 0) {
+    const { data: ptRows } = await db
+      .from("property_type_templates")
+      .select("template_id, property_type")
+      .in("template_id", removedIds);
+    for (const row of ptRows ?? []) {
+      const arr = ptMap.get(row.template_id) ?? [];
+      arr.push(row.property_type);
+      ptMap.set(row.template_id, arr);
+    }
+  }
+
+  const removedTemplates = removedDbTemplates
+    .map((t) => ({ name: t.name, property_types: ptMap.get(t.id) ?? [] }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   // 6. Determine which DB templates have a changed modifiedTime.
   //    Skip templates whose Drive file is gone (they appear in removedTemplates).
