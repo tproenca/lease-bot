@@ -15,12 +15,16 @@ coordena assinaturas e acompanha pagamentos — tudo pelo chat.
 
 ## Instructions
 
-See `SYSTEM_PROMPT.md` — paste the full contents into the Instructions field.
+Run the generation script to get the ready-to-upload prompt on your clipboard:
 
-Before uploading, replace the `{SETUP_URL}` placeholder with the actual setup URL
-for your deployment (e.g. `https://<project-ref>.supabase.co/functions/v1/setup`
-for production, or your ngrok URL for local development). The placeholder appears
-twice in the prompt — replace both occurrences.
+```bash
+deno run --allow-read --allow-write --allow-run scripts/generate-system-prompt.ts
+```
+
+The script reads `gpt/config.yaml` (set `onboarding_url` to match your deployment),
+substitutes `{SETUP_URL}` and `{PROMPT_VERSION}` in `gpt/SYSTEM_PROMPT.md`, validates
+the 8 000-char limit, and copies the result to the clipboard. Paste into the Instructions
+field. The generated file `gpt/SYSTEM_PROMPT.generated.md` is gitignored.
 
 ## Knowledge files
 
