@@ -5,6 +5,10 @@
 ### Added
 - `GET /oauth/authorize` and `POST /oauth/token`: thin proxy endpoints that forward requests to Google's OAuth authorization and token endpoints, enabling the GPT action OAuth config to satisfy OpenAI's root domain requirement. (issue 53)
 
+### Added
+- Unit tests for `GET /oauth/authorize` and `POST /oauth/token` proving both endpoints accept requests with no `Authorization` header and return non-401/403 responses; any future accidental JWT re-enablement will be caught in CI. (issue 56)
+- Unit tests for `POST /webhooks/autentique/{landlord_id}` covering the no-`Authorization`-header path: the handler runs and returns 401 from its own HMAC check — not from Kong. (issue 56)
+
 ### Changed
 - `gpt/SYSTEM_PROMPT.md`: reduce from 9,206 to 7,475 characters to fit the GPT Instructions field limit; onboarding script blocks replaced with concise behavioral rules and derivation/transformation rules extracted to `gpt/contract-rules.md` (Knowledge file). (issue 51)
 
