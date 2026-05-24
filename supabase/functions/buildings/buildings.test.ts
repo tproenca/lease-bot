@@ -1,4 +1,4 @@
-// integration: POST /buildings
+// unit: POST /buildings
 //
 // Tests call handleBuildings() directly. Network calls to Supabase Auth,
 // PostgREST, and the Google APIs are intercepted via globalThis.fetch stubs.
@@ -167,7 +167,7 @@ async function jsonBody(res: Response): Promise<Record<string, unknown>> {
 
 // ─── 401 — no JWT ─────────────────────────────────────────────────────────
 
-Deno.test("integration: POST /buildings — 401 when no JWT provided", async () => {
+Deno.test("unit: POST /buildings — 401 when no JWT provided", async () => {
   const res = await handleBuildings(
     makeRequest({ name: "Edifício A", address: "Rua A, 1" }),
   );
@@ -178,7 +178,7 @@ Deno.test("integration: POST /buildings — 401 when no JWT provided", async () 
 
 // ─── 401 — invalid JWT ────────────────────────────────────────────────────
 
-Deno.test("integration: POST /buildings — 401 when JWT is invalid", async () => {
+Deno.test("unit: POST /buildings — 401 when JWT is invalid", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ authUser: null }) as typeof fetch;
   try {
@@ -195,7 +195,7 @@ Deno.test("integration: POST /buildings — 401 when JWT is invalid", async () =
 
 // ─── 400 — missing name ───────────────────────────────────────────────────
 
-Deno.test("integration: POST /buildings — 400 when name is missing", async () => {
+Deno.test("unit: POST /buildings — 400 when name is missing", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -212,7 +212,7 @@ Deno.test("integration: POST /buildings — 400 when name is missing", async () 
 
 // ─── 400 — missing address ────────────────────────────────────────────────
 
-Deno.test("integration: POST /buildings — 400 when address is missing", async () => {
+Deno.test("unit: POST /buildings — 400 when address is missing", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -232,7 +232,7 @@ Deno.test("integration: POST /buildings — 400 when address is missing", async 
 
 // ─── 400 — empty name ─────────────────────────────────────────────────────
 
-Deno.test("integration: POST /buildings — 400 when name is empty string", async () => {
+Deno.test("unit: POST /buildings — 400 when name is empty string", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -249,7 +249,7 @@ Deno.test("integration: POST /buildings — 400 when name is empty string", asyn
 
 // ─── 404 — landlord not found ─────────────────────────────────────────────
 
-Deno.test("integration: POST /buildings — 404 when landlord row does not exist", async () => {
+Deno.test("unit: POST /buildings — 404 when landlord row does not exist", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ landlord: null }) as typeof fetch;
   try {
@@ -269,7 +269,7 @@ Deno.test("integration: POST /buildings — 404 when landlord row does not exist
 
 // ─── 502 — Google auth failure ────────────────────────────────────────────
 
-Deno.test("integration: POST /buildings — 502 when Google token refresh fails", async () => {
+Deno.test("unit: POST /buildings — 502 when Google token refresh fails", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ googleTokenFail: true }) as typeof fetch;
   try {
@@ -289,7 +289,7 @@ Deno.test("integration: POST /buildings — 502 when Google token refresh fails"
 
 // ─── 502 — Drive folder creation failure ─────────────────────────────────
 
-Deno.test("integration: POST /buildings — 502 when Drive folder creation fails", async () => {
+Deno.test("unit: POST /buildings — 502 when Drive folder creation fails", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ driveFolderFail: true }) as typeof fetch;
   try {
@@ -309,7 +309,7 @@ Deno.test("integration: POST /buildings — 502 when Drive folder creation fails
 
 // ─── 201 — happy path ─────────────────────────────────────────────────────
 
-Deno.test("integration: POST /buildings — 201 creates building and returns id + drive_folder_id", async () => {
+Deno.test("unit: POST /buildings — 201 creates building and returns id + drive_folder_id", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -327,7 +327,7 @@ Deno.test("integration: POST /buildings — 201 creates building and returns id 
 
 // ─── CORS headers on success ──────────────────────────────────────────────
 
-Deno.test("integration: POST /buildings — success response includes CORS headers", async () => {
+Deno.test("unit: POST /buildings — success response includes CORS headers", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -342,7 +342,7 @@ Deno.test("integration: POST /buildings — success response includes CORS heade
 
 // ─── CORS headers on error ────────────────────────────────────────────────
 
-Deno.test("integration: POST /buildings — error response includes CORS headers", async () => {
+Deno.test("unit: POST /buildings — error response includes CORS headers", async () => {
   const res = await handleBuildings(
     makeRequest({ name: "Edifício A", address: "Rua A, 1" }),
   );
@@ -351,7 +351,7 @@ Deno.test("integration: POST /buildings — error response includes CORS headers
 
 // ─── OPTIONS preflight ────────────────────────────────────────────────────
 
-Deno.test("integration: POST /buildings — OPTIONS returns 200 with CORS headers", async () => {
+Deno.test("unit: POST /buildings — OPTIONS returns 200 with CORS headers", async () => {
   const res = await handleBuildings(
     makeRequest(undefined, undefined, "OPTIONS"),
   );
@@ -361,7 +361,7 @@ Deno.test("integration: POST /buildings — OPTIONS returns 200 with CORS header
 
 // ─── 405 — wrong method ───────────────────────────────────────────────────
 
-Deno.test("integration: POST /buildings — 405 when GET is used", async () => {
+Deno.test("unit: POST /buildings — 405 when GET is used", async () => {
   const res = await handleBuildings(makeRequest(undefined, undefined, "GET"));
   assertEquals(res.status, 405);
   const body = await jsonBody(res);
@@ -373,7 +373,7 @@ Deno.test("integration: POST /buildings — 405 when GET is used", async () => {
 
 // ─── idempotent folder reuse ──────────────────────────────────────────────
 
-Deno.test("integration: POST /buildings — reuses existing Drive folder when name already exists", async () => {
+Deno.test("unit: POST /buildings — reuses existing Drive folder when name already exists", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({
     existingDriveFolder: "already-existing-folder-id",

@@ -1,4 +1,4 @@
-// integration: POST /payments/remind
+// unit: POST /payments/remind
 //
 // Tests call handleRemind() directly. Network calls to Supabase Auth,
 // PostgREST, and the Meta WhatsApp API are intercepted via globalThis.fetch
@@ -143,7 +143,7 @@ async function jsonBody(res: Response): Promise<unknown> {
 // OPTIONS / CORS
 // ═══════════════════════════════════════════════════════════════════════════
 
-Deno.test("integration: remind OPTIONS — returns 200 with CORS headers", async () => {
+Deno.test("unit: remind OPTIONS — returns 200 with CORS headers", async () => {
   const res = await handleRemind(
     new Request("http://localhost/payments/remind", { method: "OPTIONS" }),
   );
@@ -155,7 +155,7 @@ Deno.test("integration: remind OPTIONS — returns 200 with CORS headers", async
 // 200 — happy path
 // ═══════════════════════════════════════════════════════════════════════════
 
-Deno.test("integration: POST /payments/remind — 200 when WhatsApp send succeeds", async () => {
+Deno.test("unit: POST /payments/remind — 200 when WhatsApp send succeeds", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ whatsappOk: true }) as typeof fetch;
   try {
@@ -171,7 +171,7 @@ Deno.test("integration: POST /payments/remind — 200 when WhatsApp send succeed
   }
 });
 
-Deno.test("integration: POST /payments/remind — 200 accepts YYYY-MM-DD reference_month", async () => {
+Deno.test("unit: POST /payments/remind — 200 accepts YYYY-MM-DD reference_month", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ whatsappOk: true }) as typeof fetch;
   try {
@@ -187,7 +187,7 @@ Deno.test("integration: POST /payments/remind — 200 accepts YYYY-MM-DD referen
   }
 });
 
-Deno.test("integration: POST /payments/remind — success response includes CORS headers", async () => {
+Deno.test("unit: POST /payments/remind — success response includes CORS headers", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ whatsappOk: true }) as typeof fetch;
   try {
@@ -207,7 +207,7 @@ Deno.test("integration: POST /payments/remind — success response includes CORS
 // 422 — WhatsApp send failure (non-500, reminder still recorded)
 // ═══════════════════════════════════════════════════════════════════════════
 
-Deno.test("integration: POST /payments/remind — 422 (not 500) when WhatsApp send fails", async () => {
+Deno.test("unit: POST /payments/remind — 422 (not 500) when WhatsApp send fails", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ whatsappOk: false }) as typeof fetch;
   try {
@@ -228,7 +228,7 @@ Deno.test("integration: POST /payments/remind — 422 (not 500) when WhatsApp se
   }
 });
 
-Deno.test("integration: POST /payments/remind — 422 on invalid_token from WhatsApp API", async () => {
+Deno.test("unit: POST /payments/remind — 422 on invalid_token from WhatsApp API", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ whatsappStatus: 401 }) as typeof fetch;
   try {
@@ -253,7 +253,7 @@ Deno.test("integration: POST /payments/remind — 422 on invalid_token from What
 // 422 — tenant has no WhatsApp
 // ═══════════════════════════════════════════════════════════════════════════
 
-Deno.test("integration: POST /payments/remind — 422 when tenant has no WhatsApp", async () => {
+Deno.test("unit: POST /payments/remind — 422 when tenant has no WhatsApp", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({
     tenant: MOCK_TENANT_NO_WHATSAPP,
@@ -280,7 +280,7 @@ Deno.test("integration: POST /payments/remind — 422 when tenant has no WhatsAp
 // 404 — tenant not found
 // ═══════════════════════════════════════════════════════════════════════════
 
-Deno.test("integration: POST /payments/remind — 404 when tenant not found", async () => {
+Deno.test("unit: POST /payments/remind — 404 when tenant not found", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ tenant: null }) as typeof fetch;
   try {
@@ -305,7 +305,7 @@ Deno.test("integration: POST /payments/remind — 404 when tenant not found", as
 // 500 — DB insert failure for reminder
 // ═══════════════════════════════════════════════════════════════════════════
 
-Deno.test("integration: POST /payments/remind — 500 when reminder DB insert fails", async () => {
+Deno.test("unit: POST /payments/remind — 500 when reminder DB insert fails", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({
     reminderInsertFail: true,
@@ -329,7 +329,7 @@ Deno.test("integration: POST /payments/remind — 500 when reminder DB insert fa
 // 401 — auth failures
 // ═══════════════════════════════════════════════════════════════════════════
 
-Deno.test("integration: POST /payments/remind — 401 when no JWT provided", async () => {
+Deno.test("unit: POST /payments/remind — 401 when no JWT provided", async () => {
   const res = await handleRemind(
     makePostRequest({ tenant_id: MOCK_TENANT_ID, reference_month: "2026-05" }),
   );
@@ -338,7 +338,7 @@ Deno.test("integration: POST /payments/remind — 401 when no JWT provided", asy
   assertEquals((body.error as Record<string, string>).code, "UNAUTHORIZED");
 });
 
-Deno.test("integration: POST /payments/remind — 401 when JWT is invalid", async () => {
+Deno.test("unit: POST /payments/remind — 401 when JWT is invalid", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ authUser: null }) as typeof fetch;
   try {
@@ -360,7 +360,7 @@ Deno.test("integration: POST /payments/remind — 401 when JWT is invalid", asyn
 // 400 — input validation
 // ═══════════════════════════════════════════════════════════════════════════
 
-Deno.test("integration: POST /payments/remind — 400 when tenant_id is missing", async () => {
+Deno.test("unit: POST /payments/remind — 400 when tenant_id is missing", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -378,7 +378,7 @@ Deno.test("integration: POST /payments/remind — 400 when tenant_id is missing"
   }
 });
 
-Deno.test("integration: POST /payments/remind — 400 when tenant_id is not a UUID", async () => {
+Deno.test("unit: POST /payments/remind — 400 when tenant_id is not a UUID", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -399,7 +399,7 @@ Deno.test("integration: POST /payments/remind — 400 when tenant_id is not a UU
   }
 });
 
-Deno.test("integration: POST /payments/remind — 400 when reference_month is missing", async () => {
+Deno.test("unit: POST /payments/remind — 400 when reference_month is missing", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -417,7 +417,7 @@ Deno.test("integration: POST /payments/remind — 400 when reference_month is mi
   }
 });
 
-Deno.test("integration: POST /payments/remind — 400 when reference_month format is invalid", async () => {
+Deno.test("unit: POST /payments/remind — 400 when reference_month format is invalid", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -438,7 +438,7 @@ Deno.test("integration: POST /payments/remind — 400 when reference_month forma
   }
 });
 
-Deno.test("integration: POST /payments/remind — 400 when body is invalid JSON", async () => {
+Deno.test("unit: POST /payments/remind — 400 when body is invalid JSON", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -464,7 +464,7 @@ Deno.test("integration: POST /payments/remind — 400 when body is invalid JSON"
 // 405 — wrong method
 // ═══════════════════════════════════════════════════════════════════════════
 
-Deno.test("integration: POST /payments/remind — 405 when GET is used", async () => {
+Deno.test("unit: POST /payments/remind — 405 when GET is used", async () => {
   const res = await handleRemind(
     new Request("http://localhost/payments/remind", { method: "GET" }),
   );

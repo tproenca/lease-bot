@@ -1,4 +1,4 @@
-// integration: POST /templates + DELETE /templates/:id
+// unit: POST /templates + DELETE /templates/:id
 //
 // Tests call handleTemplates() directly. Network calls to Supabase Auth
 // and PostgREST are intercepted via globalThis.fetch stubs.
@@ -162,7 +162,7 @@ async function jsonBody(res: Response): Promise<unknown> {
 // OPTIONS / CORS
 // ═══════════════════════════════════════════════════════════════════════════
 
-Deno.test("integration: templates OPTIONS — returns 200 with CORS headers", async () => {
+Deno.test("unit: templates OPTIONS — returns 200 with CORS headers", async () => {
   const res = await handleTemplates(
     new Request("http://localhost/templates", { method: "OPTIONS" }),
   );
@@ -176,7 +176,7 @@ Deno.test("integration: templates OPTIONS — returns 200 with CORS headers", as
 
 // ─── 401 — no JWT ─────────────────────────────────────────────────────────
 
-Deno.test("integration: POST /templates — 401 when no JWT provided", async () => {
+Deno.test("unit: POST /templates — 401 when no JWT provided", async () => {
   const res = await handleTemplates(makePostRequest(VALID_BODY));
   assertEquals(res.status, 401);
   const body = await jsonBody(res) as Record<string, unknown>;
@@ -185,7 +185,7 @@ Deno.test("integration: POST /templates — 401 when no JWT provided", async () 
 
 // ─── 401 — invalid JWT ────────────────────────────────────────────────────
 
-Deno.test("integration: POST /templates — 401 when JWT is invalid", async () => {
+Deno.test("unit: POST /templates — 401 when JWT is invalid", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ authUser: null }) as typeof fetch;
   try {
@@ -200,7 +200,7 @@ Deno.test("integration: POST /templates — 401 when JWT is invalid", async () =
 
 // ─── 400 — missing drive_file_id ─────────────────────────────────────────
 
-Deno.test("integration: POST /templates — 400 when drive_file_id is missing", async () => {
+Deno.test("unit: POST /templates — 400 when drive_file_id is missing", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -221,7 +221,7 @@ Deno.test("integration: POST /templates — 400 when drive_file_id is missing", 
 
 // ─── 400 — invalid property_type ─────────────────────────────────────────
 
-Deno.test("integration: POST /templates — 400 when property_type is invalid", async () => {
+Deno.test("unit: POST /templates — 400 when property_type is invalid", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -244,7 +244,7 @@ Deno.test("integration: POST /templates — 400 when property_type is invalid", 
 
 // ─── 201 — happy path ────────────────────────────────────────────────────
 
-Deno.test("integration: POST /templates — 201 creates template and returns id", async () => {
+Deno.test("unit: POST /templates — 201 creates template and returns id", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -259,7 +259,7 @@ Deno.test("integration: POST /templates — 201 creates template and returns id"
 
 // ─── CORS headers on success ──────────────────────────────────────────────
 
-Deno.test("integration: POST /templates — success response includes CORS headers", async () => {
+Deno.test("unit: POST /templates — success response includes CORS headers", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -276,7 +276,7 @@ Deno.test("integration: POST /templates — success response includes CORS heade
 
 // ─── 401 — no JWT ─────────────────────────────────────────────────────────
 
-Deno.test("integration: DELETE /templates/:id — 401 when no JWT provided", async () => {
+Deno.test("unit: DELETE /templates/:id — 401 when no JWT provided", async () => {
   const res = await handleTemplates(makeDeleteRequest(MOCK_TEMPLATE_ID));
   assertEquals(res.status, 401);
   const body = await jsonBody(res) as Record<string, unknown>;
@@ -285,7 +285,7 @@ Deno.test("integration: DELETE /templates/:id — 401 when no JWT provided", asy
 
 // ─── 401 — invalid JWT ────────────────────────────────────────────────────
 
-Deno.test("integration: DELETE /templates/:id — 401 when JWT is invalid", async () => {
+Deno.test("unit: DELETE /templates/:id — 401 when JWT is invalid", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ authUser: null }) as typeof fetch;
   try {
@@ -302,7 +302,7 @@ Deno.test("integration: DELETE /templates/:id — 401 when JWT is invalid", asyn
 
 // ─── 404 — template not found ─────────────────────────────────────────────
 
-Deno.test("integration: DELETE /templates/:id — 404 when template not found", async () => {
+Deno.test("unit: DELETE /templates/:id — 404 when template not found", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({
     templateExisting: null,
@@ -324,7 +324,7 @@ Deno.test("integration: DELETE /templates/:id — 404 when template not found", 
 
 // ─── 204 — happy path ────────────────────────────────────────────────────
 
-Deno.test("integration: DELETE /templates/:id — 204 when template deleted successfully", async () => {
+Deno.test("unit: DELETE /templates/:id — 204 when template deleted successfully", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {

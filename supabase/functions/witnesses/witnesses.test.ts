@@ -1,4 +1,4 @@
-// integration: POST /witnesses
+// unit: POST /witnesses
 //
 // Tests call handleWitnesses() directly. Network calls to Supabase Auth
 // and PostgREST are intercepted via globalThis.fetch stubs.
@@ -114,7 +114,7 @@ async function jsonBody(res: Response): Promise<unknown> {
 // OPTIONS / CORS
 // ═══════════════════════════════════════════════════════════════════════════
 
-Deno.test("integration: witnesses OPTIONS — returns 200 with CORS headers", async () => {
+Deno.test("unit: witnesses OPTIONS — returns 200 with CORS headers", async () => {
   const res = await handleWitnesses(
     new Request("http://localhost/witnesses", { method: "OPTIONS" }),
   );
@@ -128,7 +128,7 @@ Deno.test("integration: witnesses OPTIONS — returns 200 with CORS headers", as
 
 // ─── 401 — no JWT ─────────────────────────────────────────────────────────
 
-Deno.test("integration: POST /witnesses — 401 when no JWT provided", async () => {
+Deno.test("unit: POST /witnesses — 401 when no JWT provided", async () => {
   const res = await handleWitnesses(makePostRequest(VALID_BODY));
   assertEquals(res.status, 401);
   const body = await jsonBody(res) as Record<string, unknown>;
@@ -137,7 +137,7 @@ Deno.test("integration: POST /witnesses — 401 when no JWT provided", async () 
 
 // ─── 401 — invalid JWT ────────────────────────────────────────────────────
 
-Deno.test("integration: POST /witnesses — 401 when JWT is invalid", async () => {
+Deno.test("unit: POST /witnesses — 401 when JWT is invalid", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ authUser: null }) as typeof fetch;
   try {
@@ -152,7 +152,7 @@ Deno.test("integration: POST /witnesses — 401 when JWT is invalid", async () =
 
 // ─── 400 — missing name ───────────────────────────────────────────────────
 
-Deno.test("integration: POST /witnesses — 400 when name is missing", async () => {
+Deno.test("unit: POST /witnesses — 400 when name is missing", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -173,7 +173,7 @@ Deno.test("integration: POST /witnesses — 400 when name is missing", async () 
 
 // ─── 400 — missing whatsapp ───────────────────────────────────────────────
 
-Deno.test("integration: POST /witnesses — 400 when whatsapp is missing", async () => {
+Deno.test("unit: POST /witnesses — 400 when whatsapp is missing", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -194,7 +194,7 @@ Deno.test("integration: POST /witnesses — 400 when whatsapp is missing", async
 
 // ─── 409 — duplicate name ─────────────────────────────────────────────────
 
-Deno.test("integration: POST /witnesses — 409 when name already exists", async () => {
+Deno.test("unit: POST /witnesses — 409 when name already exists", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ duplicateName: true }) as typeof fetch;
   try {
@@ -212,7 +212,7 @@ Deno.test("integration: POST /witnesses — 409 when name already exists", async
 
 // ─── 201 — happy path ────────────────────────────────────────────────────
 
-Deno.test("integration: POST /witnesses — 201 creates witness and returns id", async () => {
+Deno.test("unit: POST /witnesses — 201 creates witness and returns id", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -229,7 +229,7 @@ Deno.test("integration: POST /witnesses — 201 creates witness and returns id",
 
 // ─── CORS headers on success ──────────────────────────────────────────────
 
-Deno.test("integration: POST /witnesses — success response includes CORS headers", async () => {
+Deno.test("unit: POST /witnesses — success response includes CORS headers", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -244,7 +244,7 @@ Deno.test("integration: POST /witnesses — success response includes CORS heade
 
 // ─── 405 — wrong method ───────────────────────────────────────────────────
 
-Deno.test("integration: witnesses — 405 when GET is used on /witnesses", async () => {
+Deno.test("unit: witnesses — 405 when GET is used on /witnesses", async () => {
   const res = await handleWitnesses(
     new Request("http://localhost/witnesses", { method: "GET" }),
   );

@@ -1,4 +1,4 @@
-// integration: POST /tenants + GET /tenants/:id + PATCH /tenants/:id
+// unit: POST /tenants + GET /tenants/:id + PATCH /tenants/:id
 //
 // Tests call handleTenants() directly. Network calls to Supabase Auth,
 // PostgREST, and Google APIs are intercepted via globalThis.fetch stubs.
@@ -299,7 +299,7 @@ async function jsonBody(res: Response): Promise<unknown> {
 // OPTIONS / CORS
 // ═══════════════════════════════════════════════════════════════════════════
 
-Deno.test("integration: tenants OPTIONS — returns 200 with CORS headers", async () => {
+Deno.test("unit: tenants OPTIONS — returns 200 with CORS headers", async () => {
   const res = await handleTenants(
     new Request("http://localhost/tenants", { method: "OPTIONS" }),
   );
@@ -313,7 +313,7 @@ Deno.test("integration: tenants OPTIONS — returns 200 with CORS headers", asyn
 
 // ─── 401 — no JWT ─────────────────────────────────────────────────────────
 
-Deno.test("integration: POST /tenants — 401 when no JWT provided", async () => {
+Deno.test("unit: POST /tenants — 401 when no JWT provided", async () => {
   const res = await handleTenants(
     makePostRequest({ property_id: "p", name: "João", cpf: "123.456.789-00" }),
   );
@@ -324,7 +324,7 @@ Deno.test("integration: POST /tenants — 401 when no JWT provided", async () =>
 
 // ─── 401 — invalid JWT ────────────────────────────────────────────────────
 
-Deno.test("integration: POST /tenants — 401 when JWT is invalid", async () => {
+Deno.test("unit: POST /tenants — 401 when JWT is invalid", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ authUser: null }) as typeof fetch;
   try {
@@ -342,7 +342,7 @@ Deno.test("integration: POST /tenants — 401 when JWT is invalid", async () => 
 
 // ─── 400 — missing property_id ────────────────────────────────────────────
 
-Deno.test("integration: POST /tenants — 400 when property_id is missing", async () => {
+Deno.test("unit: POST /tenants — 400 when property_id is missing", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -362,7 +362,7 @@ Deno.test("integration: POST /tenants — 400 when property_id is missing", asyn
 
 // ─── 400 — missing name ───────────────────────────────────────────────────
 
-Deno.test("integration: POST /tenants — 400 when name is missing", async () => {
+Deno.test("unit: POST /tenants — 400 when name is missing", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -382,7 +382,7 @@ Deno.test("integration: POST /tenants — 400 when name is missing", async () =>
 
 // ─── 400 — invalid CPF ────────────────────────────────────────────────────
 
-Deno.test("integration: POST /tenants — 400 when CPF format is invalid", async () => {
+Deno.test("unit: POST /tenants — 400 when CPF format is invalid", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -406,7 +406,7 @@ Deno.test("integration: POST /tenants — 400 when CPF format is invalid", async
 
 // ─── 400 — invalid whatsapp ───────────────────────────────────────────────
 
-Deno.test("integration: POST /tenants — 400 when whatsapp format is invalid", async () => {
+Deno.test("unit: POST /tenants — 400 when whatsapp format is invalid", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -434,7 +434,7 @@ Deno.test("integration: POST /tenants — 400 when whatsapp format is invalid", 
 
 // ─── 404 — landlord not found ─────────────────────────────────────────────
 
-Deno.test("integration: POST /tenants — 404 when landlord row does not exist", async () => {
+Deno.test("unit: POST /tenants — 404 when landlord row does not exist", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ landlord: null }) as typeof fetch;
   try {
@@ -457,7 +457,7 @@ Deno.test("integration: POST /tenants — 404 when landlord row does not exist",
 
 // ─── 404 — property not found ─────────────────────────────────────────────
 
-Deno.test("integration: POST /tenants — 404 when property not found or belongs to another landlord", async () => {
+Deno.test("unit: POST /tenants — 404 when property not found or belongs to another landlord", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ property: null }) as typeof fetch;
   try {
@@ -484,7 +484,7 @@ Deno.test("integration: POST /tenants — 404 when property not found or belongs
 
 // ─── 502 — Google token refresh failure ──────────────────────────────────
 
-Deno.test("integration: POST /tenants — 502 when Google token refresh fails", async () => {
+Deno.test("unit: POST /tenants — 502 when Google token refresh fails", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ googleTokenFail: true }) as typeof fetch;
   try {
@@ -507,7 +507,7 @@ Deno.test("integration: POST /tenants — 502 when Google token refresh fails", 
 
 // ─── 502 — Drive folder creation failure ─────────────────────────────────
 
-Deno.test("integration: POST /tenants — 502 when Drive folder creation fails", async () => {
+Deno.test("unit: POST /tenants — 502 when Drive folder creation fails", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ driveFolderFail: true }) as typeof fetch;
   try {
@@ -530,7 +530,7 @@ Deno.test("integration: POST /tenants — 502 when Drive folder creation fails",
 
 // ─── 502 — Drive star failure ─────────────────────────────────────────────
 
-Deno.test("integration: POST /tenants — 502 when Drive star fails", async () => {
+Deno.test("unit: POST /tenants — 502 when Drive star fails", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ driveStarFail: true }) as typeof fetch;
   try {
@@ -553,7 +553,7 @@ Deno.test("integration: POST /tenants — 502 when Drive star fails", async () =
 
 // ─── 500 — DB insert failure ──────────────────────────────────────────────
 
-Deno.test("integration: POST /tenants — 500 when DB insert fails", async () => {
+Deno.test("unit: POST /tenants — 500 when DB insert fails", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ dbInsertFail: true }) as typeof fetch;
   try {
@@ -573,7 +573,7 @@ Deno.test("integration: POST /tenants — 500 when DB insert fails", async () =>
 
 // ─── 500 — DB property update failure (rollback) ─────────────────────────
 
-Deno.test("integration: POST /tenants — 500 and rolls back tenant insert when property update fails", async () => {
+Deno.test("unit: POST /tenants — 500 and rolls back tenant insert when property update fails", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ dbUpdateFail: true }) as typeof fetch;
   try {
@@ -593,7 +593,7 @@ Deno.test("integration: POST /tenants — 500 and rolls back tenant insert when 
 
 // ─── 201 — happy path (house, no previous tenant) ────────────────────────
 
-Deno.test("integration: POST /tenants — 201 creates tenant folder and row for house property", async () => {
+Deno.test("unit: POST /tenants — 201 creates tenant folder and row for house property", async () => {
   const originalFetch = globalThis.fetch;
   const mockFetch = buildMockFetch({});
   globalThis.fetch = mockFetch as typeof fetch;
@@ -620,7 +620,7 @@ Deno.test("integration: POST /tenants — 201 creates tenant folder and row for 
 
 // ─── 201 — happy path (apartment) ────────────────────────────────────────
 
-Deno.test("integration: POST /tenants — 201 creates tenant folder inside apartment property folder", async () => {
+Deno.test("unit: POST /tenants — 201 creates tenant folder inside apartment property folder", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({
     property: MOCK_PROPERTY_APARTMENT,
@@ -646,7 +646,7 @@ Deno.test("integration: POST /tenants — 201 creates tenant folder inside apart
 
 // ─── 201 — happy path (replacing tenant: previous folder unstarred) ───────
 
-Deno.test("integration: POST /tenants — 201 unstars previous tenant folder when replacing tenant", async () => {
+Deno.test("unit: POST /tenants — 201 unstars previous tenant folder when replacing tenant", async () => {
   const originalFetch = globalThis.fetch;
   const mockFetch = buildMockFetch({
     property: MOCK_PROPERTY_WITH_PREV_TENANT,
@@ -678,7 +678,7 @@ Deno.test("integration: POST /tenants — 201 unstars previous tenant folder whe
 
 // ─── 201 — whatsapp optional (absent) ────────────────────────────────────
 
-Deno.test("integration: POST /tenants — 201 succeeds without whatsapp field", async () => {
+Deno.test("unit: POST /tenants — 201 succeeds without whatsapp field", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -700,7 +700,7 @@ Deno.test("integration: POST /tenants — 201 succeeds without whatsapp field", 
 
 // ─── CORS headers ─────────────────────────────────────────────────────────
 
-Deno.test("integration: POST /tenants — success response includes CORS headers", async () => {
+Deno.test("unit: POST /tenants — success response includes CORS headers", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -722,7 +722,7 @@ Deno.test("integration: POST /tenants — success response includes CORS headers
 
 // ─── 401 — no JWT ─────────────────────────────────────────────────────────
 
-Deno.test("integration: GET /tenants/:id — 401 when no JWT provided", async () => {
+Deno.test("unit: GET /tenants/:id — 401 when no JWT provided", async () => {
   const res = await handleTenants(makeGetRequest("tenant-uuid-1"));
   assertEquals(res.status, 401);
   const body = await jsonBody(res) as Record<string, unknown>;
@@ -731,7 +731,7 @@ Deno.test("integration: GET /tenants/:id — 401 when no JWT provided", async ()
 
 // ─── 401 — invalid JWT ────────────────────────────────────────────────────
 
-Deno.test("integration: GET /tenants/:id — 401 when JWT is invalid or expired", async () => {
+Deno.test("unit: GET /tenants/:id — 401 when JWT is invalid or expired", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ authUser: null }) as typeof fetch;
   try {
@@ -748,7 +748,7 @@ Deno.test("integration: GET /tenants/:id — 401 when JWT is invalid or expired"
 
 // ─── 404 — tenant not found ───────────────────────────────────────────────
 
-Deno.test("integration: GET /tenants/:id — 404 when tenant not found or belongs to another landlord", async () => {
+Deno.test("unit: GET /tenants/:id — 404 when tenant not found or belongs to another landlord", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ tenantFull: null }) as typeof fetch;
   try {
@@ -768,7 +768,7 @@ Deno.test("integration: GET /tenants/:id — 404 when tenant not found or belong
 
 // ─── 200 — happy path ─────────────────────────────────────────────────────
 
-Deno.test("integration: GET /tenants/:id — 200 returns tenant data", async () => {
+Deno.test("unit: GET /tenants/:id — 200 returns tenant data", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({
     tenantFull: MOCK_TENANT_FULL,
@@ -793,7 +793,7 @@ Deno.test("integration: GET /tenants/:id — 200 returns tenant data", async () 
 
 // ─── CORS headers ─────────────────────────────────────────────────────────
 
-Deno.test("integration: GET /tenants/:id — response includes CORS headers", async () => {
+Deno.test("unit: GET /tenants/:id — response includes CORS headers", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({
     tenantFull: MOCK_TENANT_FULL,
@@ -814,7 +814,7 @@ Deno.test("integration: GET /tenants/:id — response includes CORS headers", as
 
 // ─── 401 — no JWT ─────────────────────────────────────────────────────────
 
-Deno.test("integration: PATCH /tenants/:id — 401 when no JWT provided", async () => {
+Deno.test("unit: PATCH /tenants/:id — 401 when no JWT provided", async () => {
   const res = await handleTenants(
     makePatchRequest("tenant-uuid-1", { whatsapp: "+5511999990000" }),
   );
@@ -825,7 +825,7 @@ Deno.test("integration: PATCH /tenants/:id — 401 when no JWT provided", async 
 
 // ─── 401 — invalid JWT ────────────────────────────────────────────────────
 
-Deno.test("integration: PATCH /tenants/:id — 401 when JWT is invalid or expired", async () => {
+Deno.test("unit: PATCH /tenants/:id — 401 when JWT is invalid or expired", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ authUser: null }) as typeof fetch;
   try {
@@ -846,7 +846,7 @@ Deno.test("integration: PATCH /tenants/:id — 401 when JWT is invalid or expire
 
 // ─── 400 — no updatable field ─────────────────────────────────────────────
 
-Deno.test("integration: PATCH /tenants/:id — 400 when no updatable field provided", async () => {
+Deno.test("unit: PATCH /tenants/:id — 400 when no updatable field provided", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -866,7 +866,7 @@ Deno.test("integration: PATCH /tenants/:id — 400 when no updatable field provi
 
 // ─── 400 — invalid whatsapp ───────────────────────────────────────────────
 
-Deno.test("integration: PATCH /tenants/:id — 400 when whatsapp format is invalid", async () => {
+Deno.test("unit: PATCH /tenants/:id — 400 when whatsapp format is invalid", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -890,7 +890,7 @@ Deno.test("integration: PATCH /tenants/:id — 400 when whatsapp format is inval
 
 // ─── 404 — tenant not found ───────────────────────────────────────────────
 
-Deno.test("integration: PATCH /tenants/:id — 404 when tenant not found or belongs to another landlord", async () => {
+Deno.test("unit: PATCH /tenants/:id — 404 when tenant not found or belongs to another landlord", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({
     tenantExisting: null,
@@ -917,7 +917,7 @@ Deno.test("integration: PATCH /tenants/:id — 404 when tenant not found or belo
 
 // ─── 200 — happy path ─────────────────────────────────────────────────────
 
-Deno.test("integration: PATCH /tenants/:id — 200 updates whatsapp successfully", async () => {
+Deno.test("unit: PATCH /tenants/:id — 200 updates whatsapp successfully", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({
     tenantExisting: { id: MOCK_TENANT_FULL.id },
@@ -941,7 +941,7 @@ Deno.test("integration: PATCH /tenants/:id — 200 updates whatsapp successfully
 
 // ─── 200 — set whatsapp to null ───────────────────────────────────────────
 
-Deno.test("integration: PATCH /tenants/:id — 200 clears whatsapp when null sent", async () => {
+Deno.test("unit: PATCH /tenants/:id — 200 clears whatsapp when null sent", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({
     tenantExisting: { id: MOCK_TENANT_FULL.id },
@@ -965,7 +965,7 @@ Deno.test("integration: PATCH /tenants/:id — 200 clears whatsapp when null sen
 
 // ─── CORS headers ─────────────────────────────────────────────────────────
 
-Deno.test("integration: PATCH /tenants/:id — success response includes CORS headers", async () => {
+Deno.test("unit: PATCH /tenants/:id — success response includes CORS headers", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({
     tenantExisting: { id: MOCK_TENANT_FULL.id },
@@ -987,7 +987,7 @@ Deno.test("integration: PATCH /tenants/:id — success response includes CORS he
 
 // ─── 405 — wrong method on /tenants (no id) ──────────────────────────────
 
-Deno.test("integration: tenants — 405 when DELETE is used on /tenants", async () => {
+Deno.test("unit: tenants — 405 when DELETE is used on /tenants", async () => {
   const res = await handleTenants(
     new Request("http://localhost/tenants", { method: "DELETE" }),
   );
