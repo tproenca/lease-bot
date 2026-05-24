@@ -745,6 +745,83 @@ Deno.test("unit: DB update failure after Drive upload returns 500", async () => 
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// Unauthenticated access — no Authorization header, HMAC fails from handler
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// These tests prove that when there is no Authorization (Bearer JWT) header the
+// handler runs and rejects the request itself via HMAC verification — the 401
+// comes from this function, not from Kong. Any future change that accidentally
+// re-enables `verify_jwt` (e.g. removing `verify_jwt = false` from config.toml)
+// cannot be detected here because tests bypass Kong, but these tests at minimum
+// confirm the handler logic itself does not require a JWT.
+
+Deno.test("unit: webhook — 401 from HMAC check when no Authorization header and no signature", async () => {
+  // Simulates a raw POST with neither a JWT nor an HMAC signature.
+  // The handler must reject via its own HMAC logic (code UNAUTHORIZED),
+  // not via any JWT check. This distinguishes function-level rejection from
+  // Kong-level rejection (which would also be 401 but never reach this code).
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({}) as typeof fetch;
+  try {
+    const req = new Request(
+      `http://localhost/webhooks/autentique/${MOCK_LANDLORD_ID}`,
+      {
+        method: "POST",
+        // No Authorization header, no x-autentique-signature header
+        headers: { "Content-Type": "application/json" },
+        body: VALID_PAYLOAD,
+      },
+    );
+
+    const res = await handleAutentiqueWebhook(req);
+
+    // Must be 401 (HMAC failure) — not 200, not 403, not 500.
+    assertEquals(res.status, 401);
+    const body = await res.json() as Record<string, unknown>;
+    assertEquals(
+      (body.error as Record<string, string>).code,
+      "UNAUTHORIZED",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("unit: webhook — 401 from HMAC check when no Authorization header but invalid signature provided", async () => {
+  // Simulates an unauthenticated caller that provides a wrong HMAC signature
+  // but no JWT. The handler must still run (not be blocked by a JWT check) and
+  // return 401 from its HMAC verification.
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({}) as typeof fetch;
+  try {
+    const req = new Request(
+      `http://localhost/webhooks/autentique/${MOCK_LANDLORD_ID}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          // Bad HMAC — no Authorization header
+          "x-autentique-signature":
+            "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+        },
+        body: VALID_PAYLOAD,
+      },
+    );
+
+    const res = await handleAutentiqueWebhook(req);
+
+    assertEquals(res.status, 401);
+    const body = await res.json() as Record<string, unknown>;
+    assertEquals(
+      (body.error as Record<string, string>).code,
+      "UNAUTHORIZED",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // Method validation
 // ═══════════════════════════════════════════════════════════════════════════════
 
