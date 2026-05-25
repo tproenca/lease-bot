@@ -8,7 +8,7 @@ Source of truth:
 - `gpt/contract-rules.md` — placeholder derivation and formatting rules (uploaded as a Knowledge file)
 - `gpt/config.yaml` — constants: `prompt_version`, `onboarding_url`, `max_chars`
 
-**Never edit `gpt/SYSTEM_PROMPT.md` directly.** Edit the source docs, then regenerate.
+`gpt/SYSTEM_PROMPT.md` is the template — edit it directly. Always keep the source docs in sync: any change to SYSTEM_PROMPT.md must also land in `docs/GPT-FLOWS.md` or `docs/GPT-BEHAVIOR.md` (whichever owns that rule). `gen prompt` only substitutes `{SETUP_URL}` and `{PROMPT_VERSION}` — it does not regenerate SYSTEM_PROMPT.md from source docs.
 
 ---
 
@@ -50,6 +50,8 @@ Reference docs (require OpenAI login — read manually before a full regeneratio
 
 Use this prompt when the source docs have been significantly updated or the prompt needs to be rebuilt.
 
+> **Before running:** ensure `docs/GPT-FLOWS.md` and `docs/GPT-BEHAVIOR.md` fully reflect the desired behavior. Any rule in `SYSTEM_PROMPT.md` that hasn't been synced back to source docs will be silently lost in the rewrite.
+
 ```
 Read gpt/WORKFLOW.md (Platform constraints section), docs/GPT-BEHAVIOR.md,
 docs/GPT-FLOWS.md, and gpt/contract-rules.md.
@@ -83,54 +85,13 @@ CONSTRAINTS (from platform docs)
   must be in the Instructions field, not only in a Knowledge file.
 - After writing, run `gen prompt` to validate char count and copy to clipboard.
   If over limit, trim redundant wording — never drop a required flow step.
+- Paste the clipboard contents into the ChatGPT Instructions field and click
+  Update (top-right) — the prompt is not live until you do.
 ```
 
 ---
 
-## 2 — Iteration workflow
-
-Use this cycle every time behavior in ChatGPT is wrong.
-
-```
-Step 1 — Observe
-  Run the failing scenario in ChatGPT. Write down exactly:
-  - What you said
-  - What the GPT did
-  - What it should have done instead
-
-Step 2 — Classify
-  Wrong or missing flow step      → fix docs/GPT-FLOWS.md
-  Wrong identity or tone          → fix docs/GPT-BEHAVIOR.md
-  Wrong error message             → fix docs/GPT-BEHAVIOR.md (Error Handling section)
-  Wrong contract field value      → fix gpt/contract-rules.md
-  Initialization not called first → fix docs/GPT-BEHAVIOR.md (General Behavior) and
-                                    regenerate — never edit SYSTEM_PROMPT.md directly
-  Action not being called         → make the trigger more explicit in docs/GPT-FLOWS.md
-
-Step 3 — Fix the source doc
-  Make the minimal change that addresses the observed failure.
-  One failure → one fix. Do not refactor unrelated sections.
-
-Step 4 — Regenerate
-  gen prompt
-  Check the char count. If over 8000, trim from the section you just edited.
-
-Step 5 — Increment version
-  Bump prompt_version in gpt/config.yaml.
-
-Step 6 — Upload and retest
-  Paste the clipboard contents into the ChatGPT Instructions field.
-  Click Update (top-right) — the prompt is not live until you do.
-  Test in the Preview panel first before sharing the link.
-  Rerun the exact scenario that failed. Then test the adjacent flows to
-  check for regressions.
-
-Step 7 — Repeat from Step 1 if still wrong.
-```
-
----
-
-## 3 — Fix a specific wrong interaction
+## 2 — Fix a specific wrong interaction
 
 Use this prompt when you have a concrete failure to diagnose and fix. Fill in the
 bracketed fields from the ChatGPT session before running it.
@@ -148,7 +109,7 @@ WHAT IT SHOULD HAVE DONE
 [describe the correct behavior]
 
 WHICH FLOW WAS INVOLVED
-[e.g. Flow 2 — Send for Signature, or Flow 1 — Initialization]
+[e.g. Flow 4 — Send for Signature, or Flow 2 — Template Sync]
 
 ---
 
@@ -158,6 +119,9 @@ and docs/GPT-BEHAVIOR.md.
 1. Identify the exact rule or flow step that caused this failure.
 2. Fix the relevant source doc (GPT-FLOWS.md or GPT-BEHAVIOR.md). Make the
    smallest change that prevents this failure without breaking adjacent flows.
+   Then apply the same change to gpt/SYSTEM_PROMPT.md directly.
 3. Run `gen prompt`. If over 8000 chars, trim from the section you just edited.
-4. Confirm what was changed and why.
+4. Paste the clipboard contents into the ChatGPT Instructions field and click
+   Update (top-right) — the prompt is not live until you do.
+5. Confirm what was changed and why.
 ```

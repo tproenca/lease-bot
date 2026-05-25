@@ -1,6 +1,6 @@
 # Contrato de Locação Residencial
 
-> Este é um modelo de exemplo. Substitua o conteúdo pelo seu contrato real e use os marcadores `{{placeholder}}` para os campos variáveis. Consulte a Lista de Placeholders para ver os marcadores disponíveis.
+> Este é um modelo de exemplo. Substitua o conteúdo pelo seu contrato real e use marcadores como `{{nome_locador}}` para os campos variáveis. Consulte a Lista de Placeholders para ver os marcadores disponíveis.
 
 Pelo presente instrumento particular, as partes abaixo identificadas celebram o presente Contrato de Locação Residencial, que se regerá pelas cláusulas e condições seguintes.
 
