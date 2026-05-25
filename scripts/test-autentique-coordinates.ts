@@ -1,9 +1,11 @@
 /**
  * test-autentique-coordinates.ts
  *
- * Converts docs/sample-contract-tokens.md to a PDF, detects [[ROLE]] marker
- * positions, submits to Autentique, and prints the document URL so you can
- * verify widget placement in the Autentique UI.
+ * Manual test script: converts docs/sample-contract.md to a PDF, detects
+ * [[ROLE]] marker positions, submits to Autentique, and prints the document
+ * URL so you can verify widget placement in the Autentique UI.
+ *
+ * TODO: delete this file once the signing flow is covered by integration tests.
  *
  * Usage:
  *   deno run --allow-net --allow-read scripts/test-autentique-coordinates.ts
