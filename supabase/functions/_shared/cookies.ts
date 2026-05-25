@@ -57,6 +57,15 @@ export function isHttpsRequest(req: Request): boolean {
 // Constants kept here so the two endpoints stay in sync.
 export const COOKIE_OAUTH_STATE = "oauth_state";
 export const COOKIE_SESSION = "sb_session";
+// Stores the ChatGPT redirect_uri + state during the integrated setup flow so
+// /setup/complete can build the final ChatGPT callback URL after onboarding.
+// Short-lived (10 minutes) and HttpOnly — never logged.
+export const COOKIE_CHATGPT_REDIRECT = "chatgpt_redirect";
+// Stores the Supabase refresh_token during the integrated setup flow so
+// /setup/complete can include it in the oauth_codes row for ChatGPT.
+// HttpOnly + short-lived (1 hour, same as the session cookie) — never logged.
+export const COOKIE_SESSION_REFRESH = "sb_session_refresh";
 export const OAUTH_STATE_TTL_SECONDS = 600; // 10 minutes
 export const SESSION_COOKIE_TTL_SECONDS = 60 * 60; // 1 hour: only used to
 // render the post-auth setup page; the real session lives in Supabase Auth.
+export const CHATGPT_REDIRECT_TTL_SECONDS = 600; // 10 minutes — same as state

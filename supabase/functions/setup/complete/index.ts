@@ -40,7 +40,17 @@ import {
   normalizeBrazilianWhatsapp,
   normalizeTemplatesFolderName,
 } from "../../_shared/validation.ts";
-import { COOKIE_SESSION, parseCookies } from "../../_shared/cookies.ts";
+import {
+  COOKIE_CHATGPT_REDIRECT,
+  COOKIE_SESSION,
+  COOKIE_SESSION_REFRESH,
+  parseCookies,
+} from "../../_shared/cookies.ts";
+import {
+  buildChatgptCallbackUrl,
+  parseChatgptRedirectCookie,
+} from "../../auth/callback/index.ts";
+import { issueOAuthCode } from "../../_shared/oauth-codes.ts";
 
 interface SetupCompleteBody {
   root_folder_id?: unknown;
@@ -327,6 +337,38 @@ export async function handleSetupComplete(req: Request): Promise<Response> {
     accessToken,
     templatesFolderId,
   });
+
+  // 9. Integrated OAuth flow: if a ChatGPT redirect cookie is present, issue a
+  //    one-time code and return redirect_to so the JS form handler can close the
+  //    OAuth window by navigating to the ChatGPT callback URL.
+  //    The Supabase refresh_token was stored in COOKIE_SESSION_REFRESH by
+  //    /auth/callback so we don't need to re-create the session here.
+  const chatgptInfo = parseChatgptRedirectCookie(
+    cookies[COOKIE_CHATGPT_REDIRECT],
+  );
+  const sessionRefreshToken = cookies[COOKIE_SESSION_REFRESH];
+  if (chatgptInfo && sessionRefreshToken) {
+    try {
+      const oneTimeCode = await issueOAuthCode({
+        accessToken: jwt,
+        refreshToken: sessionRefreshToken,
+      });
+      const redirectTo = buildChatgptCallbackUrl(
+        chatgptInfo.redirect_uri,
+        oneTimeCode,
+        chatgptInfo.state,
+      );
+      return okResp({
+        templates_folder_id: templatesFolderId,
+        guia_doc_id: starterDocs.guiaDocId,
+        contrato_doc_id: starterDocs.contratoDocId,
+        redirect_to: redirectTo,
+      });
+    } catch {
+      // Non-fatal: fall through to normal response. The GPT will receive a 404
+      // from getContext and instruct the landlord to re-authenticate.
+    }
+  }
 
   return okResp({
     templates_folder_id: templatesFolderId,

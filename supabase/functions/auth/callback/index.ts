@@ -10,8 +10,13 @@
 //   4. Persist the Google refresh_token in app_metadata (admin-only, not
 //      user-editable) via the service-role admin API so Edge Functions can
 //      later mint Drive access tokens. We never log the token.
-//   5. Set a session cookie (so the server-rendered /setup page can detect
-//      auth state) and redirect to /setup.
+//   5a. If a ChatGPT redirect cookie is present AND the landlord row exists:
+//       generate a one-time code → store in oauth_codes → redirect to ChatGPT.
+//   5b. If a ChatGPT redirect cookie is present AND no landlord row:
+//       set session cookie → redirect to /setup?via=oauth so the form appears
+//       in the same OAuth window and completes the flow.
+//   5c. No ChatGPT cookie (direct /setup flow): set session cookie → redirect
+//       to /setup (original behaviour).
 //
 // This file is kept under `supabase/functions/auth/callback/` per issue 1.2;
 // the deployable function is `supabase/functions/auth/` and routes internally.
@@ -25,14 +30,17 @@ import {
 } from "../../_shared/google.ts";
 import {
   clearCookie,
+  COOKIE_CHATGPT_REDIRECT,
   COOKIE_OAUTH_STATE,
   COOKIE_SESSION,
+  COOKIE_SESSION_REFRESH,
   isHttpsRequest,
   parseCookies,
   serializeCookie,
   SESSION_COOKIE_TTL_SECONDS,
 } from "../../_shared/cookies.ts";
 import { anonClient, serviceClient } from "../../_shared/supabase.ts";
+import { issueOAuthCode } from "../../_shared/oauth-codes.ts";
 
 export async function handleAuthCallback(req: Request): Promise<Response> {
   if (req.method !== "GET") {
@@ -138,7 +146,88 @@ export async function handleAuthCallback(req: Request): Promise<Response> {
     );
   }
 
-  // 5. Set session cookie, clear state cookie, redirect to /setup.
+  // Parse the ChatGPT redirect cookie (set by /oauth/authorize).
+  const chatgptRedirectRaw = cookies[COOKIE_CHATGPT_REDIRECT];
+  const chatgptInfo = parseChatgptRedirectCookie(chatgptRedirectRaw);
+
+  // 5a. Integrated OAuth flow + existing landlord: issue one-time code and
+  //     redirect directly to ChatGPT — no setup form needed.
+  if (chatgptInfo) {
+    const svc = serviceClient();
+    const { data: landlord } = await svc
+      .from("landlords")
+      .select("id")
+      .eq("id", signInData.user.id)
+      .maybeSingle();
+
+    if (landlord) {
+      // Landlord already set up — skip the form entirely.
+      let oneTimeCode: string;
+      try {
+        oneTimeCode = await issueOAuthCode({
+          accessToken: signInData.session.access_token,
+          refreshToken: signInData.session.refresh_token,
+        });
+      } catch {
+        return errorResponse(
+          502,
+          "OAUTH_CODE_ISSUE_FAILED",
+          "Não foi possível gerar o código de autenticação. Tente novamente.",
+        );
+      }
+
+      const chatgptCallbackUrl = buildChatgptCallbackUrl(
+        chatgptInfo.redirect_uri,
+        oneTimeCode,
+        chatgptInfo.state,
+      );
+
+      const headers = new Headers({
+        ...corsHeaders,
+        Location: chatgptCallbackUrl,
+      });
+      headers.append("Set-Cookie", clearCookie(COOKIE_OAUTH_STATE));
+      headers.append("Set-Cookie", clearCookie(COOKIE_CHATGPT_REDIRECT));
+      return new Response(null, { status: 302, headers });
+    }
+
+    // 5b. Integrated OAuth flow + new landlord: redirect to /setup?via=oauth
+    //     (the ChatGPT redirect cookie stays alive so /setup/complete can use it).
+    const setupUrl = `${baseUrl.replace(/\/$/, "")}/setup?via=oauth`;
+    const headers = new Headers({
+      ...corsHeaders,
+      Location: setupUrl,
+    });
+    headers.append(
+      "Set-Cookie",
+      serializeCookie(COOKIE_SESSION, signInData.session.access_token, {
+        maxAge: SESSION_COOKIE_TTL_SECONDS,
+        httpOnly: true,
+        secure: isHttpsRequest(req),
+        sameSite: "Lax",
+      }),
+    );
+    // Also store the refresh_token so /setup/complete can include it in the
+    // oauth_codes row without needing to re-create the session. Never logged.
+    headers.append(
+      "Set-Cookie",
+      serializeCookie(
+        COOKIE_SESSION_REFRESH,
+        signInData.session.refresh_token,
+        {
+          maxAge: SESSION_COOKIE_TTL_SECONDS,
+          httpOnly: true,
+          secure: isHttpsRequest(req),
+          sameSite: "Lax",
+        },
+      ),
+    );
+    headers.append("Set-Cookie", clearCookie(COOKIE_OAUTH_STATE));
+    // Keep COOKIE_CHATGPT_REDIRECT alive — /setup/complete needs it.
+    return new Response(null, { status: 302, headers });
+  }
+
+  // 5c. Direct /setup flow (no ChatGPT cookie): original behaviour.
   const setupUrl = `${baseUrl.replace(/\/$/, "")}/setup`;
   const headers = new Headers({
     ...corsHeaders,
@@ -155,6 +244,40 @@ export async function handleAuthCallback(req: Request): Promise<Response> {
   );
   headers.append("Set-Cookie", clearCookie(COOKIE_OAUTH_STATE));
   return new Response(null, { status: 302, headers });
+}
+
+// ─── Helpers ───────────────────────────────────────────────────────────────
+
+/** Parse the COOKIE_CHATGPT_REDIRECT cookie value. Returns null when absent or malformed. */
+export function parseChatgptRedirectCookie(
+  raw: string | undefined,
+): { redirect_uri: string; state: string } | null {
+  if (!raw) return null;
+  try {
+    const decoded = decodeURIComponent(raw);
+    const parsed = JSON.parse(decoded) as Record<string, unknown>;
+    if (typeof parsed.redirect_uri !== "string" || !parsed.redirect_uri) {
+      return null;
+    }
+    return {
+      redirect_uri: parsed.redirect_uri,
+      state: typeof parsed.state === "string" ? parsed.state : "",
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Build the final ChatGPT callback URL with code and state. */
+export function buildChatgptCallbackUrl(
+  redirectUri: string,
+  code: string,
+  state: string,
+): string {
+  const url = new URL(redirectUri);
+  url.searchParams.set("code", code);
+  if (state) url.searchParams.set("state", state);
+  return url.toString();
 }
 
 // Constant-time string comparison to defeat timing attacks on the state nonce.

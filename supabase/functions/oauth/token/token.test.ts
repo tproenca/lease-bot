@@ -290,3 +290,198 @@ Deno.test("unit: oauth/token — 405 when method is DELETE", async () => {
   const res = await handleOAuthToken(req);
   assertEquals(res.status, 405);
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// One-time code lookup (integrated setup flow — issue #89)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+Deno.test("unit: oauth/token — authorization_code: redeems oauth_codes row and skips Google when code found", async () => {
+  // Simulate a code that was issued by /setup/complete or /auth/callback.
+  // The handler should return the stored tokens directly without calling Google.
+  const STORED_ACCESS = "stored-supabase-access-token";
+  const STORED_REFRESH = "stored-supabase-refresh-token";
+  const ONE_TIME_CODE = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+
+  const originalFetch = globalThis.fetch;
+  let googleCalled = false;
+
+  globalThis.fetch = async function mockFetch(
+    input: string | URL | Request,
+    init?: RequestInit,
+  ): Promise<Response> {
+    const url = typeof input === "string"
+      ? input
+      : input instanceof URL
+      ? input.href
+      : (input as Request).url;
+    const method = (init as RequestInit | undefined)?.method?.toUpperCase() ??
+      "GET";
+
+    // oauth_codes SELECT: return a matching row with future expires_at.
+    if (
+      url.includes("/rest/v1/oauth_codes") &&
+      url.includes(ONE_TIME_CODE) &&
+      method === "GET"
+    ) {
+      return new Response(
+        JSON.stringify([{
+          access_token: STORED_ACCESS,
+          refresh_token: STORED_REFRESH,
+          expires_at: new Date(Date.now() + 300_000).toISOString(),
+        }]),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
+    // oauth_codes DELETE: accept silently.
+    if (url.includes("/rest/v1/oauth_codes") && method === "DELETE") {
+      return new Response(null, { status: 204 });
+    }
+
+    // Google token endpoint — must NOT be reached.
+    if (url.includes("oauth2.googleapis.com/token")) {
+      googleCalled = true;
+      return new Response(
+        JSON.stringify({ error: "should_not_reach_google" }),
+        { status: 400, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
+    throw new Error(`Unexpected fetch in test: ${method} ${url}`);
+  } as typeof fetch;
+
+  try {
+    const body = new URLSearchParams({
+      grant_type: "authorization_code",
+      code: ONE_TIME_CODE,
+    }).toString();
+    const req = makeTokenRequest(body);
+    const res = await handleOAuthToken(req);
+
+    assertEquals(res.status, 200);
+    const json = await res.json() as {
+      access_token: string;
+      refresh_token: string;
+      token_type: string;
+    };
+    assertEquals(json.access_token, STORED_ACCESS);
+    assertEquals(json.refresh_token, STORED_REFRESH);
+    assertEquals(json.token_type, "Bearer");
+    assertEquals(
+      googleCalled,
+      false,
+      "Google token endpoint must not be called when code is in oauth_codes",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("unit: oauth/token — authorization_code: falls through to Google when code not in oauth_codes", async () => {
+  // When the code is not found in the oauth_codes table (empty result), the
+  // handler must fall through to the Google token exchange path.
+  const originalFetch = globalThis.fetch;
+  let googleCalled = false;
+
+  globalThis.fetch = buildMockFetch({}) as typeof fetch;
+  const originalFetchWithOauthCheck = globalThis.fetch;
+  globalThis.fetch = async function mockFetch(
+    input: string | URL | Request,
+    init?: RequestInit,
+  ): Promise<Response> {
+    const url = typeof input === "string"
+      ? input
+      : input instanceof URL
+      ? input.href
+      : (input as Request).url;
+    const method = (init as RequestInit | undefined)?.method?.toUpperCase() ??
+      "GET";
+
+    // oauth_codes SELECT: return empty (code not found).
+    if (url.includes("/rest/v1/oauth_codes") && method === "GET") {
+      return new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // Track Google call, then delegate to the base mock.
+    if (url.includes("oauth2.googleapis.com/token")) {
+      googleCalled = true;
+    }
+    return originalFetchWithOauthCheck(input, init);
+  } as typeof fetch;
+
+  try {
+    const body = new URLSearchParams({
+      grant_type: "authorization_code",
+      code: "unknown-code-not-in-db",
+      redirect_uri: "https://example.com/callback",
+      client_id: "test-client-id",
+      client_secret: "test-client-secret",
+    }).toString();
+    const req = makeTokenRequest(body);
+    const res = await handleOAuthToken(req);
+
+    // Should have called Google and succeeded (mock returns 200).
+    assertEquals(res.status, 200);
+    assertEquals(
+      googleCalled,
+      true,
+      "Google token endpoint must be called when code is not in oauth_codes",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("unit: oauth/token — authorization_code: 200 returned using stored tokens, not Google tokens", async () => {
+  // Verify the tokens in the response are exactly what was stored in
+  // oauth_codes, not anything from Google (which should never be called).
+  const STORED_ACCESS = "supabase-jwt-from-setup";
+  const STORED_REFRESH = "supabase-refresh-from-setup";
+  const ONE_TIME_CODE = "11111111-2222-3333-4444-555555555555";
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async function mockFetch(
+    input: string | URL | Request,
+    init?: RequestInit,
+  ): Promise<Response> {
+    const url = typeof input === "string"
+      ? input
+      : input instanceof URL
+      ? input.href
+      : (input as Request).url;
+    const method = (init as RequestInit | undefined)?.method?.toUpperCase() ??
+      "GET";
+
+    if (url.includes("/rest/v1/oauth_codes") && method === "GET") {
+      return new Response(
+        JSON.stringify([{
+          access_token: STORED_ACCESS,
+          refresh_token: STORED_REFRESH,
+          expires_at: new Date(Date.now() + 300_000).toISOString(),
+        }]),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }
+    if (url.includes("/rest/v1/oauth_codes") && method === "DELETE") {
+      return new Response(null, { status: 204 });
+    }
+    throw new Error(`Unexpected fetch in test: ${method} ${url}`);
+  } as typeof fetch;
+
+  try {
+    const body = new URLSearchParams({
+      grant_type: "authorization_code",
+      code: ONE_TIME_CODE,
+    }).toString();
+    const res = await handleOAuthToken(makeTokenRequest(body));
+    assertEquals(res.status, 200);
+    const json = await res.json() as Record<string, string>;
+    assertEquals(json.access_token, STORED_ACCESS);
+    assertEquals(json.refresh_token, STORED_REFRESH);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

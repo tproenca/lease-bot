@@ -84,6 +84,12 @@ async function handleSetupPage(req: Request): Promise<Response> {
     const guiaDocId = searchParams.get("guia") ?? undefined;
     return htmlResponse(renderPostSetupHtml(guiaDocId));
   }
+
+  // Detect integrated OAuth flow: ?via=oauth means the page is open inside
+  // the ChatGPT OAuth window. The JS form handler will redirect to ChatGPT
+  // when /setup/complete returns a redirect_to URL.
+  const viaOAuth = new URL(req.url).searchParams.get("via") === "oauth";
+
   return htmlResponse(
     renderPostAuthHtml({
       email: user.email,
@@ -91,6 +97,7 @@ async function handleSetupPage(req: Request): Promise<Response> {
       // webhook configuration. Includes the landlord_id path segment so
       // the webhook handler can find their per-landlord Endpoint Secret.
       webhookUrl: `${publicFunctionsBaseUrl()}/webhooks/autentique/${user.id}`,
+      viaOAuth,
     }),
   );
 }
@@ -199,7 +206,7 @@ function renderPreAuthHtml(authUrl: string): string {
 }
 
 function renderPostAuthHtml(
-  params: { email: string; webhookUrl: string },
+  params: { email: string; webhookUrl: string; viaOAuth?: boolean },
 ): string {
   // The Google Drive Picker needs the developer API key + OAuth client ID.
   // We surface them as data attributes for the inline script to pick up. If
@@ -283,6 +290,7 @@ function renderPostAuthHtml(
 
   <script>
     (function() {
+      var viaOAuth = ${params.viaOAuth ? "true" : "false"};
       var form = document.getElementById('setupForm');
       var errorEl = document.getElementById('formError');
       var submitBtn = document.getElementById('submitBtn');
@@ -398,8 +406,14 @@ function renderPostAuthHtml(
             return;
           }
           // Keep spinner visible — page will navigate away on success.
-          var guiaParam = json.guia_doc_id ? '?guia=' + encodeURIComponent(json.guia_doc_id) : '';
-          window.location.href = window.location.pathname + guiaParam;
+          if (viaOAuth && json.redirect_to) {
+            // Integrated OAuth flow: close the ChatGPT auth window by
+            // navigating to the ChatGPT callback URL with the one-time code.
+            window.location.href = json.redirect_to;
+          } else {
+            var guiaParam = json.guia_doc_id ? '?guia=' + encodeURIComponent(json.guia_doc_id) : '';
+            window.location.href = window.location.pathname + guiaParam;
+          }
         } catch (e) {
           showError('Erro de rede. Tente novamente.');
           setSubmitting(false);

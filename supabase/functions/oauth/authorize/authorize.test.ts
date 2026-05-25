@@ -6,8 +6,21 @@
 // Any future change that accidentally adds auth checks (e.g. removing
 // `verify_jwt = false` from config.toml) will not be caught here — but these
 // tests ensure the handler logic itself is auth-free.
+//
+// Integrated setup flow (issue #89): the handler now replaces the incoming
+// redirect_uri with our own /auth/callback and stores ChatGPT's redirect_uri
+// in a cookie. Tests below cover both behaviours.
 
-import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
+// Set required env vars before importing the handler.
+Deno.env.set(
+  "PUBLIC_FUNCTIONS_BASE_URL",
+  "http://localhost:54321/functions/v1",
+);
+
+import {
+  assertEquals,
+  assertStringIncludes,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { handleOAuthAuthorize } from "./index.ts";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -60,6 +73,8 @@ Deno.test("unit: oauth/authorize — 302 redirect even when Authorization header
 });
 
 Deno.test("unit: oauth/authorize — query params are forwarded to Google", async () => {
+  // redirect_uri is replaced with our own /auth/callback (integrated flow);
+  // other params (client_id, response_type, state, scope) are forwarded as-is.
   const req = makeGetRequest(
     "client_id=test-client&redirect_uri=https%3A%2F%2Fexample.com%2Fcallback&response_type=code&scope=openid+email&state=abc123",
   );
@@ -67,12 +82,88 @@ Deno.test("unit: oauth/authorize — query params are forwarded to Google", asyn
   assertEquals(res.status, 302);
   const location = new URL(res.headers.get("Location") ?? "");
   assertEquals(location.searchParams.get("client_id"), "test-client");
-  assertEquals(
-    location.searchParams.get("redirect_uri"),
-    "https://example.com/callback",
+  // redirect_uri must be our /auth/callback, not the incoming ChatGPT URI.
+  assertStringIncludes(
+    location.searchParams.get("redirect_uri") ?? "",
+    "/auth/callback",
   );
   assertEquals(location.searchParams.get("response_type"), "code");
   assertEquals(location.searchParams.get("state"), "abc123");
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Integrated setup flow — ChatGPT redirect_uri cookie (issue #89)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+Deno.test("unit: oauth/authorize — sets chatgpt_redirect cookie when redirect_uri is present", async () => {
+  const req = makeGetRequest(
+    "redirect_uri=https%3A%2F%2Fchat.openai.com%2Faip%2Fcallback&state=openai-state-xyz&response_type=code",
+  );
+  const res = await handleOAuthAuthorize(req);
+  assertEquals(res.status, 302);
+  // At least one Set-Cookie header must contain our chatgpt_redirect cookie.
+  const cookies = res.headers.getSetCookie?.() ??
+    [res.headers.get("Set-Cookie") ?? ""];
+  const chatgptCookie = cookies.find((c) => c.startsWith("chatgpt_redirect="));
+  assertEquals(
+    chatgptCookie !== undefined,
+    true,
+    "Expected chatgpt_redirect cookie to be set",
+  );
+  assertStringIncludes(chatgptCookie ?? "", "HttpOnly");
+  assertStringIncludes(chatgptCookie ?? "", "SameSite=Lax");
+});
+
+Deno.test("unit: oauth/authorize — chatgpt_redirect cookie encodes redirect_uri and state", async () => {
+  const chatgptUri = "https://chat.openai.com/aip/callback";
+  const openaiState = "openai-state-abc";
+  const req = makeGetRequest(
+    `redirect_uri=${
+      encodeURIComponent(chatgptUri)
+    }&state=${openaiState}&response_type=code`,
+  );
+  const res = await handleOAuthAuthorize(req);
+  const cookies = res.headers.getSetCookie?.() ??
+    [res.headers.get("Set-Cookie") ?? ""];
+  const chatgptCookie = cookies.find((c) => c.startsWith("chatgpt_redirect="));
+  const rawValue = (chatgptCookie ?? "").split(";")[0].split("=").slice(1)
+    .join("=");
+  const decoded = JSON.parse(decodeURIComponent(rawValue));
+  assertEquals(decoded.redirect_uri, chatgptUri);
+  assertEquals(decoded.state, openaiState);
+});
+
+Deno.test("unit: oauth/authorize — does not set chatgpt_redirect cookie when no redirect_uri", async () => {
+  // Direct /setup page flow: user clicks "Entrar com Google" — no redirect_uri
+  // query param means we are not inside a ChatGPT OAuth window.
+  const req = makeGetRequest("response_type=code&state=some-state");
+  const res = await handleOAuthAuthorize(req);
+  assertEquals(res.status, 302);
+  const cookies = res.headers.getSetCookie?.() ??
+    [res.headers.get("Set-Cookie") ?? ""];
+  const chatgptCookie = cookies.find((c) => c.startsWith("chatgpt_redirect="));
+  assertEquals(
+    chatgptCookie,
+    undefined,
+    "Expected no chatgpt_redirect cookie when redirect_uri is absent",
+  );
+});
+
+Deno.test("unit: oauth/authorize — redirect_uri sent to Google is our /auth/callback, not ChatGPT URI", async () => {
+  const chatgptUri = "https://chat.openai.com/aip/callback";
+  const req = makeGetRequest(
+    `redirect_uri=${encodeURIComponent(chatgptUri)}&response_type=code`,
+  );
+  const res = await handleOAuthAuthorize(req);
+  const location = new URL(res.headers.get("Location") ?? "");
+  const sentRedirectUri = location.searchParams.get("redirect_uri") ?? "";
+  // Must NOT be the ChatGPT URI — must be our callback.
+  assertEquals(
+    sentRedirectUri.includes("chat.openai.com"),
+    false,
+    "ChatGPT redirect_uri must not be forwarded to Google",
+  );
+  assertStringIncludes(sentRedirectUri, "/auth/callback");
 });
 
 Deno.test("unit: oauth/authorize — access_type=offline is always set", async () => {

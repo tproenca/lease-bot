@@ -6,15 +6,21 @@
 // Supabase JWT — not a raw Google access token — for API calls.
 //
 // grant_type=authorization_code:
-//   1. Forward to Google's token endpoint to get Google id_token.
-//   2. Call supabase.auth.signInWithIdToken to create/update the Supabase user.
-//   3. Return the Supabase access_token + refresh_token.
+//   1. Check if `code` exists in the oauth_codes table (integrated setup flow).
+//      If yes: return the stored access_token + refresh_token and delete the row
+//      (single-use). The row is expired-filtered so stale codes are rejected.
+//   2. If no oauth_codes row: fall through to Google token exchange (original
+//      direct-/setup-page flow, kept for backward compatibility).
+//   3. Forward to Google's token endpoint to get Google id_token.
+//   4. Call supabase.auth.signInWithIdToken to create/update the Supabase user.
+//   5. Return the Supabase access_token + refresh_token.
 //
 // grant_type=refresh_token:
 //   The stored refresh_token is a Supabase refresh token from a prior exchange.
 //   Call supabase.auth.refreshSession to get a new Supabase access_token.
 
 import { anonClient, serviceClient } from "../../_shared/supabase.ts";
+import { redeemOAuthCode } from "../../_shared/oauth-codes.ts";
 
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 
@@ -82,6 +88,35 @@ export async function handleOAuthToken(req: Request): Promise<Response> {
     );
   }
 
+  const code = params.get("code");
+
+  // 1. Check the oauth_codes table first (integrated setup flow).
+  //    If we issued this code from /setup/complete or /auth/callback, it holds
+  //    a Supabase JWT pair — return it directly without calling Google.
+  if (code) {
+    let redeemed: { accessToken: string; refreshToken: string } | null = null;
+    try {
+      redeemed = await redeemOAuthCode(code);
+    } catch {
+      // Unexpected DB error — fall through to the Google exchange path.
+      // The code won't be in Google's system, so that will also fail, but we
+      // preserve backward compatibility and avoid swallowing real errors silently.
+    }
+
+    if (redeemed) {
+      return new Response(
+        JSON.stringify({
+          access_token: redeemed.accessToken,
+          refresh_token: redeemed.refreshToken,
+          token_type: "Bearer",
+          expires_in: 3600,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }
+  }
+
+  // 2. Fall through: Google token exchange (original flow).
   const googleResponse = await fetch(GOOGLE_TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
