@@ -182,10 +182,15 @@ paths:
       operationId: oauthAuthorize
       summary: Proxy redirect to Google's OAuth authorization endpoint
       description: >
-        Forwards all query parameters to https://accounts.google.com/o/oauth2/v2/auth
+        Forwards query parameters to https://accounts.google.com/o/oauth2/v2/auth
         and returns a 302 redirect. Required so that the GPT OAuth action's
         Authorization URL, Token URL, and API server all share the same root domain
-        (OpenAI enforces this). Only redirects to the exact Google authorization URL.
+        (OpenAI enforces this).
+        Integrated setup flow (issue #89): when ChatGPT sends a redirect_uri, the
+        handler intercepts it, stores it in an HttpOnly cookie (chatgpt_redirect),
+        and replaces redirect_uri with our own /auth/callback before forwarding to
+        Google. This allows the setup form to appear in the same OAuth window.
+        Only redirects to the exact Google authorization URL — no open redirect.
       security: []
       parameters:
         - name: response_type
@@ -198,6 +203,7 @@ paths:
             type: string
         - name: redirect_uri
           in: query
+          description: ChatGPT's callback URL. Intercepted and stored in a cookie; not forwarded to Google.
           schema:
             type: string
         - name: scope
@@ -215,13 +221,17 @@ paths:
   /oauth/token:
     post:
       operationId: oauthToken
-      summary: Proxy to Google's OAuth token endpoint
+      summary: Exchange auth code or refresh token for a Supabase JWT
       description: >
-        Forwards the request body as-is to https://oauth2.googleapis.com/token
-        and returns Google's response verbatim (status, body, content-type).
-        Required so that the GPT OAuth action's Token URL shares the same root
-        domain as the API server. Only proxies to the exact Google token URL.
-        No credentials are stored or logged by this proxy.
+        grant_type=authorization_code: First checks the oauth_codes table for a
+        one-time code issued by the integrated setup flow (/auth/callback or
+        /setup/complete). If found, returns the stored Supabase access_token +
+        refresh_token and deletes the row (single-use, 5-minute TTL). If not found,
+        falls through to the Google token endpoint to exchange the code for a Google
+        id_token, then signs in via Supabase and returns the Supabase JWT pair.
+        grant_type=refresh_token: Calls Supabase auth.refreshSession with the stored
+        Supabase refresh token and returns a new Supabase access_token.
+        No credentials are stored or logged by this endpoint.
       security: []
       requestBody:
         required: true
@@ -229,13 +239,24 @@ paths:
           application/x-www-form-urlencoded:
             schema:
               type: object
-              description: Token exchange parameters forwarded verbatim to Google (grant_type, code, redirect_uri, client_id, client_secret, etc.)
+              properties:
+                grant_type:
+                  type: string
+                  enum: [authorization_code, refresh_token]
+                code:
+                  type: string
+                  description: One-time code from oauth_codes table, or Google authorization code.
+                refresh_token:
+                  type: string
+                  description: Supabase refresh token (for refresh_token grant).
               additionalProperties: true
       responses:
         '200':
-          description: Google's token response (access_token, refresh_token, id_token, etc.)
+          description: Supabase JWT pair (access_token, refresh_token, token_type, expires_in)
         '400':
-          description: Google token exchange error (forwarded verbatim)
+          description: Invalid request (missing fields, unsupported grant_type)
+        '401':
+          description: Token refresh failed (invalid or expired refresh token)
 
   # ── Setup & Auth ──────────────────────────────────────────
 
@@ -252,6 +273,14 @@ paths:
     get:
       operationId: authCallback
       summary: Google OAuth redirect handler
+      description: >
+        Validates the CSRF state cookie, exchanges the Google auth code for tokens,
+        creates a Supabase session, and redirects based on context.
+        Integrated setup flow (issue #89): if a chatgpt_redirect cookie is present
+        and the landlord already exists, issues a one-time code and redirects to
+        ChatGPT directly. If the landlord does not exist, redirects to /setup?via=oauth
+        so the setup form appears in the same OAuth window. Without the cookie,
+        falls back to the original behaviour (redirect to /setup).
       security: []
       parameters:
         - name: code
@@ -265,7 +294,9 @@ paths:
             type: string
       responses:
         '302':
-          description: Redirect to /setup with session established
+          description: >
+            Redirect to ChatGPT callback (existing landlord, integrated flow),
+            /setup?via=oauth (new landlord, integrated flow), or /setup (direct flow).
 
   /setup/complete:
     post:

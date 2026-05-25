@@ -3,6 +3,11 @@
 ## Unreleased
 
 ### Added
+- Embedded setup form in ChatGPT OAuth window: new landlords now complete onboarding in one uninterrupted flow without visiting a separate `/setup` URL. `GET /oauth/authorize` intercepts ChatGPT's `redirect_uri` and stores it in a cookie; `GET /auth/callback` checks for an existing landlord and either issues a one-time code directly (existing) or redirects to `/setup?via=oauth` (new); `POST /setup/complete` returns `redirect_to` so the form JS can close the OAuth window; `POST /oauth/token` redeems one-time codes from the new `oauth_codes` table before falling through to Google. (issue 89)
+- `oauth_codes` DB table: short-lived (5 min), single-use codes bridging the setup form to ChatGPT's token exchange. (issue 89)
+- ADR-0015: documents the cookie + one-time-code design for the embedded OAuth setup flow. (issue 89)
+
+### Added
 - `GET /oauth/authorize` and `POST /oauth/token`: thin proxy endpoints that forward requests to Google's OAuth authorization and token endpoints, enabling the GPT action OAuth config to satisfy OpenAI's root domain requirement. (issue 53)
 
 ### Added
