@@ -171,33 +171,39 @@ export async function submitDocument(
   }
 
   // Build the signers input array for the GraphQL mutation.
+  // Schema (verified via introspection):
+  //   action   → ActionEnum "SIGN" (not a nested object)
+  //   positions → top-level on SignerInput (not inside action)
+  //   phone    → the WhatsApp/SMS number field (not "whatsapp")
+  //   delivery_method → per-signer (not on the document)
+  //   z        → Int (not String)
   const signersInput = signers.map((s) => ({
     name: s.name,
-    email: s.email ?? null,
-    whatsapp: s.whatsapp,
-    action: {
-      name: "SIGN",
-      positions: [
-        {
-          x: String(s.x),
-          y: String(s.y),
-          z: String(s.page),
-          element: "SIGNATURE",
-          type: "SIGNATURE",
-        },
-      ],
-    },
+    ...(s.email ? { email: s.email } : {}),
+    phone: s.whatsapp,
+    delivery_method: "DELIVERY_METHOD_WHATSAPP",
+    action: "SIGN",
+    positions: [
+      {
+        x: String(s.x),
+        y: String(s.y),
+        z: s.page, // Int
+        element: "SIGNATURE",
+      },
+    ],
   }));
 
+  // file is a top-level mutation argument (not inside DocumentInput).
+  // reminder replaces reminder_frequency; delivery_method moved to SignerInput.
   const mutation = `
-    mutation CreateDocument($name: String!, $content: Upload!, $signers: [SignerInput!]!, $reminderFrequency: ReminderFrequency) {
+    mutation CreateDocument($name: String!, $file: Upload!, $signers: [SignerInput!]!, $reminder: ReminderEnum) {
       createDocument(
         document: {
           name: $name
-          content: $content
-          reminder_frequency: $reminderFrequency
-          delivery_method: DELIVERY_METHOD_WHATSAPP
+          reminder: $reminder
+          new_signature_style: true
         }
+        file: $file
         signers: $signers
       ) {
         id
@@ -211,13 +217,13 @@ export async function submitDocument(
     query: mutation,
     variables: {
       name: "Contrato de Locação",
-      content: null, // will be mapped by the file upload
+      file: null, // will be mapped by the file upload
       signers: signersInput,
-      reminderFrequency,
+      reminder: reminderFrequency,
     },
   });
 
-  const mapJson = JSON.stringify({ "0": ["variables.content"] });
+  const mapJson = JSON.stringify({ "0": ["variables.file"] });
 
   // Convert base64 to bytes.
   const pdfBinary = Uint8Array.from(atob(pdfBase64), (c) => c.charCodeAt(0));
@@ -250,7 +256,9 @@ export async function submitDocument(
   };
 
   if (json.errors) {
-    throw new Error(`autentique_graphql_error`);
+    throw new Error(
+      `autentique_graphql_error: ${JSON.stringify(json.errors)}`,
+    );
   }
 
   const documentId = json.data?.createDocument?.id;
