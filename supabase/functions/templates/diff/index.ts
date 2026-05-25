@@ -196,10 +196,10 @@ export async function handleTemplatesDiff(req: Request): Promise<Response> {
   const dbFileIds = new Set(templates.map((t) => t.drive_file_id));
 
   // Compute template-level diff (Drive files not in DB, and DB rows gone from Drive).
-  const addedTemplates = driveFiles
+  // Keep { id, name } internally so we can export content for placeholder extraction.
+  const addedDriveFiles = driveFiles
     .filter((f) => !dbFileIds.has(f.id) && f.name !== GUIA_EXACT_NAME)
-    .map((f) => f.name)
-    .sort();
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   const removedDbTemplates = templates.filter(
     (t) => !driveFileIds.has(t.drive_file_id),
@@ -234,7 +234,7 @@ export async function handleTemplatesDiff(req: Request): Promise<Response> {
 
   // Fast path: no template-level changes and no content changes.
   if (
-    addedTemplates.length === 0 &&
+    addedDriveFiles.length === 0 &&
     removedTemplates.length === 0 &&
     changedTemplates.length === 0
   ) {
@@ -309,9 +309,35 @@ export async function handleTemplatesDiff(req: Request): Promise<Response> {
     }
   }
 
+  // Extract placeholders and witness names from newly added Drive files.
+  for (const f of addedDriveFiles) {
+    let text: string;
+    try {
+      text = await exportDriveFileAsText({
+        accessToken,
+        fileId: f.id,
+      });
+    } catch {
+      return errorResponse(
+        502,
+        "DRIVE_EXPORT_FAILED",
+        "Falha ao ler conteúdo do template no Google Drive. Tente novamente.",
+      );
+    }
+
+    const placeholders = extractPlaceholders(text);
+    for (const p of placeholders) allAddedPlaceholders.add(p);
+
+    const witnesses = extractWitnessNames(text);
+    for (const w of witnesses) allWitnessNames.add(w);
+  }
+
   return new Response(
     JSON.stringify({
-      templates: { added: addedTemplates, removed: removedTemplates },
+      templates: {
+        added: addedDriveFiles.map((f) => f.name),
+        removed: removedTemplates,
+      },
       placeholders: {
         added: [...allAddedPlaceholders].sort(),
         removed: [...allRemovedPlaceholders].sort(),

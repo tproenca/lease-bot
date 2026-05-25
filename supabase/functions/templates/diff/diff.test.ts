@@ -673,3 +673,126 @@ Deno.test("unit: GET /templates/diff — removed.templates has empty property_ty
     globalThis.fetch = originalFetch;
   }
 });
+
+// ─── Added templates: placeholder extraction ──────────────────────────────
+
+// Drive file that is new (not in DB) with placeholders and a witness block.
+const MOCK_NEW_DRIVE_FILE = {
+  id: "drive-file-id-new",
+  name: "Contrato Comercial Novo",
+  modifiedTime: "2024-06-01T00:00:00.000Z",
+};
+
+const MOCK_NEW_TEMPLATE_DOC_TEXT = [
+  "Contrato Comercial",
+  "Locatário: {{nome do locatário}}",
+  "CNPJ: {{cnpj}}",
+  "Valor: {{valor mensal}}",
+  "Testemunhas:",
+  "___________",
+  "Pedro Alves",
+].join("\n");
+
+Deno.test("unit: GET /templates/diff — new template placeholders appear in placeholders.added", async () => {
+  const originalFetch = globalThis.fetch;
+  // DB has no templates; Drive returns one new file
+  globalThis.fetch = buildMockFetch({
+    templates: [],
+    driveFiles: [MOCK_NEW_DRIVE_FILE],
+    docText: MOCK_NEW_TEMPLATE_DOC_TEXT,
+  }) as typeof fetch;
+  try {
+    const res = await handleTemplatesDiff(makeRequest("valid.jwt"));
+    assertEquals(res.status, 200);
+    const body = await jsonBody(res);
+    const placeholders = body.placeholders as Record<string, string[]>;
+    assertEquals(placeholders.added.includes("nome do locatário"), true);
+    assertEquals(placeholders.added.includes("cnpj"), true);
+    assertEquals(placeholders.added.includes("valor mensal"), true);
+    assertEquals(placeholders.added.length, 3);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("unit: GET /templates/diff — new template witnesses appear in witnesses.added", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({
+    templates: [],
+    driveFiles: [MOCK_NEW_DRIVE_FILE],
+    docText: MOCK_NEW_TEMPLATE_DOC_TEXT,
+  }) as typeof fetch;
+  try {
+    const res = await handleTemplatesDiff(makeRequest("valid.jwt"));
+    assertEquals(res.status, 200);
+    const body = await jsonBody(res);
+    const witnesses = body.witnesses as Record<string, string[]>;
+    assertEquals(witnesses.added.includes("Pedro Alves"), true);
+    assertEquals(witnesses.added.length, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("unit: GET /templates/diff — templates.added remains string[] for new Drive files", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({
+    templates: [],
+    driveFiles: [MOCK_NEW_DRIVE_FILE],
+    docText: MOCK_NEW_TEMPLATE_DOC_TEXT,
+  }) as typeof fetch;
+  try {
+    const res = await handleTemplatesDiff(makeRequest("valid.jwt"));
+    assertEquals(res.status, 200);
+    const body = await jsonBody(res);
+    const templates = body.templates as {
+      added: unknown[];
+      removed: unknown[];
+    };
+    assertEquals(templates.added.length, 1);
+    assertEquals(templates.added[0], "Contrato Comercial Novo");
+    // Each entry must be a plain string, not an object
+    assertEquals(typeof templates.added[0], "string");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("unit: GET /templates/diff — 502 when Drive export fails for new template", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({
+    templates: [],
+    driveFiles: [MOCK_NEW_DRIVE_FILE],
+    driveExportFail: true,
+  }) as typeof fetch;
+  try {
+    const res = await handleTemplatesDiff(makeRequest("valid.jwt"));
+    assertEquals(res.status, 502);
+    const body = await jsonBody(res);
+    assertEquals(
+      (body.error as Record<string, string>).code,
+      "DRIVE_EXPORT_FAILED",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("unit: GET /templates/diff — placeholders.removed is empty when only new templates exist", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({
+    templates: [],
+    driveFiles: [MOCK_NEW_DRIVE_FILE],
+    docText: MOCK_NEW_TEMPLATE_DOC_TEXT,
+  }) as typeof fetch;
+  try {
+    const res = await handleTemplatesDiff(makeRequest("valid.jwt"));
+    assertEquals(res.status, 200);
+    const body = await jsonBody(res);
+    const placeholders = body.placeholders as Record<string, string[]>;
+    // No existing placeholders to remove when template is new
+    assertEquals(placeholders.removed.length, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
