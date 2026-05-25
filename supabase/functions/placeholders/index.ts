@@ -71,19 +71,25 @@ async function handleCreatePlaceholder(req: Request): Promise<Response> {
     );
   }
 
-  // 2. Parse body — always an array.
-  let body: unknown;
+  // 2. Parse body — GPT Actions wraps array payloads in { placeholders: [...] }.
+  let parsed: unknown;
   try {
-    body = await req.json();
+    parsed = await req.json();
   } catch {
     return errorResponse(400, "INVALID_JSON", "Corpo da requisição inválido.");
   }
+
+  const body = Array.isArray(parsed)
+    ? parsed
+    : Array.isArray((parsed as { placeholders?: unknown } | null)?.placeholders)
+    ? (parsed as { placeholders: unknown[] }).placeholders
+    : null;
 
   if (!Array.isArray(body) || body.length === 0) {
     return errorResponse(
       400,
       "INVALID_REQUEST",
-      "Envie um array com pelo menos um placeholder.",
+      "Envie { placeholders: [...] } ou um array com pelo menos um placeholder.",
     );
   }
 

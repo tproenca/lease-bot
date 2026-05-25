@@ -413,10 +413,14 @@ paths:
         content:
           application/json:
             schema:
-              type: array
-              items:
-                $ref: '#/components/schemas/Placeholder'
-              minItems: 1
+              type: object
+              required: [placeholders]
+              properties:
+                placeholders:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Placeholder'
+                  minItems: 1
       responses:
         '201':
           description: Placeholders created

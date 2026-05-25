@@ -170,20 +170,23 @@ function buildMockFetch(opts: MockFetchOpts) {
 // ─── Request helpers ──────────────────────────────────────────────────────
 
 function makePostRequest(body?: unknown, jwt?: string): Request {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-  if (jwt) headers["Authorization"] = `Bearer ${jwt}`;
-  // Body is always an array; wrap a single object if needed.
   const payload = body === undefined
     ? undefined
     : Array.isArray(body)
     ? body
     : [body];
+  return makeRawPostRequest(payload, jwt);
+}
+
+function makeRawPostRequest(body?: unknown, jwt?: string): Request {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (jwt) headers["Authorization"] = `Bearer ${jwt}`;
   return new Request("http://localhost/placeholders", {
     method: "POST",
     headers,
-    body: payload !== undefined ? JSON.stringify(payload) : undefined,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 }
 
@@ -303,6 +306,26 @@ Deno.test("unit: POST /placeholders — 400 when body is empty array", async () 
   }
 });
 
+// ─── 400 — empty wrapped array ───────────────────────────────────────────
+
+Deno.test("unit: POST /placeholders — 400 when wrapped placeholders array is empty", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({}) as typeof fetch;
+  try {
+    const res = await handlePlaceholders(
+      makeRawPostRequest({ placeholders: [] }, "valid.jwt"),
+    );
+    assertEquals(res.status, 400);
+    const body = await jsonBody(res) as Record<string, unknown>;
+    assertEquals(
+      (body.error as Record<string, string>).code,
+      "INVALID_REQUEST",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 // ─── 409 — duplicate name ─────────────────────────────────────────────────
 
 Deno.test("unit: POST /placeholders — 409 when name already exists", async () => {
@@ -331,6 +354,23 @@ Deno.test("unit: POST /placeholders — 201 creates placeholders and returns ids
   try {
     const res = await handlePlaceholders(
       makePostRequest(VALID_BODY, "valid.jwt"),
+    );
+    assertEquals(res.status, 201);
+    const body = await jsonBody(res) as Record<string, unknown>;
+    assertEquals(Array.isArray(body.ids), true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// ─── 201 — wrapped GPT Actions body ──────────────────────────────────────
+
+Deno.test("unit: POST /placeholders — 201 accepts wrapped placeholders array", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({}) as typeof fetch;
+  try {
+    const res = await handlePlaceholders(
+      makeRawPostRequest({ placeholders: [VALID_BODY] }, "valid.jwt"),
     );
     assertEquals(res.status, 201);
     const body = await jsonBody(res) as Record<string, unknown>;

@@ -162,8 +162,8 @@ DELETE /templates/:id
   → 204
 
 POST /placeholders
-  Body: { name, required, format, case?, default?, derived_from?, derived_formula? }
-  → 201 { id }
+  Body: { placeholders: [{ name, required, format, case?, default?, derived_from?, derived_formula? }] }
+  → 201 { ids }
 
 DELETE /placeholders/:name
   → 204

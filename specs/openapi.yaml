@@ -572,27 +572,36 @@ paths:
 
   /placeholders:
     post:
-      operationId: createPlaceholder
-      summary: Add a placeholder definition
+      operationId: createPlaceholders
+      summary: Add one or more placeholder definitions
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Placeholder'
+              type: object
+              required: [placeholders]
+              properties:
+                placeholders:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Placeholder'
+                  minItems: 1
       responses:
         '201':
-          description: Placeholder created
+          description: Placeholders created
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  id:
-                    type: string
-                    format: uuid
+                  ids:
+                    type: array
+                    items:
+                      type: string
+                      format: uuid
         '409':
-          description: Placeholder name already exists for this landlord
+          description: One or more placeholder names already exist for this landlord
           content:
             application/json:
               schema:

@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Fixed
+- `POST /placeholders`: accepts GPT Actions' wrapped `{ placeholders: [...] }` request body while preserving bare-array compatibility, and the OpenAPI specs now document the wrapped request with `{ ids: [...] }` response. (issue 99)
 - `GET /templates/diff`: `templates.added` now returns `Array<{ name, drive_file_id, last_modified_at }>` instead of `string[]`, giving the GPT the Drive file ID and real modifiedTime needed to call `POST /templates` correctly. (issue 98)
 - `POST /templates`: accepts `last_modified_at` from the request body and stores the real Drive modifiedTime instead of `new Date()`, preventing false "Alterado" diffs on subsequent sessions. (issue 98)
 - `templates` table: renamed `drive_last_modified_at` → `last_modified_at` and dropped unused `created_at` column (migration 008). (issue 98)
