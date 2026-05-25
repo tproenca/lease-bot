@@ -85,6 +85,7 @@ async function handleCreateTemplate(req: Request): Promise<Response> {
     name,
     placeholder_names,
     property_types,
+    last_modified_at,
   } = (body ?? {}) as Record<string, unknown>;
 
   // 3. Validate inputs.
@@ -137,7 +138,10 @@ async function handleCreateTemplate(req: Request): Promise<Response> {
       drive_file_id: drive_file_id.trim(),
       name: name.trim(),
       placeholder_names: placeholder_names as string[],
-      drive_last_modified_at: new Date().toISOString(),
+      last_modified_at: typeof last_modified_at === "string" &&
+          last_modified_at.trim() !== ""
+        ? last_modified_at.trim()
+        : new Date().toISOString(),
     })
     .select("id")
     .single();

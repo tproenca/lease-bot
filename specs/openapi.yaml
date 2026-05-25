@@ -458,11 +458,27 @@ paths:
                       added:
                         type: array
                         items:
-                          type: string
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                            drive_file_id:
+                              type: string
+                            last_modified_at:
+                              type: string
+                              format: date-time
+                          required: [name, drive_file_id, last_modified_at]
                       removed:
                         type: array
                         items:
-                          type: string
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                            property_types:
+                              type: array
+                              items:
+                                type: string
                   placeholders:
                     type: object
                     properties:
@@ -498,6 +514,10 @@ paths:
                   type: string
                 name:
                   type: string
+                last_modified_at:
+                  type: string
+                  format: date-time
+                  description: Drive modifiedTime from templates.added — stores the real Drive timestamp to prevent false diffs on next session
                 placeholder_names:
                   type: array
                   items:

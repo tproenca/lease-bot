@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fixed
+- `GET /templates/diff`: `templates.added` now returns `Array<{ name, drive_file_id, last_modified_at }>` instead of `string[]`, giving the GPT the Drive file ID and real modifiedTime needed to call `POST /templates` correctly. (issue 98)
+- `POST /templates`: accepts `last_modified_at` from the request body and stores the real Drive modifiedTime instead of `new Date()`, preventing false "Alterado" diffs on subsequent sessions. (issue 98)
+- `templates` table: renamed `drive_last_modified_at` → `last_modified_at` and dropped unused `created_at` column (migration 008). (issue 98)
+
 ### Added
 - Embedded setup form in ChatGPT OAuth window: new landlords now complete onboarding in one uninterrupted flow without visiting a separate `/setup` URL. `GET /oauth/authorize` intercepts ChatGPT's `redirect_uri` and stores it in a cookie; `GET /auth/callback` checks for an existing landlord and either issues a one-time code directly (existing) or redirects to `/setup?via=oauth` (new); `POST /setup/complete` returns `redirect_to` so the form JS can close the OAuth window; `POST /oauth/token` redeems one-time codes from the new `oauth_codes` table before falling through to Google. (issue 89)
 - `oauth_codes` DB table: short-lived (5 min), single-use codes bridging the setup form to ChatGPT's token exchange. (issue 89)

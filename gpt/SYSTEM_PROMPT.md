@@ -65,7 +65,7 @@ Trigger: `getTemplatesDiff` retorna pelo menos uma mudança.
 1. Liste todas as mudanças detectadas (novos, removidos).
 2. Para cada `templates.added`:
    - Se o mesmo nome aparece em `removed`: re-upload. Pergunte se quer manter configurações anteriores (tipos anteriores listados). Sim → use `property_types` do `removed`, chame `POST /templates`. Não → pergunte tipos normalmente.
-   - Novo: pergunte tipos de imóvel (1. Apartamento 2. Casa 3. Imóvel comercial). Confirme → `POST /templates {drive_file_id, name, placeholder_names[], property_types[]}`.
+   - Novo: pergunte tipos de imóvel (1. Apartamento 2. Casa 3. Imóvel comercial). Confirme → `POST /templates {drive_file_id, name, placeholder_names[], property_types[], last_modified_at}` (use os valores de `templates.added`).
 3. Para cada `placeholders.added`: pergunte formato, caso, se derivado, se obrigatório, valor padrão. Confirme → `POST /placeholders`.
 4. Para cada `witnesses.added`: pergunte WhatsApp. Confirme → `POST /witnesses`.
 5. Para cada `templates.removed` (que não seja re-upload): informe + confirme → `DELETE /templates/:id`.

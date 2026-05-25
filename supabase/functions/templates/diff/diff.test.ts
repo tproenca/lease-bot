@@ -114,7 +114,7 @@ const MOCK_TEMPLATES = [
     id: "tmpl-uuid-1",
     name: "Contrato Residencial",
     drive_file_id: "drive-file-id-1",
-    drive_last_modified_at: MODIFIED_TIME_CACHED,
+    last_modified_at: MODIFIED_TIME_CACHED,
     placeholder_names: ["nome do inquilino", "cpf"],
   },
 ];
@@ -124,7 +124,7 @@ const MOCK_TEMPLATES_CHANGED = [
     id: "tmpl-uuid-1",
     name: "Contrato Residencial",
     drive_file_id: "drive-file-id-1",
-    drive_last_modified_at: "2024-01-01T09:00:00.000Z", // older than Drive
+    last_modified_at: "2024-01-01T09:00:00.000Z", // older than Drive
     placeholder_names: ["nome do inquilino", "cpf"],
   },
 ];
@@ -143,14 +143,14 @@ const MOCK_TEMPLATES_WITH_REMOVED = [
     id: "tmpl-uuid-1",
     name: "Contrato Residencial",
     drive_file_id: "drive-file-id-1",
-    drive_last_modified_at: MODIFIED_TIME_CACHED,
+    last_modified_at: MODIFIED_TIME_CACHED,
     placeholder_names: ["nome do inquilino", "cpf"],
   },
   {
     id: "tmpl-uuid-removed",
     name: "Contrato Comercial",
     drive_file_id: "drive-file-id-deleted",
-    drive_last_modified_at: MODIFIED_TIME_CACHED,
+    last_modified_at: MODIFIED_TIME_CACHED,
     placeholder_names: [],
   },
 ];
@@ -377,7 +377,7 @@ Deno.test("unit: GET /templates/diff — error response includes CORS headers", 
 
 Deno.test("unit: GET /templates/diff — 200 with empty diff when no templates changed (fast path)", async () => {
   const originalFetch = globalThis.fetch;
-  // MOCK_TEMPLATES has drive_last_modified_at === MODIFIED_TIME_CACHED === MODIFIED_TIME_CURRENT
+  // MOCK_TEMPLATES has last_modified_at === MODIFIED_TIME_CACHED === MODIFIED_TIME_CURRENT
   // MOCK_DRIVE_FILES returns the same modifiedTime → no change → fast path
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -428,7 +428,7 @@ Deno.test("unit: GET /templates/diff — fast path does not export Drive file co
 
 Deno.test("unit: GET /templates/diff — 200 with placeholder diff when template changed (slow path)", async () => {
   const originalFetch = globalThis.fetch;
-  // MOCK_TEMPLATES_CHANGED has drive_last_modified_at older than Drive's modifiedTime
+  // MOCK_TEMPLATES_CHANGED has last_modified_at older than Drive's modifiedTime
   globalThis.fetch = buildMockFetch({
     templates: MOCK_TEMPLATES_CHANGED,
     // MOCK_CHANGED_DOC_TEXT has: nome do inquilino, valor do aluguel, data de início
@@ -480,7 +480,7 @@ Deno.test("unit: GET /templates/diff — Guia de Placeholders is never included 
       id: "tmpl-guia",
       name: "Guia de Placeholders",
       drive_file_id: "drive-guia-id",
-      drive_last_modified_at: "2020-01-01T00:00:00.000Z", // old time → would trigger slow path
+      last_modified_at: "2020-01-01T00:00:00.000Z", // old time → would trigger slow path
       placeholder_names: [],
     },
   ];
@@ -635,7 +635,9 @@ Deno.test("unit: GET /templates/diff — removed.templates is Array<{ name, prop
     assertEquals(res.status, 200);
     const body = await jsonBody(res);
     const templates = body.templates as {
-      added: string[];
+      added: Array<
+        { name: string; drive_file_id: string; last_modified_at: string }
+      >;
       removed: Array<{ name: string; property_types: string[] }>;
     };
     assertEquals(templates.removed.length, 1);
@@ -644,7 +646,6 @@ Deno.test("unit: GET /templates/diff — removed.templates is Array<{ name, prop
     assertEquals(removed.property_types.includes("apartment"), true);
     assertEquals(removed.property_types.includes("house"), true);
     assertEquals(removed.property_types.length, 2);
-    // added shape is still string[]
     assertEquals(templates.added.length, 0);
   } finally {
     globalThis.fetch = originalFetch;
@@ -663,7 +664,9 @@ Deno.test("unit: GET /templates/diff — removed.templates has empty property_ty
     assertEquals(res.status, 200);
     const body = await jsonBody(res);
     const templates = body.templates as {
-      added: string[];
+      added: Array<
+        { name: string; drive_file_id: string; last_modified_at: string }
+      >;
       removed: Array<{ name: string; property_types: string[] }>;
     };
     assertEquals(templates.removed.length, 1);
@@ -734,7 +737,7 @@ Deno.test("unit: GET /templates/diff — new template witnesses appear in witnes
   }
 });
 
-Deno.test("unit: GET /templates/diff — templates.added remains string[] for new Drive files", async () => {
+Deno.test("unit: GET /templates/diff — templates.added returns { name, drive_file_id, last_modified_at } for new Drive files", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({
     templates: [],
@@ -746,13 +749,16 @@ Deno.test("unit: GET /templates/diff — templates.added remains string[] for ne
     assertEquals(res.status, 200);
     const body = await jsonBody(res);
     const templates = body.templates as {
-      added: unknown[];
+      added: Array<
+        { name: string; drive_file_id: string; last_modified_at: string }
+      >;
       removed: unknown[];
     };
     assertEquals(templates.added.length, 1);
-    assertEquals(templates.added[0], "Contrato Comercial Novo");
-    // Each entry must be a plain string, not an object
-    assertEquals(typeof templates.added[0], "string");
+    const added = templates.added[0];
+    assertEquals(added.name, "Contrato Comercial Novo");
+    assertEquals(added.drive_file_id, MOCK_NEW_DRIVE_FILE.id);
+    assertEquals(added.last_modified_at, MOCK_NEW_DRIVE_FILE.modifiedTime);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -792,6 +798,167 @@ Deno.test("unit: GET /templates/diff — placeholders.removed is empty when only
     const placeholders = body.placeholders as Record<string, string[]>;
     // No existing placeholders to remove when template is new
     assertEquals(placeholders.removed.length, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// ─── Integration: full diff → POST /templates → next diff round-trip ─────
+//
+// Simulates the full Flow 2 chain at the unit level using fetch stubs:
+//   1. First diff detects a new Drive file → templates.added contains { name, drive_file_id, last_modified_at }
+//   2. GPT calls POST /templates with drive_file_id + last_modified_at from step 1
+//   3. Second diff runs with the template now in DB (modifiedTime unchanged) → empty diff
+//
+// This verifies that using the real Drive modifiedTime prevents false "Alterado" diffs.
+
+import { handleTemplates } from "../index.ts";
+
+const INTEGRATION_NEW_DRIVE_FILE = {
+  id: "drive-file-id-integration",
+  name: "Contrato Integração",
+  modifiedTime: "2024-09-01T12:00:00.000Z",
+};
+
+const INTEGRATION_TEMPLATE_DOC_TEXT = "Contrato\nLocatário: {{nome}}";
+
+Deno.test("integration: diff → POST /templates → next diff returns empty (no false Alterado)", async () => {
+  // ── Step 1: First diff — DB is empty, Drive has one new file ──────────────
+  const originalFetch = globalThis.fetch;
+
+  const firstDiffFetch = buildMockFetch({
+    templates: [],
+    driveFiles: [INTEGRATION_NEW_DRIVE_FILE],
+    docText: INTEGRATION_TEMPLATE_DOC_TEXT,
+  });
+  globalThis.fetch = firstDiffFetch as typeof fetch;
+
+  let firstDiffResult: Record<string, unknown>;
+  try {
+    const res = await handleTemplatesDiff(makeRequest("valid.jwt"));
+    assertEquals(res.status, 200, "First diff should return 200");
+    firstDiffResult = await jsonBody(res);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  const addedTemplates =
+    (firstDiffResult.templates as Record<string, unknown[]>).added;
+  assertEquals(
+    addedTemplates.length,
+    1,
+    "First diff should detect one new template",
+  );
+
+  const addedEntry = addedTemplates[0] as {
+    name: string;
+    drive_file_id: string;
+    last_modified_at: string;
+  };
+  assertEquals(addedEntry.name, INTEGRATION_NEW_DRIVE_FILE.name);
+  assertEquals(addedEntry.drive_file_id, INTEGRATION_NEW_DRIVE_FILE.id);
+  assertEquals(
+    addedEntry.last_modified_at,
+    INTEGRATION_NEW_DRIVE_FILE.modifiedTime,
+  );
+
+  // ── Step 2: POST /templates using values from templates.added ─────────────
+  // GPT passes drive_file_id and last_modified_at received from the diff response.
+  let capturedInsertBody: Record<string, unknown> = {};
+
+  const postTemplateFetch = async (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ): Promise<Response> => {
+    const url = typeof input === "string"
+      ? input
+      : input instanceof URL
+      ? input.href
+      : (input as Request).url;
+    const method = (init?.method ?? "GET").toUpperCase();
+
+    if (url.includes("/auth/v1/user")) {
+      return new Response(JSON.stringify(MOCK_USER), { status: 200 });
+    }
+    if (url.includes("/rest/v1/templates") && method === "POST") {
+      capturedInsertBody = JSON.parse(init?.body as string ?? "{}");
+      return new Response(
+        JSON.stringify({ id: "new-template-uuid" }),
+        { status: 201, headers: { "Content-Type": "application/json" } },
+      );
+    }
+    if (url.includes("/rest/v1/property_type_templates") && method === "POST") {
+      return new Response(JSON.stringify([]), { status: 201 });
+    }
+    throw new Error(`Unexpected fetch in POST step: ${url}`);
+  };
+
+  globalThis.fetch = postTemplateFetch as typeof fetch;
+  try {
+    const postReq = new Request("http://localhost/templates", {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer valid.jwt",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        drive_file_id: addedEntry.drive_file_id,
+        name: addedEntry.name,
+        last_modified_at: addedEntry.last_modified_at,
+        placeholder_names: ["nome"],
+        property_types: ["apartment"],
+      }),
+    });
+    const postRes = await handleTemplates(postReq);
+    assertEquals(postRes.status, 201, "POST /templates should return 201");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  // Verify the stored last_modified_at is the real Drive modifiedTime (not new Date()).
+  assertEquals(
+    capturedInsertBody.last_modified_at,
+    INTEGRATION_NEW_DRIVE_FILE.modifiedTime,
+    "POST /templates must store the Drive modifiedTime, not new Date()",
+  );
+
+  // ── Step 3: Second diff — DB now has the template with correct last_modified_at ─
+  // Drive returns the same file with the same modifiedTime → fast path → empty diff.
+  const registeredTemplate = {
+    id: "new-template-uuid",
+    name: INTEGRATION_NEW_DRIVE_FILE.name,
+    drive_file_id: INTEGRATION_NEW_DRIVE_FILE.id,
+    last_modified_at: capturedInsertBody.last_modified_at as string,
+    placeholder_names: ["nome"],
+  };
+
+  const secondDiffFetch = buildMockFetch({
+    templates: [registeredTemplate],
+    driveFiles: [INTEGRATION_NEW_DRIVE_FILE], // same modifiedTime as stored
+  });
+  globalThis.fetch = secondDiffFetch as typeof fetch;
+
+  try {
+    const res = await handleTemplatesDiff(makeRequest("valid.jwt"));
+    assertEquals(res.status, 200, "Second diff should return 200");
+    const body = await jsonBody(res);
+    const templates = body.templates as Record<string, unknown[]>;
+    const placeholders = body.placeholders as Record<string, unknown[]>;
+    assertEquals(
+      templates.added.length,
+      0,
+      "Second diff must have empty templates.added — no false Alterado",
+    );
+    assertEquals(
+      templates.removed.length,
+      0,
+      "Second diff must have empty templates.removed",
+    );
+    assertEquals(
+      placeholders.added.length,
+      0,
+      "Second diff must have empty placeholders.added",
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }
