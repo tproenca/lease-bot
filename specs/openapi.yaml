@@ -113,6 +113,16 @@ components:
         derived_formula:
           type: string
           nullable: true
+        options:
+          type: array
+          items:
+            type: string
+          nullable: true
+          description: >
+            Restricted list of allowed values for text placeholders.
+            When present and non-empty, the GPT presents these as a numbered
+            list instead of asking for free text input. Only meaningful for
+            format: text; other formats ignore this field.
 
     Witness:
       type: object

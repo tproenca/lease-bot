@@ -8,6 +8,11 @@
 - `templates` table: renamed `drive_last_modified_at` → `last_modified_at` and dropped unused `created_at` column (migration 008). (issue 98)
 
 ### Added
+- `options text[]` nullable column on `placeholders` table (migration 008): allows landlords to define a restricted list of allowed values for text placeholders. During contract generation (Flow 3a/3b), the GPT presents the options as a numbered list instead of asking for free text input. During template sync (Flow 2), the GPT asks "Deseja restringir os valores?" after format selection when the format is `text`. (issue 97)
+- `POST /placeholders` now accepts `options` (array of strings, optional); `GET /context` returns `options` per placeholder. (issue 97)
+- `docs/sample-contract.md` and generated `_shared/sample-contract-content.ts` updated to include `{{estado_civil}}` placeholder as a realistic example of options usage. (issue 97)
+
+### Added
 - Embedded setup form in ChatGPT OAuth window: new landlords now complete onboarding in one uninterrupted flow without visiting a separate `/setup` URL. `GET /oauth/authorize` intercepts ChatGPT's `redirect_uri` and stores it in a cookie; `GET /auth/callback` checks for an existing landlord and either issues a one-time code directly (existing) or redirects to `/setup?via=oauth` (new); `POST /setup/complete` returns `redirect_to` so the form JS can close the OAuth window; `POST /oauth/token` redeems one-time codes from the new `oauth_codes` table before falling through to Google. (issue 89)
 - `oauth_codes` DB table: short-lived (5 min), single-use codes bridging the setup form to ChatGPT's token exchange. (issue 89)
 - ADR-0015: documents the cookie + one-time-code design for the embedded OAuth setup flow. (issue 89)
