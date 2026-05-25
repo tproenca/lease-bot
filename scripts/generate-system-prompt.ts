@@ -53,12 +53,24 @@ try {
 const config = parseConfig(configText);
 const maxChars = parseInt(config.max_chars ?? "8000", 10);
 const setupUrl = config.onboarding_url ?? "";
-const promptVersion = config.prompt_version ?? "?";
 
 if (!setupUrl) {
   console.error("ERROR: onboarding_url is missing from gpt/config.yaml");
   Deno.exit(1);
 }
+
+// ─── Auto-bump patch version ──────────────────────────────────────────────
+
+const rawVersion = config.prompt_version ?? "0.0.0";
+const parts = rawVersion.split(".").map(Number);
+parts[parts.length - 1] += 1;
+const promptVersion = parts.join(".");
+
+const updatedConfig = configText.replace(
+  /^(prompt_version\s*:\s*)(.+)$/m,
+  `$1${promptVersion}`,
+);
+await Deno.writeTextFile(CONFIG_PATH, updatedConfig);
 
 // ─── Substitute ───────────────────────────────────────────────────────────
 
@@ -81,7 +93,9 @@ if (pass) {
   console.log(`✅  ${charCount} / ${maxChars} chars  (${-delta} remaining)`);
 } else {
   console.log(`❌  ${charCount} / ${maxChars} chars  (${delta} over limit)`);
-  console.log(`    Trim ${delta} chars from gpt/SYSTEM_PROMPT.md before uploading.`);
+  console.log(
+    `    Trim ${delta} chars from gpt/SYSTEM_PROMPT.md before uploading.`,
+  );
 }
 
 // ─── Write output file ────────────────────────────────────────────────────
