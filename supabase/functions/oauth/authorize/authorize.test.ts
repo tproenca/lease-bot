@@ -184,6 +184,54 @@ Deno.test("unit: oauth/authorize — prompt=consent is always set", async () => 
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// CSRF state cookie (oauth_state)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+Deno.test("unit: oauth/authorize — sets oauth_state cookie when state param is present", async () => {
+  const req = makeGetRequest(
+    "redirect_uri=https%3A%2F%2Fchat.openai.com%2Faip%2Fcallback&state=csrf-nonce-123&response_type=code",
+  );
+  const res = await handleOAuthAuthorize(req);
+  assertEquals(res.status, 302);
+  const cookies = res.headers.getSetCookie?.() ??
+    [res.headers.get("Set-Cookie") ?? ""];
+  const stateCookie = cookies.find((c) => c.startsWith("oauth_state="));
+  assertEquals(
+    stateCookie !== undefined,
+    true,
+    "Expected oauth_state cookie to be set",
+  );
+  assertStringIncludes(stateCookie ?? "", "csrf-nonce-123");
+  assertStringIncludes(stateCookie ?? "", "HttpOnly");
+  assertStringIncludes(stateCookie ?? "", "SameSite=Lax");
+});
+
+Deno.test("unit: oauth/authorize — oauth_state cookie value matches state param", async () => {
+  const state = "my-csrf-state-abc";
+  const req = makeGetRequest(`state=${state}&response_type=code`);
+  const res = await handleOAuthAuthorize(req);
+  const cookies = res.headers.getSetCookie?.() ??
+    [res.headers.get("Set-Cookie") ?? ""];
+  const stateCookie = cookies.find((c) => c.startsWith("oauth_state="));
+  const cookieValue = (stateCookie ?? "").split(";")[0].split("=").slice(1)
+    .join("=");
+  assertEquals(cookieValue, state);
+});
+
+Deno.test("unit: oauth/authorize — does not set oauth_state cookie when no state param", async () => {
+  const req = makeGetRequest("response_type=code");
+  const res = await handleOAuthAuthorize(req);
+  const cookies = res.headers.getSetCookie?.() ??
+    [res.headers.get("Set-Cookie") ?? ""];
+  const stateCookie = cookies.find((c) => c.startsWith("oauth_state="));
+  assertEquals(
+    stateCookie,
+    undefined,
+    "Expected no oauth_state cookie when state param is absent",
+  );
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // Method validation
 // ═══════════════════════════════════════════════════════════════════════════════
 

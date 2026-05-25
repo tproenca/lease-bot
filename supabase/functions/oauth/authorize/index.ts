@@ -23,7 +23,9 @@ import { googleRedirectUri } from "../../_shared/google.ts";
 import {
   CHATGPT_REDIRECT_TTL_SECONDS,
   COOKIE_CHATGPT_REDIRECT,
+  COOKIE_OAUTH_STATE,
   isHttpsRequest,
+  OAUTH_STATE_TTL_SECONDS,
   serializeCookie,
 } from "../../_shared/cookies.ts";
 
@@ -68,6 +70,20 @@ export async function handleOAuthAuthorize(req: Request): Promise<Response> {
   const responseHeaders = new Headers({
     Location: targetUrl.toString(),
   });
+
+  // Store the state param in COOKIE_OAUTH_STATE so /auth/callback can verify
+  // it as a CSRF nonce. ChatGPT always sends state (OpenAI enforces it).
+  if (chatgptState) {
+    responseHeaders.append(
+      "Set-Cookie",
+      serializeCookie(COOKIE_OAUTH_STATE, chatgptState, {
+        maxAge: OAUTH_STATE_TTL_SECONDS,
+        httpOnly: true,
+        secure: isHttpsRequest(req),
+        sameSite: "Lax",
+      }),
+    );
+  }
 
   // Store the ChatGPT redirect_uri and state in an HttpOnly cookie so the
   // callback handler can redirect there after auth + optional setup.
