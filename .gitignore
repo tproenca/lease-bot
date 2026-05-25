@@ -55,3 +55,6 @@ NOTES.md
 TODO.md
 .claude/scratchpad-*.md
 .claude/spec-review-*.md
+
+# GPT generated output (substituted, not for commit)
+gpt/SYSTEM_PROMPT.generated.md

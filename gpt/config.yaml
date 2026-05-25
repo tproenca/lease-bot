@@ -1,0 +1,16 @@
+# GPT prompt generation config.
+# Run scripts/generate-system-prompt.ts after changing any value here.
+
+# Increment when the deployed system prompt changes so you can track which
+# version is live in ChatGPT at any given time.
+prompt_version: 0.0.5
+
+# Full URL of the /setup page shown to landlords during onboarding.
+# Must match the domain configured as the GPT Action server.
+# Production: https://<project-ref>.supabase.co/functions/v1/setup
+# Local dev:  https://<your-domain>.ngrok-free.dev/functions/v1/setup
+onboarding_url: https://nervy-slider-debunk.ngrok-free.dev/functions/v1/setup
+
+# Hard character limit for the ChatGPT Instructions field.
+# The script errors if the substituted prompt exceeds this.
+max_chars: 8000
