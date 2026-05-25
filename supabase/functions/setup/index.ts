@@ -453,9 +453,12 @@ function renderPostSetupHtml(guiaDocId?: string): string {
     <p>Você já pode usar o assistente diretamente no ChatGPT.</p>
   </div>
   <p style="margin-top: 24px;">
-    <a class="btn" href="${escapeHtml(GPT_URL)}" target="_blank" rel="noopener">
+    <button class="btn" onclick="window.close();setTimeout(function(){document.getElementById('close-fb').style.display='block'},400)">
       Abrir o assistente no ChatGPT
-    </a>
+    </button>
+    <span id="close-fb" style="display:none;margin-top:12px;display:none">
+      Feche esta aba e volte ao ChatGPT.
+    </span>
   </p>
   <hr />
   ${guiaSection}
