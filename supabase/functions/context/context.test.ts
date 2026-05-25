@@ -62,6 +62,20 @@ const MOCK_PLACEHOLDERS = [
     default: null,
     derived_from: null,
     derived_formula: null,
+    options: null,
+  },
+];
+
+const MOCK_PLACEHOLDERS_WITH_OPTIONS = [
+  {
+    name: "estado_civil",
+    required: true,
+    format: "text",
+    case: null,
+    default: null,
+    derived_from: null,
+    derived_formula: null,
+    options: ["solteiro", "casado", "viúvo"],
   },
 ];
 
@@ -86,6 +100,9 @@ function buildMockFetch(opts: {
   authUser?: typeof MOCK_USER | null;
   landlord?: typeof MOCK_LANDLORD | null;
   ptt?: typeof MOCK_PTT;
+  placeholders?:
+    | typeof MOCK_PLACEHOLDERS
+    | typeof MOCK_PLACEHOLDERS_WITH_OPTIONS;
   dbError?: boolean;
 }) {
   // capture original so we don't call our own stub recursively
@@ -156,7 +173,10 @@ function buildMockFetch(opts: {
 
     // PostgREST: placeholders
     if (url.includes("/rest/v1/placeholders")) {
-      return new Response(JSON.stringify(MOCK_PLACEHOLDERS), { status: 200 });
+      return new Response(
+        JSON.stringify(opts.placeholders ?? MOCK_PLACEHOLDERS),
+        { status: 200 },
+      );
     }
 
     // PostgREST: witnesses
@@ -414,6 +434,45 @@ Deno.test("unit: GET /context — template with no property type mapping returns
     const templates = body.templates as Array<Record<string, unknown>>;
     assertEquals(templates.length, 1);
     assertEquals((templates[0].property_types as unknown[]).length, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// ─── Placeholder with options field ──────────────────────────────────────
+
+Deno.test("unit: GET /context — placeholders include options field when present", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({
+    placeholders: MOCK_PLACEHOLDERS_WITH_OPTIONS,
+  }) as typeof fetch;
+  try {
+    const res = await handleContext(makeRequest("valid.jwt.for.test"));
+    assertEquals(res.status, 200);
+    const body = await jsonBody(res);
+    const placeholders = body.placeholders as Array<Record<string, unknown>>;
+    assertEquals(placeholders.length, 1);
+    assertEquals(placeholders[0].name, "estado_civil");
+    assertEquals(Array.isArray(placeholders[0].options), true);
+    assertEquals((placeholders[0].options as string[]).length, 3);
+    assertEquals((placeholders[0].options as string[])[0], "solteiro");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// ─── Placeholder with null options field ────────────────────────────────
+
+Deno.test("unit: GET /context — placeholders include null options when not set", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({}) as typeof fetch;
+  try {
+    const res = await handleContext(makeRequest("valid.jwt.for.test"));
+    assertEquals(res.status, 200);
+    const body = await jsonBody(res);
+    const placeholders = body.placeholders as Array<Record<string, unknown>>;
+    assertEquals(placeholders.length, 1);
+    assertEquals(placeholders[0].options, null);
   } finally {
     globalThis.fetch = originalFetch;
   }

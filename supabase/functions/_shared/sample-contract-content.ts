@@ -12,7 +12,7 @@ Pelo presente instrumento particular, as partes abaixo identificadas celebram o 
 
 **Locador:** {{nome_locador}}, CPF {{cpf_locador}}.
 
-**Locatário:** {{nome_inquilino}}, CPF {{cpf_inquilino}}.
+**Locatário:** {{nome_inquilino}}, CPF {{cpf_inquilino}}, estado civil {{estado_civil}}.
 
 ## Imóvel
 
@@ -29,18 +29,24 @@ O aluguel mensal é de {{valor_aluguel}}, a ser pago até o dia {{dia_vencimento
 ## Assinaturas
 
 
-_______________________________
-{{nome_locador}} — Locador
+**Locador:**
+[[LOCADOR]]
 
 
-_______________________________
-{{nome_inquilino}} — Locatário
 
 
-_______________________________
-{{nome_testemunha_1}} — Testemunha
+**Locatário:**
+[[LOCATARIO]]
 
 
-_______________________________
-{{nome_testemunha_2}} — Testemunha
+
+
+**Testemunha:**
+[[TESTEMUNHA_1]]
+
+
+
+
+**Testemunha:**
+[[TESTEMUNHA_2]]
 `;

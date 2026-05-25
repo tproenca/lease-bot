@@ -366,6 +366,55 @@ Deno.test("unit: POST /placeholders — 201 accepts optional fields", async () =
   }
 });
 
+// ─── 201 — with options field ─────────────────────────────────────────────
+
+Deno.test("unit: POST /placeholders — 201 accepts options array for text placeholders", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({}) as typeof fetch;
+  try {
+    const res = await handlePlaceholders(
+      makePostRequest(
+        {
+          ...VALID_BODY,
+          options: ["solteiro", "casado", "viúvo"],
+        },
+        "valid.jwt",
+      ),
+    );
+    assertEquals(res.status, 201);
+    const body = await jsonBody(res) as Record<string, unknown>;
+    assertEquals(Array.isArray(body.ids), true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// ─── 400 — options is not an array of strings ────────────────────────────
+
+Deno.test("unit: POST /placeholders — 400 when options is not an array of strings", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({}) as typeof fetch;
+  try {
+    const res = await handlePlaceholders(
+      makePostRequest(
+        {
+          ...VALID_BODY,
+          options: "solteiro,casado",
+        },
+        "valid.jwt",
+      ),
+    );
+    assertEquals(res.status, 400);
+    const body = await jsonBody(res) as Record<string, unknown>;
+    assertEquals(
+      (body.error as Record<string, string>).code,
+      "INVALID_REQUEST",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════════════════
 // DELETE /placeholders/:name
 // ═══════════════════════════════════════════════════════════════════════════

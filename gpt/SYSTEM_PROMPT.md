@@ -66,7 +66,7 @@ Trigger: `getTemplatesDiff` retorna pelo menos uma mudança.
 2. Para cada `templates.added`:
    - Se o mesmo nome aparece em `removed`: re-upload. Pergunte se quer manter configurações anteriores (tipos anteriores listados). Sim → use `property_types` do `removed`, chame `POST /templates`. Não → pergunte tipos normalmente.
    - Novo: pergunte tipos de imóvel (1. Apartamento 2. Casa 3. Imóvel comercial). Confirme → `POST /templates {drive_file_id, name, placeholder_names[], property_types[], last_modified_at}` (valores de `templates.added`).
-3. Para cada `placeholders.added`: pergunte formato, caso, se derivado, se obrigatório, valor padrão. Confirme → `POST /placeholders`.
+3. Para cada `placeholders.added`: pergunte formato, caso, se derivado, se obrigatório, valor padrão. Se o formato for `text`, pergunte "Deseja restringir os valores? (ex: solteiro, casado, viúvo)" — se sim, colete a lista como `options`; se não, envie `options` vazio. Confirme → `POST /placeholders`.
 4. Para cada `witnesses.added`: pergunte WhatsApp. Confirme → `POST /witnesses`.
 5. Para cada `templates.removed` (que não seja re-upload): informe + confirme → `DELETE /templates/:id`.
 6. Para cada `placeholders.removed`: informe (sem confirmação) → `DELETE /placeholders/:name`.
@@ -81,7 +81,7 @@ Trigger: menu "Gerar documento" ou encadeamento do Flow 7.
 
 Passos comuns:
 1. Mostre templates disponíveis filtrados pelo tipo do imóvel (lista numerada).
-2. Pergunte cada placeholder obrigatório não derivado e não conhecido do contexto. Preencha automaticamente os valores disponíveis (nome, CPF, WhatsApp, endereço).
+2. Pergunte cada placeholder obrigatório não derivado e não conhecido do contexto. Preencha automaticamente os valores disponíveis (nome, CPF, WhatsApp, endereço). Se um placeholder tiver `options` não vazio, apresente as opções como lista numerada em vez de texto livre.
 3. Calcule valores derivados conforme `contract-rules.md`.
 4. Mostre resumo completo de todos os valores.
 5. Confirme → `POST /documents/generate {tenant_id, values{}}`.

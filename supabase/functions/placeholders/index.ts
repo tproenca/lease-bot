@@ -97,6 +97,7 @@ async function handleCreatePlaceholder(req: Request): Promise<Response> {
     default: string | null;
     derived_from: string | null;
     derived_formula: string | null;
+    options: string[] | null;
   }> = [];
 
   for (const item of body) {
@@ -108,6 +109,7 @@ async function handleCreatePlaceholder(req: Request): Promise<Response> {
       default: defaultField,
       derived_from,
       derived_formula,
+      options,
     } = (item ?? {}) as Record<string, unknown>;
 
     if (typeof name !== "string" || name.trim() === "") {
@@ -127,6 +129,24 @@ async function handleCreatePlaceholder(req: Request): Promise<Response> {
       );
     }
 
+    // Validate options: must be an array of strings when provided.
+    let optionsValue: string[] | null = null;
+    if (options !== undefined && options !== null) {
+      if (
+        !Array.isArray(options) ||
+        !(options as unknown[]).every((o) => typeof o === "string")
+      ) {
+        return errorResponse(
+          400,
+          "INVALID_REQUEST",
+          "O campo 'options' deve ser um array de strings.",
+        );
+      }
+      optionsValue = (options as string[]).length > 0
+        ? (options as string[])
+        : null;
+    }
+
     rows.push({
       landlord_id: user.id,
       name: name.trim(),
@@ -138,6 +158,7 @@ async function handleCreatePlaceholder(req: Request): Promise<Response> {
       default: (defaultField ?? null) as string | null,
       derived_from: (derived_from ?? null) as string | null,
       derived_formula: (derived_formula ?? null) as string | null,
+      options: optionsValue,
     });
   }
 
@@ -257,7 +278,7 @@ async function regeneratePlaceholderList(
     const { data: placeholders } = await db
       .from("placeholders")
       .select(
-        "name, required, format, case, default, derived_from, derived_formula",
+        "name, required, format, case, default, derived_from, derived_formula, options",
       )
       .order("name");
 
@@ -273,6 +294,7 @@ async function regeneratePlaceholderList(
         default?: string | null;
         derived_from?: string | null;
         derived_formula?: string | null;
+        options?: string[] | null;
       }>,
     });
   } catch {

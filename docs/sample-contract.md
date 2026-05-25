@@ -8,7 +8,7 @@ Pelo presente instrumento particular, as partes abaixo identificadas celebram o 
 
 **Locador:** {{nome_locador}}, CPF {{cpf_locador}}.
 
-**Locatário:** {{nome_inquilino}}, CPF {{cpf_inquilino}}.
+**Locatário:** {{nome_inquilino}}, CPF {{cpf_inquilino}}, estado civil {{estado_civil}}.
 
 ## Imóvel
 

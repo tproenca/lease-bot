@@ -266,10 +266,15 @@ templates.added      → GPT asks: which property types apply? (numbered list)
                         ◄──201 { id } ─────────────────────────
 
 placeholders.added   → GPT asks: format, case, derived?, required?, default?
+                          If format = text, GPT also asks:
+                          "Deseja restringir os valores?
+                           (ex: solteiro, casado, viúvo)"
+                          Yes → collect comma-separated list as options[]
+                          No  → omit options
                         ──POST /placeholders───────────────────►
                           [{ name, required, format, case,
                              default_value, derived_from,
-                             derived_formula }]
+                             derived_formula, options? }]
                         ◄──201 { ids[] } ───────────────────────
 
 witnesses.added      → GPT asks: WhatsApp number for each
@@ -301,6 +306,8 @@ placeholders.removed → GPT informs landlord (no confirmation required)
    known from context. Values available from context (tenant name, CPF, WhatsApp,
    property address) are filled automatically — the landlord is never asked to
    repeat information already in the system.
+   If a placeholder has a non-empty options[], GPT presents those as a numbered
+   list instead of asking for free text input.
 4. GPT computes derived values (end date, amount in words, formatted CPF, etc.)
 5. GPT shows complete summary of all placeholder values
 6. GPT asks if want to generate the document
@@ -332,6 +339,8 @@ placeholders.removed → GPT informs landlord (no confirmation required)
    known from context. Values available from context (tenant name, CPF, WhatsApp,
    property address) are filled automatically — the landlord is never asked to
    repeat information already in the system.
+   If a placeholder has a non-empty options[], GPT presents those as a numbered
+   list instead of asking for free text input.
 5. GPT computes derived values
 6. GPT shows complete summary
 7. GPT asks if want to generate the document
