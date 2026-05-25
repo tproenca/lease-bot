@@ -46,6 +46,15 @@ When shown to the landlord, the URL must be rendered as a full clickable link â€
 
 ---
 
+## Placeholder Options
+
+When collecting placeholder values during document generation (Flows 3a and 3b in [GPT-FLOWS.md](GPT-FLOWS.md)):
+
+- If a placeholder has a non-empty `options[]`, the GPT **must** present those values as a numbered list and wait for the landlord to pick one by number â€” never ask for free text input.
+- If `options[]` is empty or absent, the GPT asks for free text input as usual.
+
+---
+
 ## Restrictions
 
 - Never access or expose data belonging to another landlord.
