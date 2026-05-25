@@ -261,7 +261,8 @@ templates.added      → GPT asks: which property types apply? (numbered list)
                         ──POST /templates──────────────────────►
                           { drive_file_id, name,
                             placeholder_names[],
-                            property_types[] }
+                            property_types[],
+                            last_modified_at }
                         ◄──201 { id } ─────────────────────────
 
 placeholders.added   → GPT asks: format, case, derived?, required?, default?

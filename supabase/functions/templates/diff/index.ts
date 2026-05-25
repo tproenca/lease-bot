@@ -3,7 +3,7 @@
 // Detects changes to the landlord's Google Drive templates since last sync.
 //
 // Fast path (< 200 ms target):
-//   If all templates' Drive modifiedTime matches the cached drive_last_modified_at
+//   If all templates' Drive modifiedTime matches the cached last_modified_at
 //   in the DB, return 200 with all-empty diff arrays immediately — no Drive file
 //   reads are performed.
 //
@@ -125,7 +125,7 @@ export async function handleTemplatesDiff(req: Request): Promise<Response> {
     db
       .from("templates")
       .select(
-        "id, name, drive_file_id, drive_last_modified_at, placeholder_names",
+        "id, name, drive_file_id, last_modified_at, placeholder_names",
       ),
     db
       .from("landlords")
@@ -155,7 +155,7 @@ export async function handleTemplatesDiff(req: Request): Promise<Response> {
     id: string;
     name: string;
     drive_file_id: string;
-    drive_last_modified_at: string;
+    last_modified_at: string;
     placeholder_names: string[];
   };
   const allTemplates = (templatesResult.data ?? []) as TemplateRow[];
@@ -229,7 +229,7 @@ export async function handleTemplatesDiff(req: Request): Promise<Response> {
   const changedTemplates = templates.filter((t) => {
     const driveTime = driveModifiedMap.get(t.drive_file_id);
     if (!driveTime) return false;
-    return driveTime !== t.drive_last_modified_at;
+    return driveTime !== t.last_modified_at;
   });
 
   // Fast path: no template-level changes and no content changes.
@@ -290,12 +290,12 @@ export async function handleTemplatesDiff(req: Request): Promise<Response> {
     const witnesses = extractWitnessNames(text);
     for (const w of witnesses) allWitnessNames.add(w);
 
-    // Update DB cache: drive_last_modified_at and placeholder_names.
+    // Update DB cache: last_modified_at and placeholder_names.
     const newModifiedTime = driveModifiedMap.get(tmpl.drive_file_id)!;
     const { error: updateError } = await db
       .from("templates")
       .update({
-        drive_last_modified_at: newModifiedTime,
+        last_modified_at: newModifiedTime,
         placeholder_names: newPlaceholders,
       })
       .eq("id", tmpl.id);
@@ -335,7 +335,11 @@ export async function handleTemplatesDiff(req: Request): Promise<Response> {
   return new Response(
     JSON.stringify({
       templates: {
-        added: addedDriveFiles.map((f) => f.name),
+        added: addedDriveFiles.map((f) => ({
+          name: f.name,
+          drive_file_id: f.id,
+          last_modified_at: f.modifiedTime,
+        })),
         removed: removedTemplates,
       },
       placeholders: {
