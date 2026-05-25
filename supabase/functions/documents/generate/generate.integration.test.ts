@@ -284,7 +284,7 @@ async function seedTestData(userId: string): Promise<{
       landlord_id: userId,
       drive_file_id: "template-drive-file-id",
       name: "Contrato de Locação",
-      drive_last_modified_at: new Date().toISOString(),
+      last_modified_at: new Date().toISOString(),
       placeholder_names: ["nome do inquilino", "cpf do inquilino"],
     })
     .select("id")

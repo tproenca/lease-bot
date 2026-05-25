@@ -103,7 +103,7 @@ async function seedTemplate(userId: string): Promise<void> {
       landlord_id: userId,
       drive_file_id: MOCK_TEMPLATE_DRIVE_FILE_ID,
       name: "Contrato de Locação",
-      drive_last_modified_at: new Date().toISOString(),
+      last_modified_at: new Date().toISOString(),
       placeholder_names: ["nome do inquilino", "cpf do inquilino"],
     })
     .select("id")
