@@ -126,42 +126,40 @@ Only "Sim" (or equivalent) triggers the API call. Any other response prompts the
 
 ## Flow 0 — Onboarding (first conversation, landlord not yet set up)
 
-**Trigger:** GPT calls `getContext` and receives `HTTP 404 LANDLORD_NOT_FOUND`.
+**Trigger:** ChatGPT initiates OAuth authorization and the landlord has no account yet. Setup is embedded in the OAuth window — the landlord never leaves ChatGPT to a separate page.
 
 ```
-GPT                         Edge Functions              Browser (landlord)
+GPT (ChatGPT)               Edge Functions              Browser (landlord)
  │                                │                           │
- ├──GET /context──────────────────►                           │
- │◄──404 LANDLORD_NOT_FOUND───────┤                           │
- │                                │                           │
- │  [GPT shows setup URL]         │                           │
- │                                │       GET /setup ─────────►
- │                                │◄──── 200 HTML (pre-auth) ─┤
- │                                │    (Entrar com Google btn) │
- │                                │                           │
- │                                │  ── click "Entrar" ───────►
- │                                │◄── GET /oauth/authorize ──┤
- │                                │──302 → accounts.google.com►
- │                                │                     (login)
+ ├──GET /oauth/authorize──────────►                           │
+ │  (redirect_uri, state)         │  [stores ChatGPT redirect │
+ │                                │   in cookie; proxies to   │
+ │                                │   Google with consent]    │
+ │                                │   ── Google login ────────►
  │                                │◄── GET /auth/callback ────┤
- │                                │  (exchange code → tokens) │
- │                                │──302 → /setup ────────────►
- │                                │◄── GET /setup ────────────┤
- │                                │──200 HTML (post-auth) ─────►
- │                                │  (Drive Picker + form)    │
+ │                                │  [no landlord row →       │
+ │                                │   redirect to /setup]     │
+ │                                │──302 → /setup?via=oauth───►
+ │                                │◄── GET /setup?via=oauth───┤
+ │                                │──200 HTML (setup form) ───►
+ │                                │  (Drive Picker + form;    │
+ │                                │   already authenticated)  │
  │                                │                           │
- │                                │◄── POST /setup/complete ──┤
+ │                                │◄── POST /setup/complete───┤
  │                                │  (root_folder_id,         │
  │                                │   templates_folder_name,  │
  │                                │   whatsapp,               │
  │                                │   autentique_api_key,     │
  │                                │   autentique_webhook_secret)
- │                                │──201──────────────────────►
- │                                │  (creates landlord row,   │
+ │                                │──200 { redirect_to } ─────►
+ │                                │  [creates landlord row,   │
  │                                │   Drive folders, starter  │
- │                                │   docs)                   │
+ │                                │   docs, issues one-time   │
+ │                                │   OAuth code]             │
+ │◄── OAuth callback (code) ──────────── window.location ─────┤
  │                                │                           │
- │  [landlord returns to GPT chat]│                           │
+ ├──POST /oauth/token─────────────►                           │
+ │◄──JWT──────────────────────────┤                           │
  │                                │                           │
  ├──GET /context──────────────────►                           │
  │◄──200 (landlord data) ─────────┤                           │
@@ -172,12 +170,12 @@ GPT                         Edge Functions              Browser (landlord)
 
 | Step | Method | Path | Auth | Notes |
 |------|--------|------|------|-------|
-| Check landlord | GET | `/context` | Bearer JWT | Returns 404 LANDLORD_NOT_FOUND |
-| Start OAuth | GET | `/oauth/authorize` | None | Proxies to Google |
-| OAuth callback | GET | `/auth/callback` | None | Exchanges code, sets session cookie |
-| Get token | POST | `/oauth/token` | None | Returns Supabase JWT |
-| Complete setup | POST | `/setup/complete` | Bearer JWT | Creates landlord row + Drive folders |
-| Load context | GET | `/context` | Bearer JWT | Confirms setup succeeded |
+| Start OAuth | GET | `/oauth/authorize` | None | Stores ChatGPT `redirect_uri`+`state` in cookie; proxies to Google |
+| OAuth callback | GET | `/auth/callback` | None | Exchanges Google code; no landlord row → redirects to `/setup?via=oauth` |
+| Setup form | GET | `/setup?via=oauth` | Session cookie | Renders post-auth setup form (no "Entrar com Google" step) |
+| Complete setup | POST | `/setup/complete` | Session cookie | Creates landlord row + Drive folders; issues one-time OAuth code; returns `redirect_to` |
+| Exchange code | POST | `/oauth/token` | None | Returns Supabase JWT |
+| Load context | GET | `/context` | Bearer JWT | First `getContext` call; landlord row now exists |
 
 ---
 

@@ -3,7 +3,7 @@
 
 # Increment when the deployed system prompt changes so you can track which
 # version is live in ChatGPT at any given time.
-prompt_version: 0.0.5
+prompt_version: 0.0.7
 
 # Full URL of the /setup page shown to landlords during onboarding.
 # Must match the domain configured as the GPT Action server.
