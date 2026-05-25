@@ -25,8 +25,6 @@ import {
 } from "../_shared/cookies.ts";
 import { handleSetupComplete } from "./complete/index.ts";
 
-const GPT_URL = Deno.env.get("GPT_URL") ?? "https://chat.openai.com/";
-
 Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
