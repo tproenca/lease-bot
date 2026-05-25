@@ -94,7 +94,6 @@ Feito! Posso ajudar com mais alguma coisa?
 4. Enviar para assinatura
 5. Adicionar inquilino
 6. Adicionar imóvel
-7. Criar template
 ```
 
 **Exception — chained flows:** flows that naturally lead into another do NOT re-show the menu between steps. The menu only appears at the end of the full chain or when the landlord declines to continue:
@@ -108,12 +107,11 @@ If the landlord declines a chain step (e.g. "não" to generating a contract afte
 
 ### Confirmation protocol
 
-Before any write API call, the GPT shows a summary and waits for explicit confirmation:
+Before any write API call, the GPT lists the fields directly (no header, no bullets) and waits for explicit confirmation:
 
 ```
-GPT: Resumo:
-     - Template: Contrato Residencial
-     - Tipos: apartamento, casa
+GPT: Template: Contrato Residencial
+     Tipos: apartamento, casa
 
      Confirma? (Sim para continuar)
 
@@ -230,29 +228,35 @@ Olá, [nome]! O que você quer fazer?
 
 The diff compares the landlord's Google Drive templates folder against the cached DB state. The GPT **lists all detected changes upfront**, then walks through each one interactively before showing the main menu.
 
-**Opening message (example — 3 changes):**
+**Opening message (example — 3 changes, one is a re-upload):**
 
 ```
 Detectei mudanças nos templates:
-- Novos: Contrato Residencial, Contrato Comercial
-- Removidos: Aditivo Antigo
+- Alterado: Contrato Residencial
+- Novo: Contrato Comercial
+- Removido: Aditivo Antigo
 
-Vamos configurar cada um. Começando com Contrato Residencial — para quais tipos de imóvel ele se aplica?
+Começando pelo Contrato Residencial — deseja manter os tipos de imóvel anteriores (Apartamento, Casa)?
+```
+
+Re-upload pairs are shown as a single **"Alterado"** entry in the summary — not as separate added + removed lines. The implementation detail is irrelevant to the landlord.
+
+For genuinely new templates (not a re-upload), the GPT asks property types as a numbered list:
+
+```
+Para quais tipos de imóvel o template "Contrato Comercial" se aplica?
 1. Apartamento
 2. Casa
 3. Imóvel comercial
 ```
 
-**Re-upload detection:** If the same template name appears in both `added` and `removed`, the GPT treats it as a re-upload (file deleted and re-uploaded to Drive, producing a new Drive file ID). Instead of asking property types from scratch, it asks:
-
-```
-O template "Contrato Residencial" parece ter sido re-enviado para o Drive.
-Deseja manter as configurações anteriores? (tipos: Apartamento, Casa)
-```
+**Re-upload detection:** A template is a re-upload **only if the same name appears in both `added` and `removed` in the same diff response**. The GPT must use only the API response to determine this — never conversation history, prior sessions, or any other signal.
 
 If the landlord confirms, the GPT uses the `property_types` from the `removed` entry (returned by the API — see #78) to call `POST /templates` without asking again. If they decline, the GPT asks for property types normally.
 
 > **Note:** Re-upload detection requires `GET /templates/diff` to return `removed.templates` as `Array<{ name, property_types }>` instead of `string[]`. Tracked in [#78](https://github.com/tproenca/lease-bot/issues/78). Until that ships, the GPT will ask for property types even on re-uploads.
+
+**System-generated files excluded by the API:** `"Guia de Placeholders"` and `"Lista de Placeholders"` are never returned in the diff — the endpoint filters them out before responding. The GPT will never see them and must not act on them.
 
 **Per-change actions:**
 
@@ -265,16 +269,32 @@ templates.added      → GPT asks: which property types apply? (numbered list)
                             last_modified_at }
                         ◄──201 { id } ─────────────────────────
 
-placeholders.added   → GPT asks: format, case, derived?, required?, default?
-                          If format = text, GPT also asks:
-                          "Deseja restringir os valores?
-                           (ex: solteiro, casado, viúvo)"
-                          Yes → collect comma-separated list as options[]
-                          No  → omit options
+placeholders.added   → For each placeholder, GPT sends one message with:
+                        • "Qual formato?" followed by a numbered list:
+                            1. Texto  2. Data  3. CPF  4. Inteiro  5. Moeda
+                        • "É obrigatório? (Sim/Não)" — plain text paragraph,
+                          NOT a numbered item
+                        • "É derivado? Se sim: campo + fórmula.
+                           Se não: padrão ou vazio." — plain text paragraph
+                        If format = Texto: also ask "Qual transformação?"
+                        as a separate numbered list and ask whether to restrict
+                        allowed values. If yes, collect a comma-separated list
+                        as options[]; if no, omit options.
+                        Only the format/transformation options get numbered
+                        lists — the other questions are plain paragraphs.
+                        Collects all answers first (no API calls between
+                        placeholders), then shows summary as a TABLE
+                        (columns: nome, formato, transformação, obrigatório,
+                        padrão, derivado, opções), then sends ONE call after "Sim":
                         ──POST /placeholders───────────────────►
-                          [{ name, required, format, case,
-                             default_value, derived_from,
-                             derived_formula, options? }]
+                          { placeholders: [
+                              { name, format, required,
+                                case?, default?,
+                                derived_from?, derived_formula?,
+                                options? }
+                            ] }
+                        Optional fields (case, default, derived_from,
+                        derived_formula, options) are omitted — not null — when empty.
                         ◄──201 { ids[] } ───────────────────────
 
 witnesses.added      → GPT asks: WhatsApp number for each
@@ -585,9 +605,9 @@ If new building:
 
 ---
 
-## Flow 11 — Create Template _(planned)_
+## Flow 11 — Create Template _(deferred — not in GPT menu)_
 
-> **Status:** Not yet implemented. Tracked in [#77](https://github.com/tproenca/lease-bot/issues/77).
+> **Status:** Not yet implemented. Excluded from the GPT menu until the backend ships. Flow design preserved in `gpt/flow-create-template.md`. Tracked in [#77](https://github.com/tproenca/lease-bot/issues/77).
 
 **Trigger:** Menu item "Criar template" or user intent ("quero criar um novo template", "preciso de um aditivo de renovação").
 
