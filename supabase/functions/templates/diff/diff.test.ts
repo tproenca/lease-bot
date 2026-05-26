@@ -187,6 +187,7 @@ function buildMockFetch(opts: {
   driveExportFail?: boolean;
   dbUpdateFail?: boolean;
   propertyTypeTemplates?: Array<{ template_id: string; property_type: string }>;
+  configuredPlaceholders?: Array<{ name: string }>;
 }) {
   return async function mockFetch(
     input: string | URL | Request,
@@ -214,6 +215,14 @@ function buildMockFetch(opts: {
     if (url.includes("/rest/v1/property_type_templates")) {
       return new Response(
         JSON.stringify(opts.propertyTypeTemplates ?? []),
+        { status: 200 },
+      );
+    }
+
+    // PostgREST: placeholders
+    if (url.includes("/rest/v1/placeholders")) {
+      return new Response(
+        JSON.stringify(opts.configuredPlaceholders ?? []),
         { status: 200 },
       );
     }
@@ -357,7 +366,13 @@ Deno.test("unit: GET /templates/diff — OPTIONS returns 200 with CORS headers",
 
 Deno.test("unit: GET /templates/diff — success response includes CORS headers", async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = buildMockFetch({}) as typeof fetch;
+  // All placeholders already configured so the fast path fires cleanly.
+  globalThis.fetch = buildMockFetch({
+    configuredPlaceholders: [
+      { name: "nome do inquilino" },
+      { name: "cpf" },
+    ],
+  }) as typeof fetch;
   try {
     const res = await handleTemplatesDiff(makeRequest("valid.jwt"));
     assertEquals(res.headers.get("Access-Control-Allow-Origin") !== null, true);
@@ -378,8 +393,14 @@ Deno.test("unit: GET /templates/diff — error response includes CORS headers", 
 Deno.test("unit: GET /templates/diff — 200 with empty diff when no templates changed (fast path)", async () => {
   const originalFetch = globalThis.fetch;
   // MOCK_TEMPLATES has last_modified_at === MODIFIED_TIME_CACHED === MODIFIED_TIME_CURRENT
-  // MOCK_DRIVE_FILES returns the same modifiedTime → no change → fast path
-  globalThis.fetch = buildMockFetch({}) as typeof fetch;
+  // MOCK_DRIVE_FILES returns the same modifiedTime → no change → fast path.
+  // All placeholder_names from MOCK_TEMPLATES are already configured → no unconfigured.
+  globalThis.fetch = buildMockFetch({
+    configuredPlaceholders: [
+      { name: "nome do inquilino" },
+      { name: "cpf" },
+    ],
+  }) as typeof fetch;
   try {
     const res = await handleTemplatesDiff(makeRequest("valid.jwt"));
     assertEquals(res.status, 200);
@@ -402,19 +423,27 @@ Deno.test("unit: GET /templates/diff — 200 with empty diff when no templates c
 Deno.test("unit: GET /templates/diff — fast path does not export Drive file content", async () => {
   let exportCalled = false;
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async (input: string | URL | Request) => {
-    const url = typeof input === "string"
-      ? input
-      : input instanceof URL
-      ? input.href
-      : (input as Request).url;
+  // All placeholder_names from MOCK_TEMPLATES already configured → fast path fires.
+  const mockFetch = buildMockFetch({
+    configuredPlaceholders: [
+      { name: "nome do inquilino" },
+      { name: "cpf" },
+    ],
+  });
+  globalThis.fetch =
+    (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === "string"
+        ? input
+        : input instanceof URL
+        ? input.href
+        : (input as Request).url;
 
-    if (url.includes("/export")) {
-      exportCalled = true;
-      return new Response("", { status: 200 });
-    }
-    return buildMockFetch({})(input as string);
-  }) as typeof fetch;
+      if (url.includes("/export")) {
+        exportCalled = true;
+        return new Response("", { status: 200 });
+      }
+      return mockFetch(input as string, init);
+    }) as typeof fetch;
 
   try {
     await handleTemplatesDiff(makeRequest("valid.jwt"));
@@ -428,11 +457,18 @@ Deno.test("unit: GET /templates/diff — fast path does not export Drive file co
 
 Deno.test("unit: GET /templates/diff — 200 with placeholder diff when template changed (slow path)", async () => {
   const originalFetch = globalThis.fetch;
-  // MOCK_TEMPLATES_CHANGED has last_modified_at older than Drive's modifiedTime
+  // MOCK_TEMPLATES_CHANGED has last_modified_at older than Drive's modifiedTime.
+  // "nome do inquilino" and "cpf" were previously configured (they were in the old
+  // placeholder_names cache). Mark them as configured so the unconfigured-placeholder
+  // check does not re-surface them — only the Drive-content diff drives the result.
   globalThis.fetch = buildMockFetch({
     templates: MOCK_TEMPLATES_CHANGED,
     // MOCK_CHANGED_DOC_TEXT has: nome do inquilino, valor do aluguel, data de início
     // Old: nome do inquilino, cpf  →  added: valor do aluguel, data de início; removed: cpf
+    configuredPlaceholders: [
+      { name: "nome do inquilino" },
+      { name: "cpf" },
+    ],
   }) as typeof fetch;
   try {
     const res = await handleTemplatesDiff(makeRequest("valid.jwt"));
@@ -932,9 +968,11 @@ Deno.test("integration: diff → POST /templates → next diff returns empty (no
     placeholder_names: ["nome"],
   };
 
+  // The template's placeholder "nome" is already configured → fast path fires.
   const secondDiffFetch = buildMockFetch({
     templates: [registeredTemplate],
     driveFiles: [INTEGRATION_NEW_DRIVE_FILE], // same modifiedTime as stored
+    configuredPlaceholders: [{ name: "nome" }],
   });
   globalThis.fetch = secondDiffFetch as typeof fetch;
 
@@ -959,6 +997,151 @@ Deno.test("integration: diff → POST /templates → next diff returns empty (no
       0,
       "Second diff must have empty placeholders.added",
     );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// ─── Resume scenario: unconfigured placeholders reported when no Drive change ─
+
+Deno.test("unit: GET /templates/diff — reports unconfigured placeholders when session interrupted after template save", async () => {
+  // Simulates the resume scenario:
+  //   - templates table has placeholder_names populated (session saved the template)
+  //   - placeholders table is empty (session interrupted before POST /placeholders)
+  //   - Drive modifiedTime matches last_modified_at (no Drive change detected)
+  //
+  // Expected: placeholders.added contains the unconfigured names so GPT triggers Flow 2.
+  const originalFetch = globalThis.fetch;
+  const RESUME_TEMPLATE = {
+    id: "tmpl-uuid-resume",
+    name: "Contrato Residencial",
+    drive_file_id: "drive-file-id-1",
+    last_modified_at: MODIFIED_TIME_CACHED, // matches Drive → no Drive change
+    placeholder_names: ["cpf_inquilino", "nome_locador"],
+  };
+  const RESUME_DRIVE_FILES = [
+    {
+      id: "drive-file-id-1",
+      name: "Contrato Residencial",
+      modifiedTime: MODIFIED_TIME_CACHED, // same as last_modified_at → no Drive diff
+    },
+  ];
+  globalThis.fetch = buildMockFetch({
+    templates: [RESUME_TEMPLATE],
+    driveFiles: RESUME_DRIVE_FILES,
+    configuredPlaceholders: [], // placeholders table is empty — interrupted session
+  }) as typeof fetch;
+  try {
+    const res = await handleTemplatesDiff(makeRequest("valid.jwt"));
+    assertEquals(res.status, 200);
+    const body = await jsonBody(res);
+    const placeholders = body.placeholders as Record<string, string[]>;
+    // Both names must appear in added so the GPT runs placeholder config (Flow 2).
+    assertEquals(placeholders.added.includes("cpf_inquilino"), true);
+    assertEquals(placeholders.added.includes("nome_locador"), true);
+    assertEquals(placeholders.added.length, 2);
+    assertEquals(placeholders.removed.length, 0);
+    // No template-level changes.
+    const templates = body.templates as Record<string, unknown[]>;
+    assertEquals(templates.added.length, 0);
+    assertEquals(templates.removed.length, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("unit: GET /templates/diff — fast path fires when all placeholders are configured", async () => {
+  // When every name in templates.placeholder_names exists in the placeholders table,
+  // unconfiguredPlaceholders is empty and the fast path (all-empty response) fires.
+  const originalFetch = globalThis.fetch;
+  const CONFIGURED_TEMPLATE = {
+    id: "tmpl-uuid-configured",
+    name: "Contrato Residencial",
+    drive_file_id: "drive-file-id-1",
+    last_modified_at: MODIFIED_TIME_CACHED,
+    placeholder_names: ["cpf_inquilino", "nome_locador"],
+  };
+  const CONFIGURED_DRIVE_FILES = [
+    {
+      id: "drive-file-id-1",
+      name: "Contrato Residencial",
+      modifiedTime: MODIFIED_TIME_CACHED,
+    },
+  ];
+  globalThis.fetch = buildMockFetch({
+    templates: [CONFIGURED_TEMPLATE],
+    driveFiles: CONFIGURED_DRIVE_FILES,
+    // All placeholder_names already exist in the placeholders table.
+    configuredPlaceholders: [
+      { name: "cpf_inquilino" },
+      { name: "nome_locador" },
+    ],
+  }) as typeof fetch;
+  try {
+    const res = await handleTemplatesDiff(makeRequest("valid.jwt"));
+    assertEquals(res.status, 200);
+    const body = await jsonBody(res);
+    const placeholders = body.placeholders as Record<string, unknown[]>;
+    assertEquals(
+      placeholders.added.length,
+      0,
+      "placeholders.added must be empty when all placeholders are configured",
+    );
+    assertEquals(placeholders.removed.length, 0);
+    const templates = body.templates as Record<string, unknown[]>;
+    assertEquals(templates.added.length, 0);
+    assertEquals(templates.removed.length, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("unit: GET /templates/diff — deduplicates placeholder names appearing in both changed template and unconfigured list", async () => {
+  // A placeholder that appears in a changed template AND is also unconfigured
+  // should only appear once in placeholders.added.
+  const originalFetch = globalThis.fetch;
+  // Template has "nome" configured but "cpf" missing; the Drive file changed
+  // and the new content contains both "nome" and "cpf".
+  const CHANGED_TEMPLATE = {
+    id: "tmpl-uuid-dedup",
+    name: "Contrato",
+    drive_file_id: "drive-file-id-dedup",
+    last_modified_at: "2024-01-01T09:00:00.000Z", // older than Drive → changed
+    placeholder_names: ["nome"], // old cache only had "nome"
+  };
+  const DEDUP_DRIVE_FILES = [
+    {
+      id: "drive-file-id-dedup",
+      name: "Contrato",
+      modifiedTime: MODIFIED_TIME_CURRENT, // newer than last_modified_at
+    },
+  ];
+  // New document adds "cpf" alongside "nome".
+  const DEDUP_DOC_TEXT = "{{nome}} {{cpf}}";
+  globalThis.fetch = buildMockFetch({
+    templates: [CHANGED_TEMPLATE],
+    driveFiles: DEDUP_DRIVE_FILES,
+    docText: DEDUP_DOC_TEXT,
+    // "cpf" is also absent from the placeholders table → unconfigured
+    configuredPlaceholders: [{ name: "nome" }],
+  }) as typeof fetch;
+  try {
+    const res = await handleTemplatesDiff(makeRequest("valid.jwt"));
+    assertEquals(res.status, 200);
+    const body = await jsonBody(res);
+    const placeholders = body.placeholders as Record<string, string[]>;
+    // "cpf" appears via both the changed-template diff and the unconfigured check;
+    // it must appear exactly once.
+    const cpfCount = placeholders.added.filter((n: string) => n === "cpf")
+      .length;
+    assertEquals(
+      cpfCount,
+      1,
+      "cpf must appear exactly once in placeholders.added",
+    );
+    assertEquals(placeholders.added.includes("cpf"), true);
+    // "nome" is in both old and new → not in added; it IS configured too.
+    assertEquals(placeholders.added.includes("nome"), false);
   } finally {
     globalThis.fetch = originalFetch;
   }

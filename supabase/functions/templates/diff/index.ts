@@ -121,18 +121,22 @@ export async function handleTemplatesDiff(req: Request): Promise<Response> {
   //    restricts every query to this landlord's rows automatically.
   const db = userClient(jwt);
 
-  const [templatesResult, landlordResult] = await Promise.all([
-    db
-      .from("templates")
-      .select(
-        "id, name, drive_file_id, last_modified_at, placeholder_names",
-      ),
-    db
-      .from("landlords")
-      .select("google_refresh_token, templates_folder_id")
-      .eq("id", user.id)
-      .maybeSingle(),
-  ]);
+  const [templatesResult, landlordResult, placeholdersResult] = await Promise
+    .all([
+      db
+        .from("templates")
+        .select(
+          "id, name, drive_file_id, last_modified_at, placeholder_names",
+        ),
+      db
+        .from("landlords")
+        .select("google_refresh_token, templates_folder_id")
+        .eq("id", user.id)
+        .maybeSingle(),
+      db
+        .from("placeholders")
+        .select("name"),
+    ]);
 
   if (templatesResult.error) {
     return errorResponse(500, "DB_ERROR", "Erro ao carregar templates.");
@@ -143,6 +147,9 @@ export async function handleTemplatesDiff(req: Request): Promise<Response> {
       "LANDLORD_NOT_FOUND",
       "Cadastro do proprietário não encontrado. Conclua o processo de configuração.",
     );
+  }
+  if (placeholdersResult.error) {
+    return errorResponse(500, "DB_ERROR", "Erro ao carregar placeholders.");
   }
 
   const landlord = landlordResult.data as {
@@ -160,6 +167,20 @@ export async function handleTemplatesDiff(req: Request): Promise<Response> {
   };
   const allTemplates = (templatesResult.data ?? []) as TemplateRow[];
   const templates = allTemplates.filter((t) => t.name !== GUIA_EXACT_NAME);
+
+  // Compute unconfigured placeholders: names present in any template's
+  // placeholder_names cache but absent from the placeholders table.
+  // This catches the resume scenario where the session was interrupted after
+  // the template was saved but before POST /placeholders completed.
+  const configuredNames = new Set(
+    (placeholdersResult.data ?? []).map((r: { name: string }) => r.name),
+  );
+  const allTemplatePlaceholderNames = new Set(
+    templates.flatMap((t) => t.placeholder_names ?? []),
+  );
+  const unconfiguredPlaceholders = [...allTemplatePlaceholderNames]
+    .filter((n) => !configuredNames.has(n))
+    .sort();
 
   // 4. Obtain a fresh Google access token — needed to list Drive files.
   let accessToken: string;
@@ -232,11 +253,13 @@ export async function handleTemplatesDiff(req: Request): Promise<Response> {
     return driveTime !== t.last_modified_at;
   });
 
-  // Fast path: no template-level changes and no content changes.
+  // Fast path: no template-level changes, no content changes, and no unconfigured
+  // placeholders that need to be reported to the GPT.
   if (
     addedDriveFiles.length === 0 &&
     removedTemplates.length === 0 &&
-    changedTemplates.length === 0
+    changedTemplates.length === 0 &&
+    unconfiguredPlaceholders.length === 0
   ) {
     return new Response(
       JSON.stringify({
@@ -343,7 +366,10 @@ export async function handleTemplatesDiff(req: Request): Promise<Response> {
         removed: removedTemplates,
       },
       placeholders: {
-        added: [...allAddedPlaceholders].sort(),
+        added: [
+          ...new Set([...allAddedPlaceholders, ...unconfiguredPlaceholders]),
+        ]
+          .sort(),
         removed: [...allRemovedPlaceholders].sort(),
       },
       witnesses: { added: [...allWitnessNames].sort() },

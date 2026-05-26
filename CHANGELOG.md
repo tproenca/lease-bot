@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Fixed
+- `GET /templates/diff`: now detects unconfigured placeholders by comparing `templates.placeholder_names` against the `placeholders` table. When a session is interrupted after the template is saved but before `POST /placeholders` completes, the next call correctly returns the missing names in `placeholders.added`, preventing the GPT from silently skipping Flow 2. The fast path only fires when there are zero template-level changes AND zero unconfigured placeholders. (issue 103)
 - `POST /placeholders`: accepts GPT Actions' wrapped `{ placeholders: [...] }` request body while preserving bare-array compatibility, and the OpenAPI specs now document the wrapped request with `{ ids: [...] }` response. (issue 99)
 - `GET /templates/diff`: `templates.added` now returns `Array<{ name, drive_file_id, last_modified_at }>` instead of `string[]`, giving the GPT the Drive file ID and real modifiedTime needed to call `POST /templates` correctly. (issue 98)
 - `POST /templates`: accepts `last_modified_at` from the request body and stores the real Drive modifiedTime instead of `new Date()`, preventing false "Alterado" diffs on subsequent sessions. (issue 98)
