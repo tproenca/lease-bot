@@ -24,6 +24,7 @@ import {
 } from "../_shared/supabase.ts";
 import {
   createDriveFolder,
+  GoogleReauthRequiredError,
   refreshGoogleAccessToken,
 } from "../_shared/google.ts";
 import { isNonEmptyString } from "../_shared/validation.ts";
@@ -212,7 +213,14 @@ async function handleCreateProperty(req: Request): Promise<Response> {
     accessToken = await refreshGoogleAccessToken(
       landlord.google_refresh_token as string,
     );
-  } catch {
+  } catch (err) {
+    if (err instanceof GoogleReauthRequiredError) {
+      return errorResponse(
+        401,
+        "GOOGLE_REAUTH_REQUIRED",
+        "Sua conexão com o Google Drive expirou. Reconecte sua conta para continuar.",
+      );
+    }
     return errorResponse(
       502,
       "GOOGLE_AUTH_FAILED",

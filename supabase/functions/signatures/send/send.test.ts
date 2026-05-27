@@ -85,6 +85,8 @@ type FetchStubConfig = {
   driveFiles?: Array<{ id: string; name: string; modifiedTime: string }>;
   /** Whether Google token refresh succeeds. */
   googleTokenOk?: boolean;
+  /** When true, token endpoint returns a 5xx server_error instead of invalid_grant. */
+  googleTokenServerError?: boolean;
   /** Whether Drive export succeeds. */
   driveExportOk?: boolean;
   /** Whether detect finds markers (true = found, false = missing). */
@@ -117,6 +119,7 @@ class FetchStubBuilder {
         },
       ],
       googleTokenOk: cfg.googleTokenOk ?? true,
+      googleTokenServerError: cfg.googleTokenServerError ?? false,
       driveExportOk: cfg.driveExportOk ?? true,
       detectOk: cfg.detectOk ?? true,
       autentiqueOk: cfg.autentiqueOk ?? true,
@@ -222,6 +225,12 @@ class FetchStubBuilder {
           return new Response(
             JSON.stringify({ error: "invalid_grant" }),
             { status: 400 },
+          );
+        }
+        if (cfg.googleTokenServerError) {
+          return new Response(
+            JSON.stringify({ error: "server_error" }),
+            { status: 500 },
           );
         }
         return new Response(
@@ -507,11 +516,22 @@ Deno.test("unit: send — 201 response includes id and autentique_document_id fi
   });
 });
 
-// ─── Tests: witness error returns 500 ────────────────────────────────────
+// ─── Tests: Google auth error handling ───────────────────────────────────
 
-Deno.test("unit: send — Google auth failure returns 502", async () => {
+Deno.test("unit: send — 401 GOOGLE_REAUTH_REQUIRED when token refresh returns invalid_grant", async () => {
   const req = makeRequest({ tenant_id: TENANT_UUID });
   const stub = new FetchStubBuilder({ googleTokenOk: false }).build();
+  await withFetch(stub, async () => {
+    const res = await handleSend(req);
+    assertEquals(res.status, 401);
+    const body = await res.json();
+    assertEquals(body.error.code, "GOOGLE_REAUTH_REQUIRED");
+  });
+});
+
+Deno.test("unit: send — 502 GOOGLE_AUTH_FAILED when token refresh fails with server error", async () => {
+  const req = makeRequest({ tenant_id: TENANT_UUID });
+  const stub = new FetchStubBuilder({ googleTokenServerError: true }).build();
   await withFetch(stub, async () => {
     const res = await handleSend(req);
     assertEquals(res.status, 502);

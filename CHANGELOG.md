@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Fixed
+- All endpoints that call `refreshGoogleAccessToken` now return `401 GOOGLE_REAUTH_REQUIRED` (with a Portuguese reconnect hint) when Google responds with `invalid_grant`, instead of a generic `502 GOOGLE_AUTH_FAILED`. Other Google auth failures (network errors, 5xx from Google) continue to return `502 GOOGLE_AUTH_FAILED` unchanged. `docs/GPT-FLOWS.md` and `gpt/SYSTEM_PROMPT.md` updated so the GPT instructs the landlord to reconnect via ChatGPT's account settings. (issue 105)
 - `GET /templates/diff`: now detects unconfigured placeholders by comparing `templates.placeholder_names` against the `placeholders` table. When a session is interrupted after the template is saved but before `POST /placeholders` completes, the next call correctly returns the missing names in `placeholders.added`, preventing the GPT from silently skipping Flow 2. The fast path only fires when there are zero template-level changes AND zero unconfigured placeholders. (issue 103)
 - `POST /placeholders`: accepts GPT Actions' wrapped `{ placeholders: [...] }` request body while preserving bare-array compatibility, and the OpenAPI specs now document the wrapped request with `{ ids: [...] }` response. (issue 99)
 - `GET /templates/diff`: `templates.added` now returns `Array<{ name, drive_file_id, last_modified_at }>` instead of `string[]`, giving the GPT the Drive file ID and real modifiedTime needed to call `POST /templates` correctly. (issue 98)

@@ -183,6 +183,7 @@ function buildMockFetch(opts: {
   driveFiles?: typeof MOCK_DRIVE_FILES;
   docText?: string;
   googleTokenFail?: boolean;
+  googleTokenServerError?: boolean;
   driveListFail?: boolean;
   driveExportFail?: boolean;
   dbUpdateFail?: boolean;
@@ -262,6 +263,12 @@ function buildMockFetch(opts: {
         return new Response(
           JSON.stringify({ error: "invalid_grant" }),
           { status: 400 },
+        );
+      }
+      if (opts.googleTokenServerError) {
+        return new Response(
+          JSON.stringify({ error: "server_error" }),
+          { status: 500 },
         );
       }
       return new Response(
@@ -574,11 +581,31 @@ Deno.test("unit: GET /templates/diff — 404 when landlord row does not exist", 
   }
 });
 
-// ─── 502 — Google auth failure ────────────────────────────────────────────
+// ─── 401 — Google reauth required (invalid_grant) ─────────────────────────
 
-Deno.test("unit: GET /templates/diff — 502 when Google token refresh fails", async () => {
+Deno.test("unit: GET /templates/diff — 401 when Google token refresh returns invalid_grant", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ googleTokenFail: true }) as typeof fetch;
+  try {
+    const res = await handleTemplatesDiff(makeRequest("valid.jwt"));
+    assertEquals(res.status, 401);
+    const body = await jsonBody(res);
+    assertEquals(
+      (body.error as Record<string, string>).code,
+      "GOOGLE_REAUTH_REQUIRED",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// ─── 502 — Google auth failure (non-invalid_grant) ────────────────────────
+
+Deno.test("unit: GET /templates/diff — 502 when Google token refresh fails with server error", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({
+    googleTokenServerError: true,
+  }) as typeof fetch;
   try {
     const res = await handleTemplatesDiff(makeRequest("valid.jwt"));
     assertEquals(res.status, 502);

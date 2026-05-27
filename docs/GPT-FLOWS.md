@@ -654,6 +654,29 @@ configuration automatically (format, required, derived, etc.)
 
 ---
 
+## Google Account Reconnection (`GOOGLE_REAUTH_REQUIRED`)
+
+When any endpoint returns `401 GOOGLE_REAUTH_REQUIRED`, the landlord's Google connection has expired or been revoked. This happens when:
+
+- The landlord revoked the app's Google access from their Google account settings
+- The landlord changed their Google password
+- Google rotated the token and the stored copy became stale
+- The OAuth app is in Testing mode — tokens expire after 7 days
+
+**What the GPT must do:** Inform the landlord that their Google Drive connection expired and ask them to reconnect via the "Connect account" button in ChatGPT (disconnect + reconnect the Google account in ChatGPT's account settings). Do **not** show a raw OAuth URL — the reconnect happens through ChatGPT's account connection UI.
+
+**Example message:**
+
+```
+Sua conexão com o Google Drive expirou. Para continuar, reconecte sua conta Google:
+acesse as configurações do ChatGPT, localize o Lease Assistant em "Apps conectados",
+desconecte e conecte novamente.
+```
+
+**Affected endpoints:** All endpoints that call `refreshGoogleAccessToken` internally — including `/templates/diff`, `/documents/generate`, `/signatures/send`, `/tenants`, `/properties`, `/buildings`.
+
+---
+
 ## API Quick Reference
 
 | Method | Path | GPT-callable | Auth | Purpose |

@@ -30,8 +30,11 @@ import {
   getAuthenticatedUser,
   userClient,
 } from "../../_shared/supabase.ts";
-import { listDriveFilesInFolder } from "../../_shared/google.ts";
-import { refreshGoogleAccessToken } from "../../_shared/google.ts";
+import {
+  GoogleReauthRequiredError,
+  listDriveFilesInFolder,
+  refreshGoogleAccessToken,
+} from "../../_shared/google.ts";
 import { submitDocument } from "../../_shared/autentique.ts";
 import type { AutentiqueSigner } from "../../_shared/autentique.ts";
 import { exportAndMergePdfs } from "../../documents/export/index.ts";
@@ -211,7 +214,14 @@ export async function handleSend(req: Request): Promise<Response> {
   let accessToken: string;
   try {
     accessToken = await refreshGoogleAccessToken(land.google_refresh_token);
-  } catch {
+  } catch (err) {
+    if (err instanceof GoogleReauthRequiredError) {
+      return errorResponse(
+        401,
+        "GOOGLE_REAUTH_REQUIRED",
+        "Sua conexão com o Google Drive expirou. Reconecte sua conta para continuar.",
+      );
+    }
     return errorResponse(
       502,
       "GOOGLE_AUTH_FAILED",
