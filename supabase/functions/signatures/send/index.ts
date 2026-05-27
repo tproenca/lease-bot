@@ -37,7 +37,10 @@ import {
 } from "../../_shared/google.ts";
 import { submitDocument } from "../../_shared/autentique.ts";
 import type { AutentiqueSigner } from "../../_shared/autentique.ts";
-import { exportAndMergePdfs } from "../../documents/export/index.ts";
+import {
+  exportAndMergePdfs,
+  type ExportResult,
+} from "../../documents/export/index.ts";
 import { detectSignaturePositions } from "../../documents/signatures/detect.ts";
 
 // ─── UUID validation ──────────────────────────────────────────────────────
@@ -257,10 +260,26 @@ export async function handleSend(req: Request): Promise<Response> {
   );
 
   // 7. Export and merge PDFs.
-  const exportResult = await exportAndMergePdfs({
-    refreshToken: land.google_refresh_token,
-    docs: driveFiles.map((f) => ({ fileId: f.id, label: f.name })),
-  });
+  let exportResult: ExportResult;
+  try {
+    exportResult = await exportAndMergePdfs({
+      refreshToken: land.google_refresh_token,
+      docs: driveFiles.map((f) => ({ fileId: f.id, label: f.name })),
+    });
+  } catch (err) {
+    if (err instanceof GoogleReauthRequiredError) {
+      return errorResponse(
+        401,
+        "GOOGLE_REAUTH_REQUIRED",
+        "Sua conexão com o Google Drive expirou. Reconecte sua conta para continuar.",
+      );
+    }
+    return errorResponse(
+      502,
+      "PDF_EXPORT_FAILED",
+      "Falha ao exportar os documentos. Tente novamente.",
+    );
+  }
 
   if (!exportResult.ok) {
     return errorResponse(

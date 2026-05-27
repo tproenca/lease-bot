@@ -87,6 +87,12 @@ type FetchStubConfig = {
   googleTokenOk?: boolean;
   /** When true, token endpoint returns a 5xx server_error instead of invalid_grant. */
   googleTokenServerError?: boolean;
+  /**
+   * When true, the first token call succeeds (used by listDriveFilesInFolder at
+   * step 6) but the second call — made inside exportAndMergePdfs — returns
+   * invalid_grant (HTTP 400). Simulates a token revocation between the two calls.
+   */
+  googleTokenFailOnSecond?: boolean;
   /** Whether Drive export succeeds. */
   driveExportOk?: boolean;
   /** Whether detect finds markers (true = found, false = missing). */
@@ -120,6 +126,7 @@ class FetchStubBuilder {
       ],
       googleTokenOk: cfg.googleTokenOk ?? true,
       googleTokenServerError: cfg.googleTokenServerError ?? false,
+      googleTokenFailOnSecond: cfg.googleTokenFailOnSecond ?? false,
       driveExportOk: cfg.driveExportOk ?? true,
       detectOk: cfg.detectOk ?? true,
       autentiqueOk: cfg.autentiqueOk ?? true,
@@ -132,6 +139,8 @@ class FetchStubBuilder {
     const cfg = this.cfg;
     // Track Autentique attempts for retry testing.
     let autentiqueAttempt = 0;
+    // Track token calls to support googleTokenFailOnSecond.
+    let googleTokenCallCount = 0;
 
     return async (
       input: string | URL | Request,
@@ -221,6 +230,7 @@ class FetchStubBuilder {
 
       // ── Google token refresh ─────────────────────────────────────────────
       if (url.includes("oauth2.googleapis.com/token")) {
+        const callIndex = googleTokenCallCount++;
         if (!cfg.googleTokenOk) {
           return new Response(
             JSON.stringify({ error: "invalid_grant" }),
@@ -231,6 +241,14 @@ class FetchStubBuilder {
           return new Response(
             JSON.stringify({ error: "server_error" }),
             { status: 500 },
+          );
+        }
+        // Fail only the second token call (inside exportAndMergePdfs) with
+        // invalid_grant to simulate a revocation between the two calls.
+        if (cfg.googleTokenFailOnSecond && callIndex >= 1) {
+          return new Response(
+            JSON.stringify({ error: "invalid_grant" }),
+            { status: 400 },
           );
         }
         return new Response(
@@ -537,5 +555,20 @@ Deno.test("unit: send — 502 GOOGLE_AUTH_FAILED when token refresh fails with s
     assertEquals(res.status, 502);
     const body = await res.json();
     assertEquals(body.error.code, "GOOGLE_AUTH_FAILED");
+  });
+});
+
+Deno.test("unit: send — 401 GOOGLE_REAUTH_REQUIRED when invalid_grant occurs inside exportAndMergePdfs", async () => {
+  // First token call (step 6 — listDriveFilesInFolder) succeeds.
+  // Second token call (inside exportAndMergePdfs) returns invalid_grant.
+  // Handler must catch the GoogleReauthRequiredError thrown by exportAndMergePdfs
+  // and return 401 GOOGLE_REAUTH_REQUIRED instead of an unhandled 500.
+  const req = makeRequest({ tenant_id: TENANT_UUID });
+  const stub = new FetchStubBuilder({ googleTokenFailOnSecond: true }).build();
+  await withFetch(stub, async () => {
+    const res = await handleSend(req);
+    assertEquals(res.status, 401);
+    const body = await res.json();
+    assertEquals(body.error.code, "GOOGLE_REAUTH_REQUIRED");
   });
 });
