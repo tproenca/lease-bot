@@ -45,6 +45,7 @@ function buildMockFetch(opts: {
   authUser?: typeof MOCK_USER | null;
   landlord?: typeof MOCK_LANDLORD | null;
   googleTokenFail?: boolean;
+  googleTokenServerError?: boolean;
   driveFolderFail?: boolean;
   dbInsertFail?: boolean;
   existingDriveFolder?: string | null;
@@ -103,6 +104,11 @@ function buildMockFetch(opts: {
       if (opts.googleTokenFail) {
         return new Response(JSON.stringify({ error: "invalid_grant" }), {
           status: 400,
+        });
+      }
+      if (opts.googleTokenServerError) {
+        return new Response(JSON.stringify({ error: "server_error" }), {
+          status: 500,
         });
       }
       return new Response(
@@ -267,11 +273,33 @@ Deno.test("unit: POST /buildings — 404 when landlord row does not exist", asyn
   }
 });
 
-// ─── 502 — Google auth failure ────────────────────────────────────────────
+// ─── 401 — Google reauth required (invalid_grant) ─────────────────────────
 
-Deno.test("unit: POST /buildings — 502 when Google token refresh fails", async () => {
+Deno.test("unit: POST /buildings — 401 when Google token refresh returns invalid_grant", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ googleTokenFail: true }) as typeof fetch;
+  try {
+    const res = await handleBuildings(
+      makeRequest({ name: "Edifício A", address: "Rua A, 1" }, "valid.jwt"),
+    );
+    assertEquals(res.status, 401);
+    const body = await jsonBody(res);
+    assertEquals(
+      (body.error as Record<string, string>).code,
+      "GOOGLE_REAUTH_REQUIRED",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// ─── 502 — Google auth failure (non-invalid_grant) ────────────────────────
+
+Deno.test("unit: POST /buildings — 502 when Google token refresh fails with server error", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({
+    googleTokenServerError: true,
+  }) as typeof fetch;
   try {
     const res = await handleBuildings(
       makeRequest({ name: "Edifício A", address: "Rua A, 1" }, "valid.jwt"),

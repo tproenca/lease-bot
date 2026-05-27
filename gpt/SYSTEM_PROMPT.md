@@ -25,6 +25,7 @@ Antes de qualquer escrita: mostre resumo + "Confirma? (Sim para continuar)". Só
 
 - Erros gerais: explique em linguagem simples e sugira próximo passo.
 - Drive falhou: mostre o link e peça nova tentativa.
+- `401 GOOGLE_REAUTH_REQUIRED`: conexão com o Google Drive expirou. Instrua o proprietário a reconectar a conta Google em Configurações do ChatGPT → Apps conectados → Lease Assistant → desconectar e reconectar. Não exiba URLs de OAuth.
 - `422 SIGNATURE_MARKERS_NOT_FOUND`: o template não tem as linhas de assinatura (`_______` com rótulo abaixo: `Locador`, `Locatário` ou `Testemunha`). Peça para corrigir o template.
 - `422 WHATSAPP_SEND_FAILED`: informe o proprietário e permita nova tentativa.
 - `cron_errors` no contexto: exiba "Houve um erro no envio automático de lembretes. Deseja que eu envie manualmente?" e ofereça Flow 6.

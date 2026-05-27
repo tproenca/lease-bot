@@ -70,6 +70,7 @@ function buildMockFetch(opts: {
   landlord?: typeof MOCK_LANDLORD | null;
   building?: typeof MOCK_BUILDING | null;
   googleTokenFail?: boolean;
+  googleTokenServerError?: boolean;
   driveFolderFail?: boolean;
   dbInsertFail?: boolean;
   propertiesList?: typeof MOCK_PROPERTIES_LIST;
@@ -150,6 +151,11 @@ function buildMockFetch(opts: {
       if (opts.googleTokenFail) {
         return new Response(JSON.stringify({ error: "invalid_grant" }), {
           status: 400,
+        });
+      }
+      if (opts.googleTokenServerError) {
+        return new Response(JSON.stringify({ error: "server_error" }), {
+          status: 500,
         });
       }
       return new Response(
@@ -456,11 +462,36 @@ Deno.test("unit: POST /properties — 404 when building_id not found or belongs 
   }
 });
 
-// ─── 502 — Google auth failure ────────────────────────────────────────────
+// ─── 401 — Google reauth required (invalid_grant) ─────────────────────────
 
-Deno.test("unit: POST /properties — 502 when Google token refresh fails", async () => {
+Deno.test("unit: POST /properties — 401 when Google token refresh returns invalid_grant", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ googleTokenFail: true }) as typeof fetch;
+  try {
+    const res = await handleProperties(
+      makeRequest(
+        { type: "house", name: "Casa A", address: "Rua B, 2" },
+        "valid.jwt",
+      ),
+    );
+    assertEquals(res.status, 401);
+    const body = await jsonBody(res) as Record<string, unknown>;
+    assertEquals(
+      (body.error as Record<string, string>).code,
+      "GOOGLE_REAUTH_REQUIRED",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// ─── 502 — Google auth failure (non-invalid_grant) ────────────────────────
+
+Deno.test("unit: POST /properties — 502 when Google token refresh fails with server error", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({
+    googleTokenServerError: true,
+  }) as typeof fetch;
   try {
     const res = await handleProperties(
       makeRequest(

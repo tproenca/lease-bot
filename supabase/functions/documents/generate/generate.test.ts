@@ -202,6 +202,7 @@ type MockFetchOpts = {
   templates?: typeof MOCK_TEMPLATES | null;
   // Google token exchange
   tokenExchangeFail?: boolean;
+  tokenServerError?: boolean;
   // Drive search for existing file (null = not found, string = found id)
   existingFileId?: string | null;
   driveSearchFail?: boolean;
@@ -235,6 +236,11 @@ function buildMockFetch(opts: MockFetchOpts) {
       if (opts.tokenExchangeFail) {
         return new Response(JSON.stringify({ error: "invalid_grant" }), {
           status: 400,
+        });
+      }
+      if (opts.tokenServerError) {
+        return new Response(JSON.stringify({ error: "server_error" }), {
+          status: 500,
         });
       }
       return new Response(
@@ -729,10 +735,30 @@ Deno.test("unit: generate — 404 when no templates mapped to property type", as
 // 502 — Drive API failures
 // ═══════════════════════════════════════════════════════════════════════════
 
-Deno.test("unit: generate — 502 when Google token refresh fails", async () => {
+Deno.test("unit: generate — 401 when Google token refresh returns invalid_grant", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({
     tokenExchangeFail: true,
+  }) as typeof fetch;
+  try {
+    const res = await handleGenerateDocuments(
+      makePostRequest(VALID_BODY, "valid.jwt"),
+    );
+    assertEquals(res.status, 401);
+    const body = await jsonBody(res) as Record<string, unknown>;
+    assertEquals(
+      (body.error as Record<string, string>).code,
+      "GOOGLE_REAUTH_REQUIRED",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("unit: generate — 502 when Google token refresh fails with server error", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({
+    tokenServerError: true,
   }) as typeof fetch;
   try {
     const res = await handleGenerateDocuments(

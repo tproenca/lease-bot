@@ -3,6 +3,22 @@
 // We deliberately keep the surface area small: just what the three onboarding
 // endpoints need. Other endpoints (issues 1.4+) will extend this module.
 
+/**
+ * Thrown by refreshGoogleAccessToken when Google rejects the refresh token
+ * with an "invalid_grant" error (HTTP 400). This typically means the token
+ * has been revoked, the user changed their Google password, or the token
+ * expired (OAuth apps in Testing mode expire after 7 days).
+ *
+ * Callers that want to return a user-actionable error should catch this class
+ * specifically and return 401 GOOGLE_REAUTH_REQUIRED so the GPT can prompt
+ * the landlord to reconnect their Google account.
+ */
+export class GoogleReauthRequiredError extends Error {
+  constructor() {
+    super("invalid_grant");
+  }
+}
+
 import { requireEnv } from "./env.ts";
 import { applyDocStyle } from "./docs-style.ts";
 import { PLACEHOLDER_GUIDE_CONTENT } from "./placeholder-guide-content.ts";
@@ -89,6 +105,10 @@ export async function refreshGoogleAccessToken(
   });
 
   if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    if ((body as Record<string, unknown>).error === "invalid_grant") {
+      throw new GoogleReauthRequiredError();
+    }
     throw new Error(`google_token_refresh_failed_${res.status}`);
   }
   const json = await res.json() as GoogleTokenResponse;

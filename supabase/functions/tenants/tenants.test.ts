@@ -86,6 +86,7 @@ type MockFetchOpts = {
   tenantFull?: typeof MOCK_TENANT_FULL | null;
   tenantExisting?: { id: string } | null;
   googleTokenFail?: boolean;
+  googleTokenServerError?: boolean;
   driveFolderFail?: boolean;
   driveStarFail?: boolean;
   dbInsertFail?: boolean;
@@ -198,6 +199,11 @@ function buildMockFetch(opts: MockFetchOpts) {
       if (opts.googleTokenFail) {
         return new Response(JSON.stringify({ error: "invalid_grant" }), {
           status: 400,
+        });
+      }
+      if (opts.googleTokenServerError) {
+        return new Response(JSON.stringify({ error: "server_error" }), {
+          status: 500,
         });
       }
       return new Response(
@@ -482,11 +488,36 @@ Deno.test("unit: POST /tenants — 404 when property not found or belongs to ano
   }
 });
 
-// ─── 502 — Google token refresh failure ──────────────────────────────────
+// ─── 401 — Google reauth required (invalid_grant) ─────────────────────────
 
-Deno.test("unit: POST /tenants — 502 when Google token refresh fails", async () => {
+Deno.test("unit: POST /tenants — 401 when Google token refresh returns invalid_grant", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({ googleTokenFail: true }) as typeof fetch;
+  try {
+    const res = await handleTenants(
+      makePostRequest(
+        { property_id: MOCK_PROPERTY_ID, name: "João", cpf: "123.456.789-00" },
+        "valid.jwt",
+      ),
+    );
+    assertEquals(res.status, 401);
+    const body = await jsonBody(res) as Record<string, unknown>;
+    assertEquals(
+      (body.error as Record<string, string>).code,
+      "GOOGLE_REAUTH_REQUIRED",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// ─── 502 — Google auth failure (non-invalid_grant) ────────────────────────
+
+Deno.test("unit: POST /tenants — 502 when Google token refresh fails with server error", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({
+    googleTokenServerError: true,
+  }) as typeof fetch;
   try {
     const res = await handleTenants(
       makePostRequest(
