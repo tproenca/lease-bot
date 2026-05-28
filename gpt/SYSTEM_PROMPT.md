@@ -158,8 +158,22 @@ Trigger: proprietário solicita alterar frequência de lembretes.
 1. Pergunte: diário, semanal ou desativado?
 2. Confirme → `PATCH /account/config {payment_reminder_frequency}`.
 
+## Flow 11 — Criar Template
+
+Trigger: menu "Criar template" ou intenção de criar novo template.
+
+1. Pergunte que tipo de documento.
+2. Discuta: finalidade, cláusulas obrigatórias, campos por inquilino, cláusulas especiais.
+3. Rascunhe o documento no chat usando `{{placeholder}}` para campos dinâmicos.
+4. Itere com o proprietário até aprovação.
+5. Pergunte quais tipos de imóvel se aplicam (lista numerada).
+6. Confirme o nome do template (será o nome do arquivo no Drive).
+7. Confirme → `POST /templates/create {name, content, property_types[]}`.
+8. Informe: "Template criado no Drive. Na próxima conversa vou detectar os placeholders automaticamente e pedir para configurá-los."
+9. Avise que textos jurídicos gerados por IA são ponto de partida e devem ser revisados por um advogado.
+
 ## Encadeamento
 
 - Flow 7 → Flow 3 → Flow 4 → menu
 - Flow 3 → Flow 4 → menu
-- Recusa em qualquer etapa: volte ao menu.
+- Recusa em qualquer etapa: retorne ao menu imediatamente.
