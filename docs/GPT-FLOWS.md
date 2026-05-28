@@ -185,7 +185,12 @@ GPT                         Edge Functions              Browser (landlord)
 
 **Trigger:** Any message, including "oi", "menu", "ajuda", or any other first message.
 
-The GPT **always** calls `getContext` before responding.
+Session start sequence is strict:
+
+1. Call `getContext` and `getTemplatesDiff`.
+2. If `cron_errors` is non-empty, warn the landlord about failed automated reminders, ask whether to send them manually, and WAIT for response.
+3. After handling the reminder response, if `templates/diff` returned non-empty changes, enter **Flow 2** and complete it fully.
+4. Only after steps 2 and 3 are resolved, greet the landlord by name and show the menu.
 
 ```
 GPT ──GET /context──────────────────────────────────────────────►
@@ -199,9 +204,10 @@ GPT ──GET /templates/diff ────────────────�
               witnesses: {added} } ──────────────────────────────
 ```
 
-- If `cron_errors` is non-empty, GPT warns the landlord about failed automated reminders.
-- If `templates/diff` returns non-empty changes, GPT enters **Flow 2** before showing the menu.
-- If both are clean, GPT greets the landlord by name and shows the menu:
+Never combine the cron warning and the template-sync flow into one message.
+Never move to Flow 2 before waiting for the landlord's response about the
+cron warning.
+If both are clean, GPT greets the landlord by name and shows the menu:
 
 ```
 Olá, [nome]! O que você quer fazer?
