@@ -274,21 +274,23 @@ placeholders.added   → GPT asks per placeholder (one message each, no API
                              1. Texto  2. Data  3. CPF  4. Inteiro  5. Moeda
 
                           Texto: "É obrigatório?" + "É derivado?"
-                             (yes: campo+fórmula; no: padrão)
+                             (yes: campo+fórmula; no: "Valor padrão?")
                              + "Qual transformação?"
                                (1.Maiúsculas 2.Minúsculas 3.Título 4.Frase)
                              + "Deseja restringir valores?" → options[]
                           Data:  "É obrigatório?" + "É derivado?"
-                             (yes: campo+fórmula; no: padrão)
+                             (yes: campo+fórmula; no: "Valor padrão?")
                              + "Qual formato de data?" (1.Normal 2.Por extenso)
-                             — format is always asked; derivation controls
-                             computation, format controls display.
+                             — format always asked; derivation=computation,
+                             format=display.
                           CPF:   "É obrigatório?" only
                           Inteiro: "É obrigatório?" + "É derivado?"
-                             (yes: campo+fórmula; no: padrão)
+                             (yes: campo+fórmula; no: "Valor padrão?")
                           Moeda: "É obrigatório?" + "Valor padrão?"
 
                           If derived: set required=false.
+                          Collect all, then show markdown table summary →
+                          "Confirma?" → POST /placeholders.
                         ──POST /placeholders───────────────────►
                           [{ name, required, format, case,
                              default_value, derived_from,
