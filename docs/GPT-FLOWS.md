@@ -210,7 +210,6 @@ Olá, [nome]! O que você quer fazer?
 4. Enviar para assinatura
 5. Adicionar inquilino
 6. Adicionar imóvel
-7. Criar template
 ```
 
 **API calls:**
@@ -604,7 +603,7 @@ If new building:
 
 ---
 
-## Flow 11 — Create Template _(deferred — not in GPT menu)_
+## Flow 11 — Create Template _(deferred — not in GPT menu or in system prompt)_
 
 > **Status:** Not yet implemented. Excluded from the GPT menu until the backend ships. Flow design preserved in `gpt/flow-create-template.md`. Tracked in [#77](https://github.com/tproenca/lease-bot/issues/77).
 
