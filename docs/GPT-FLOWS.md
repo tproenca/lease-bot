@@ -279,8 +279,10 @@ placeholders.added   → GPT asks per placeholder (one message each, no API
                                (1.Maiúsculas 2.Minúsculas 3.Título 4.Frase)
                              + "Deseja restringir valores?" → options[]
                           Data:  "É obrigatório?" + "É derivado?"
-                             (yes: campo+fórmula;
-                              no:  "Qual formato de data?" 1.Normal 2.Por extenso)
+                             (yes: campo+fórmula; no: padrão)
+                             + "Qual formato de data?" (1.Normal 2.Por extenso)
+                             — format is always asked; derivation controls
+                             computation, format controls display.
                           CPF:   "É obrigatório?" only
                           Inteiro: "É obrigatório?" + "É derivado?"
                              (yes: campo+fórmula; no: padrão)
