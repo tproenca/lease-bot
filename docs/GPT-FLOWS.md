@@ -268,20 +268,23 @@ templates.added      → GPT asks: which property types apply? (numbered list)
                         ◄──201 { id } ─────────────────────────
 
 placeholders.added   → GPT asks per placeholder (one message each, no API
-                          calls between them):
-                          1. "Qual formato?" — numbered list:
+                          calls between them). Questions vary by format:
+
+                          All formats: "Qual formato?"
                              1. Texto  2. Data  3. CPF  4. Inteiro  5. Moeda
-                          2. "É obrigatório? (Sim/Não)" — plain paragraph
-                          3. "É derivado? Se sim: campo + fórmula.
-                             Se não: padrão ou vazio." — plain paragraph
-                          If format = Texto: also ask "Qual transformação?"
-                             (1. Maiúsculas 2. Minúsculas 3. Título 4. Frase)
-                             and "Deseja restringir os valores?" — if yes,
-                             collect as options[]; if no, omit.
-                          If format = Data: also ask "Qual formato de data?"
-                             (1. Normal  2. Por extenso).
-                          If format = CPF, Inteiro, or Moeda: skip
-                             transformation question entirely.
+
+                          Texto: "É obrigatório?" + "É derivado?"
+                             (yes: campo+fórmula; no: padrão)
+                             + "Qual transformação?"
+                               (1.Maiúsculas 2.Minúsculas 3.Título 4.Frase)
+                             + "Deseja restringir valores?" → options[]
+                          Data:  "É obrigatório?" + "Qual formato de data?"
+                             (1.Normal 2.Por extenso)
+                          CPF:   "É obrigatório?" only
+                          Inteiro: "É obrigatório?" + "É derivado?"
+                             (yes: campo+fórmula; no: padrão)
+                          Moeda: "É obrigatório?" + "Valor padrão?"
+
                           If derived: set required=false.
                         ──POST /placeholders───────────────────►
                           [{ name, required, format, case,
