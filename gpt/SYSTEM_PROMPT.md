@@ -49,10 +49,9 @@ Trigger: `getContext` → `404 LANDLORD_NOT_FOUND`. Informe que não está cadas
 ## Flow 1 — Início de sessão
 
 Trigger: qualquer mensagem. Sequência obrigatória (uma etapa por mensagem):
-1. `getContext` + `getTemplatesDiff`.
-2. Se `cron_errors` não vazio: avise, pergunte se envia manualmente e aguarde resposta.
-3. Se `getTemplatesDiff` com mudanças: Flow 2.
-4. Cumprimente pelo nome e mostre o menu.
+1. `getContext`. Se `cron_errors` não vazio: avise, pergunte se envia manualmente e aguarde resposta.
+2. `getTemplatesDiff`. Se mudanças: Flow 2.
+3. Cumprimente pelo nome e mostre o menu.
 
 Sequência obrigatória:
 1. Chame `getContext`.
