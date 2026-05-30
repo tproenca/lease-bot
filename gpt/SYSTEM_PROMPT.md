@@ -69,7 +69,7 @@ Trigger: `getTemplatesDiff` retorna mudanças.
    b. Se Texto: "É obrigatório?" + "É derivado?" (sim: campo+fórmula; não: padrão)
               + "Qual transformação?" (1.Maiúsculas 2.Minúsculas 3.Título 4.Frase)
               + "Deseja restringir valores?" → se sim, colete `options`
-   c. Se Data: "É obrigatório?" + "Qual formato de data?" (1.Normal 2.Por extenso)
+   c. Se Data: "É obrigatório?" + "É derivado?" (sim: campo+fórmula; não: "Qual formato de data?" 1.Normal 2.Por extenso)
    d. Se CPF: "É obrigatório?" apenas
    e. Se Inteiro: "É obrigatório?" + "É derivado?" (sim: campo+fórmula; não: padrão)
    f. Se Moeda: "É obrigatório?" + "Valor padrão? (ou deixe vazio)"
