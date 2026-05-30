@@ -94,6 +94,7 @@ Feito! Posso ajudar com mais alguma coisa?
 4. Enviar para assinatura
 5. Adicionar inquilino
 6. Adicionar imóvel
+7. Criar template
 ```
 
 **Exception — chained flows:** flows that naturally lead into another do NOT re-show the menu between steps. The menu only appears at the end of the full chain or when the landlord declines to continue:
@@ -107,11 +108,12 @@ If the landlord declines a chain step (e.g. "não" to generating a contract afte
 
 ### Confirmation protocol
 
-Before any write API call, the GPT lists the fields directly (no header, no bullets) and waits for explicit confirmation:
+Before any write API call, the GPT shows a summary and waits for explicit confirmation:
 
 ```
-GPT: Template: Contrato Residencial
-     Tipos: apartamento, casa
+GPT: Resumo:
+     - Template: Contrato Residencial
+     - Tipos: apartamento, casa
 
      Confirma? (Sim para continuar)
 
@@ -124,40 +126,42 @@ Only "Sim" (or equivalent) triggers the API call. Any other response prompts the
 
 ## Flow 0 — Onboarding (first conversation, landlord not yet set up)
 
-**Trigger:** ChatGPT initiates OAuth authorization and the landlord has no account yet. Setup is embedded in the OAuth window — the landlord never leaves ChatGPT to a separate page.
+**Trigger:** GPT calls `getContext` and receives `HTTP 404 LANDLORD_NOT_FOUND`.
 
 ```
-GPT (ChatGPT)               Edge Functions              Browser (landlord)
+GPT                         Edge Functions              Browser (landlord)
  │                                │                           │
- ├──GET /oauth/authorize──────────►                           │
- │  (redirect_uri, state)         │  [stores ChatGPT redirect │
- │                                │   in cookie; proxies to   │
- │                                │   Google with consent]    │
- │                                │   ── Google login ────────►
+ ├──GET /context──────────────────►                           │
+ │◄──404 LANDLORD_NOT_FOUND───────┤                           │
+ │                                │                           │
+ │  [GPT shows setup URL]         │                           │
+ │                                │       GET /setup ─────────►
+ │                                │◄──── 200 HTML (pre-auth) ─┤
+ │                                │    (Entrar com Google btn) │
+ │                                │                           │
+ │                                │  ── click "Entrar" ───────►
+ │                                │◄── GET /oauth/authorize ──┤
+ │                                │──302 → accounts.google.com►
+ │                                │                     (login)
  │                                │◄── GET /auth/callback ────┤
- │                                │  [no landlord row →       │
- │                                │   redirect to /setup]     │
- │                                │──302 → /setup?via=oauth───►
- │                                │◄── GET /setup?via=oauth───┤
- │                                │──200 HTML (setup form) ───►
- │                                │  (Drive Picker + form;    │
- │                                │   already authenticated)  │
+ │                                │  (exchange code → tokens) │
+ │                                │──302 → /setup ────────────►
+ │                                │◄── GET /setup ────────────┤
+ │                                │──200 HTML (post-auth) ─────►
+ │                                │  (Drive Picker + form)    │
  │                                │                           │
- │                                │◄── POST /setup/complete───┤
+ │                                │◄── POST /setup/complete ──┤
  │                                │  (root_folder_id,         │
  │                                │   templates_folder_name,  │
  │                                │   whatsapp,               │
  │                                │   autentique_api_key,     │
  │                                │   autentique_webhook_secret)
- │                                │──200 { redirect_to } ─────►
- │                                │  [creates landlord row,   │
+ │                                │──201──────────────────────►
+ │                                │  (creates landlord row,   │
  │                                │   Drive folders, starter  │
- │                                │   docs, issues one-time   │
- │                                │   OAuth code]             │
- │◄── OAuth callback (code) ──────────── window.location ─────┤
+ │                                │   docs)                   │
  │                                │                           │
- ├──POST /oauth/token─────────────►                           │
- │◄──JWT──────────────────────────┤                           │
+ │  [landlord returns to GPT chat]│                           │
  │                                │                           │
  ├──GET /context──────────────────►                           │
  │◄──200 (landlord data) ─────────┤                           │
@@ -168,12 +172,12 @@ GPT (ChatGPT)               Edge Functions              Browser (landlord)
 
 | Step | Method | Path | Auth | Notes |
 |------|--------|------|------|-------|
-| Start OAuth | GET | `/oauth/authorize` | None | Stores ChatGPT `redirect_uri`+`state` in cookie; proxies to Google |
-| OAuth callback | GET | `/auth/callback` | None | Exchanges Google code; no landlord row → redirects to `/setup?via=oauth` |
-| Setup form | GET | `/setup?via=oauth` | Session cookie | Renders post-auth setup form (no "Entrar com Google" step) |
-| Complete setup | POST | `/setup/complete` | Session cookie | Creates landlord row + Drive folders; issues one-time OAuth code; returns `redirect_to` |
-| Exchange code | POST | `/oauth/token` | None | Returns Supabase JWT |
-| Load context | GET | `/context` | Bearer JWT | First `getContext` call; landlord row now exists |
+| Check landlord | GET | `/context` | Bearer JWT | Returns 404 LANDLORD_NOT_FOUND |
+| Start OAuth | GET | `/oauth/authorize` | None | Proxies to Google |
+| OAuth callback | GET | `/auth/callback` | None | Exchanges code, sets session cookie |
+| Get token | POST | `/oauth/token` | None | Returns Supabase JWT |
+| Complete setup | POST | `/setup/complete` | Bearer JWT | Creates landlord row + Drive folders |
+| Load context | GET | `/context` | Bearer JWT | Confirms setup succeeded |
 
 ---
 
@@ -210,6 +214,7 @@ Olá, [nome]! O que você quer fazer?
 4. Enviar para assinatura
 5. Adicionar inquilino
 6. Adicionar imóvel
+7. Criar template
 ```
 
 **API calls:**
@@ -227,35 +232,29 @@ Olá, [nome]! O que você quer fazer?
 
 The diff compares the landlord's Google Drive templates folder against the cached DB state. The GPT **lists all detected changes upfront**, then walks through each one interactively before showing the main menu.
 
-**Opening message (example — 3 changes, one is a re-upload):**
+**Opening message (example — 3 changes):**
 
 ```
 Detectei mudanças nos templates:
-- Alterado: Contrato Residencial
-- Novo: Contrato Comercial
-- Removido: Aditivo Antigo
+- Novos: Contrato Residencial, Contrato Comercial
+- Removidos: Aditivo Antigo
 
-Começando pelo Contrato Residencial — deseja manter os tipos de imóvel anteriores (Apartamento, Casa)?
-```
-
-Re-upload pairs are shown as a single **"Alterado"** entry in the summary — not as separate added + removed lines. The implementation detail is irrelevant to the landlord.
-
-For genuinely new templates (not a re-upload), the GPT asks property types as a numbered list:
-
-```
-Para quais tipos de imóvel o template "Contrato Comercial" se aplica?
+Vamos configurar cada um. Começando com Contrato Residencial — para quais tipos de imóvel ele se aplica?
 1. Apartamento
 2. Casa
 3. Imóvel comercial
 ```
 
-**Re-upload detection:** A template is a re-upload **only if the same name appears in both `added` and `removed` in the same diff response**. The GPT must use only the API response to determine this — never conversation history, prior sessions, or any other signal.
+**Re-upload detection:** If the same template name appears in both `added` and `removed`, the GPT treats it as a re-upload (file deleted and re-uploaded to Drive, producing a new Drive file ID). Instead of asking property types from scratch, it asks:
+
+```
+O template "Contrato Residencial" parece ter sido re-enviado para o Drive.
+Deseja manter as configurações anteriores? (tipos: Apartamento, Casa)
+```
 
 If the landlord confirms, the GPT uses the `property_types` from the `removed` entry (returned by the API — see #78) to call `POST /templates` without asking again. If they decline, the GPT asks for property types normally.
 
 > **Note:** Re-upload detection requires `GET /templates/diff` to return `removed.templates` as `Array<{ name, property_types }>` instead of `string[]`. Tracked in [#78](https://github.com/tproenca/lease-bot/issues/78). Until that ships, the GPT will ask for property types even on re-uploads.
-
-**System-generated files excluded by the API:** `"Guia de Placeholders"` and `"Lista de Placeholders"` are never returned in the diff — the endpoint filters them out before responding. The GPT will never see them and must not act on them.
 
 **Per-change actions:**
 
@@ -268,32 +267,26 @@ templates.added      → GPT asks: which property types apply? (numbered list)
                             last_modified_at }
                         ◄──201 { id } ─────────────────────────
 
-placeholders.added   → For each placeholder, GPT sends one message with:
-                        • "Qual formato?" followed by a numbered list:
-                            1. Texto  2. Data  3. CPF  4. Inteiro  5. Moeda
-                        • "É obrigatório? (Sim/Não)" — plain text paragraph,
-                          NOT a numbered item
-                        • "É derivado? Se sim: campo + fórmula.
-                           Se não: padrão ou vazio." — plain text paragraph
-                        If format = Texto: also ask "Qual transformação?"
-                        as a separate numbered list and ask whether to restrict
-                        allowed values. If yes, collect a comma-separated list
-                        as options[]; if no, omit options.
-                        Only the format/transformation options get numbered
-                        lists — the other questions are plain paragraphs.
-                        Collects all answers first (no API calls between
-                        placeholders), then shows summary as a TABLE
-                        (columns: nome, formato, transformação, obrigatório,
-                        padrão, derivado, opções), then sends ONE call after "Sim":
+placeholders.added   → GPT asks per placeholder (one message each, no API
+                          calls between them):
+                          1. "Qual formato?" — numbered list:
+                             1. Texto  2. Data  3. CPF  4. Inteiro  5. Moeda
+                          2. "É obrigatório? (Sim/Não)" — plain paragraph
+                          3. "É derivado? Se sim: campo + fórmula.
+                             Se não: padrão ou vazio." — plain paragraph
+                          If format = Texto: also ask "Qual transformação?"
+                             (1. Maiúsculas 2. Minúsculas 3. Título 4. Frase)
+                             and "Deseja restringir os valores?" — if yes,
+                             collect as options[]; if no, omit.
+                          If format = Data: also ask "Qual formato de data?"
+                             (1. Normal  2. Por extenso).
+                          If format = CPF, Inteiro, or Moeda: skip
+                             transformation question entirely.
+                          If derived: set required=false.
                         ──POST /placeholders───────────────────►
-                          { placeholders: [
-                              { name, format, required,
-                                case?, default?,
-                                derived_from?, derived_formula?,
-                                options? }
-                            ] }
-                        Optional fields (case, default, derived_from,
-                        derived_formula, options) are omitted — not null — when empty.
+                          [{ name, required, format, case,
+                             default_value, derived_from,
+                             derived_formula, options? }]
                         ◄──201 { ids[] } ───────────────────────
 
 witnesses.added      → GPT asks: WhatsApp number for each
@@ -603,9 +596,9 @@ If new building:
 
 ---
 
-## Flow 11 — Create Template _(deferred — not in GPT menu or in system prompt)_
+## Flow 11 — Create Template _(planned)_
 
-> **Status:** Not yet implemented. Excluded from the GPT menu until the backend ships. Flow design preserved in `gpt/flow-create-template.md`. Tracked in [#77](https://github.com/tproenca/lease-bot/issues/77).
+> **Status:** Not yet implemented. Tracked in [#77](https://github.com/tproenca/lease-bot/issues/77).
 
 **Trigger:** Menu item "Criar template" or user intent ("quero criar um novo template", "preciso de um aditivo de renovação").
 
