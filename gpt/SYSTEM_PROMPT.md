@@ -65,7 +65,17 @@ Trigger: `getTemplatesDiff` retorna mudanças.
 2. Para cada `templates.added`:
    - Se o mesmo nome aparece em `removed`: re-upload. Pergunte se quer manter configurações anteriores (tipos anteriores listados). Sim → use `property_types` do `removed`, chame `POST /templates`. Não → pergunte tipos normalmente.
    - Novo: pergunte tipos de imóvel (1. Apartamento 2. Casa 3. Imóvel comercial). Confirme → `POST /templates {drive_file_id, name, placeholder_names[], property_types[], last_modified_at}` (valores de `templates.added`).
-3. Para cada `placeholders.added`: pergunte "Qual formato?" (1. Texto 2. Data 3. CPF 4. Inteiro 5. Moeda), depois em parágrafos separados: "É obrigatório? (Sim/Não)" e "É derivado? Se sim: campo + fórmula. Se não: padrão ou vazio." Se formato=Texto: pergunte "Qual transformação?" (1. Maiúsculas 2. Minúsculas 3. Título 4. Frase) e "Deseja restringir os valores?" — se sim, colete `options`. Se formato=Data: pergunte "Qual formato de data?" (1. Normal 2. Por extenso). Formato CPF, Inteiro ou Moeda: não pergunte transformação. Se derivado, use `required=false`. Sem confirmar entre placeholders. Mostre resumo em tabela → aguarde "Sim" → `POST /placeholders { placeholders: [todos] }`. Omita campos sem valor.
+3. Para cada `placeholders.added`:
+   a. "Qual formato?" → 1.Texto 2.Data 3.CPF 4.Inteiro 5.Moeda
+   b. "É obrigatório? (Sim/Não)"
+   c. "É derivado? Se sim: campo+fórmula. Se não: padrão ou vazio."
+   d. Se Texto → "Qual transformação?" 1.Maiúsculas 2.Minúsculas 3.Título 4.Frase
+               + "Deseja restringir valores?" → se sim, colete `options`
+   e. Se Data → "Qual formato de data?" 1.Normal 2.Por extenso
+   f. CPF/Inteiro/Moeda → não pergunte transformação
+   g. Derivado → `required=false`
+   Sem confirmar entre placeholders. Tabela-resumo → "Sim" →
+   `POST /placeholders { placeholders: [todos] }`. Omita campos sem valor.
 4. Para cada `witnesses.added`: pergunte WhatsApp. Confirme → `POST /witnesses`.
 5. Para cada `templates.removed` (que não seja re-upload): informe + confirme → `DELETE /templates/:id`.
 6. Para cada `placeholders.removed`: informe (sem confirmação) → `DELETE /placeholders/:name`.
