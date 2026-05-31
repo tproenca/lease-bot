@@ -3,6 +3,9 @@
 ## Unreleased
 
 ### Fixed
+- `supabase/seed.sql` (new file): seeds `app.service_role_key` and `app.functions_base_url` GUC settings on `supabase db reset` so the `send_payment_reminders()` pg_cron job can reach Edge Functions internally. Eliminates daily `cron_errors` rows in local dev. (issue 113)
+
+### Fixed
 - `POST /signatures/send`: `exportAndMergePdfs` now has a guard around its internal `refreshGoogleAccessToken` call. If the landlord's token is revoked between the initial Drive auth (step 6) and the export (step 7), the handler returns `401 GOOGLE_REAUTH_REQUIRED` instead of an unhandled `500`. Other export failures continue to return `502 PDF_EXPORT_FAILED`. (issue 107)
 - All endpoints that call `refreshGoogleAccessToken` now return `401 GOOGLE_REAUTH_REQUIRED` (with a Portuguese reconnect hint) when Google responds with `invalid_grant`, instead of a generic `502 GOOGLE_AUTH_FAILED`. Other Google auth failures (network errors, 5xx from Google) continue to return `502 GOOGLE_AUTH_FAILED` unchanged. `docs/GPT-FLOWS.md` and `gpt/SYSTEM_PROMPT.md` updated so the GPT instructs the landlord to reconnect via ChatGPT's account settings. (issue 105)
 - `GET /templates/diff`: now detects unconfigured placeholders by comparing `templates.placeholder_names` against the `placeholders` table. When a session is interrupted after the template is saved but before `POST /placeholders` completes, the next call correctly returns the missing names in `placeholders.added`, preventing the GPT from silently skipping Flow 2. The fast path only fires when there are zero template-level changes AND zero unconfigured placeholders. (issue 103)
