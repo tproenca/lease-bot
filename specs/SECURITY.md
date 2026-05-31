@@ -97,6 +97,7 @@ in narrowly justified cases. Every approved usage is listed here.
 | `POST /setup/complete` | Initial insert of the `landlords` row. RLS cannot grant the insert because the row does not yet exist — `auth.uid()` has no matching `landlord_id` to satisfy `id = auth.uid()`. The Edge Function binds `id = user.id` from the verified JWT, so the new row is owned by the authenticated user from that point on. | Single `INSERT` into `landlords`; followed by a `SELECT` on the same row only in the idempotent retry branch. |
 | `GET /setup` (post-auth state check) | Checking whether the landlord row exists before the row is created. Same rationale as above — RLS returns no row for an unauthenticated landlord, so the service role is used to determine which page state to render. | Single `SELECT id, templates_folder_id FROM landlords WHERE id = $user_id`. |
 | `GET /auth/callback` (refresh-token persist) | Storing the Google refresh token in auth user metadata via `auth.admin.updateUserById`. Supabase's admin API requires the service role. | Single `updateUserById` targeting only the authenticated user's record. |
+| `GET /context/health/cron` | External monitors (BetterStack / UptimeRobot) cannot obtain a landlord JWT, so a service-role client is required to read the `cron_errors` table. | Single read-only `SELECT` on `cron_errors` filtered to the last 25 hours. |
 
 ---
 

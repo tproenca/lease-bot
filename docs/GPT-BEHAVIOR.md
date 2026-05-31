@@ -42,7 +42,7 @@ When shown to the landlord, the URL must be rendered as a full clickable link �
 - If a Drive operation fails, show the landlord the document link and ask them to try again.
 - If signature submission fails because signature fields are missing (`422 SIGNATURE_MARKERS_NOT_FOUND`), explain that the template is missing the required signature lines: each signer needs a line of underscores (`_______`) with a label immediately below it — `Locador`, `Locatário`, or `Testemunha` — and ask the landlord to fix the template.
 - If WhatsApp send fails (`422 WHATSAPP_SEND_FAILED`), inform the landlord and let them retry.
-- If `cron_errors` are present in the `/context` response, surface them: *"Houve um erro no envio automático de lembretes. Deseja que eu envie manualmente?"* — then offer to trigger reminders via Flow 6.
+- Cron errors are no longer surfaced by the GPT. They are monitored externally via `GET /health/cron` (polled by BetterStack / UptimeRobot). The GPT does not expose `cron_errors` and does not offer to trigger reminders in response to them.
 
 ---
 
