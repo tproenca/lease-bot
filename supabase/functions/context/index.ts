@@ -13,12 +13,22 @@
 // No service-role key is used here — all queries run under the landlord's own
 // JWT, which means RLS policies on all tables restrict results to the
 // authenticated landlord's rows without any additional WHERE clause needed.
+//
+// GET /context/health/cron
+//
+// Health check endpoint for external uptime monitors (e.g. UptimeRobot).
+// Returns 200 { status: "ok" } when no cron_errors exist in the last 25 hours,
+// or 503 { status: "error", errors: [...] } when one or more errors exist.
+//
+// Auth: Bearer service-role key — not a landlord JWT. Not intended for GPT use.
 
 import { corsHeaders } from "../_shared/cors.ts";
+import { requireEnv } from "../_shared/env.ts";
 import { errorResponse } from "../_shared/errors.ts";
 import {
   extractBearer,
   getAuthenticatedUser,
+  serviceClient,
   userClient,
 } from "../_shared/supabase.ts";
 
@@ -192,4 +202,70 @@ export async function handleContext(req: Request): Promise<Response> {
   });
 }
 
-if (import.meta.main) Deno.serve(handleContext);
+// ─── GET /context/health/cron ─────────────────────────────────────────────
+
+export async function handleHealthCron(req: Request): Promise<Response> {
+  // Handle CORS preflight.
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  // Only GET is accepted.
+  if (req.method !== "GET") {
+    return errorResponse(405, "METHOD_NOT_ALLOWED", "Método não permitido.");
+  }
+
+  // Require service-role key for authentication. The caller must send:
+  //   Authorization: Bearer <service_role_key>
+  // This endpoint is not intended for GPT use — it is called by external
+  // uptime monitors that cannot obtain a landlord JWT.
+  const bearer = extractBearer(req);
+  if (!bearer || bearer !== requireEnv("SUPABASE_SERVICE_ROLE_KEY")) {
+    return errorResponse(
+      401,
+      "UNAUTHORIZED",
+      "Token de autorização inválido.",
+    );
+  }
+
+  // Query cron_errors from the last 25 hours using the service client.
+  const db = serviceClient();
+  const { data: errors, error } = await db
+    .from("cron_errors")
+    .select("job_name, error, occurred_at")
+    .gte(
+      "occurred_at",
+      new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(),
+    )
+    .order("occurred_at", { ascending: false });
+
+  if (error) {
+    return errorResponse(500, "DB_ERROR", "Erro ao verificar cron_errors.");
+  }
+
+  const rows = errors ?? [];
+
+  if (rows.length === 0) {
+    return new Response(JSON.stringify({ status: "ok" }), {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  return new Response(JSON.stringify({ status: "error", errors: rows }), {
+    status: 503,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+// ─── Entry point ─────────────────────────────────────────────────────────────
+
+function serve(req: Request): Promise<Response> {
+  const url = new URL(req.url);
+  if (url.pathname.endsWith("/health/cron")) {
+    return handleHealthCron(req);
+  }
+  return handleContext(req);
+}
+
+if (import.meta.main) Deno.serve(serve);

@@ -407,6 +407,58 @@ paths:
                           type: string
                           format: date-time
 
+  # ── Health ────────────────────────────────────────────────
+
+  /context/health/cron:
+    get:
+      operationId: getHealthCron
+      summary: Cron health check for external uptime monitors
+      description: |
+        Returns 200 when no cron_errors exist in the last 25 hours, or 503
+        when one or more errors are present. Authenticated with the
+        service-role key — not a landlord JWT. Not callable by the GPT.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: No cron errors in the last 25 hours
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [ok]
+        '401':
+          description: Unauthorized — service-role key required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: One or more cron errors in the last 25 hours
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [error]
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        job_name:
+                          type: string
+                        error:
+                          type: string
+                        occurred_at:
+                          type: string
+                          format: date-time
+
   # ── Account Config ───────────────────────────────────────
 
   /account/config:

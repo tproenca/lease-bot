@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Added
+- `GET /context/health/cron`: new sub-route of the `context` Edge Function. Returns `200 { status: "ok" }` when no `cron_errors` rows exist in the last 25 hours, or `503 { status: "error", errors: [...] }` otherwise. Authenticated with the service-role key for use by external uptime monitors (e.g. UptimeRobot). (issue 119)
+- `gpt/SYSTEM_PROMPT.md`: removed cron error handling from Flow 1 and the `cron_errors` entry from the Erros section — cron failures are now monitored externally and no longer interrupt GPT sessions. (issue 119)
+- `docs/GPT-FLOWS.md`: updated Flow 1 to remove cron error handling steps; updated Flow 6 note and API Quick Reference to reference the new health endpoint. (issue 119)
+
 ### Security
 - `supabase/migrations/20260531012207_rls-app-config.sql`: enable Row Level Security on `public.app_config`. The Supabase security advisor flagged the table because RLS was disabled despite `REVOKE ALL` from `anon`/`authenticated`. No policies are added — deny-all by default is the intent. `SECURITY DEFINER` functions bypass RLS and are unaffected. (issue 118)
 - `supabase/migrations/20260531012036_rls-oauth-codes.sql`: enable Row Level Security on `public.oauth_codes`. No `anon`/`authenticated` policies are added since the table is exclusively accessed via the service-role client (which bypasses RLS). Direct tenant-scoped access is now blocked at the DB layer, clearing the Supabase security advisor warning. (issue 96)

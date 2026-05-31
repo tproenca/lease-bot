@@ -1,9 +1,10 @@
 // unit: GET /context
+// unit: GET /context/health/cron
 //
-// Tests call handleContext() directly, following the same pattern as
-// supabase/functions/setup/complete/complete.test.ts. Network calls to
-// Supabase Auth and PostgREST are intercepted via globalThis.fetch stubs so
-// no real Supabase instance is needed.
+// Tests call handleContext() and handleHealthCron() directly, following the
+// same pattern as supabase/functions/setup/complete/complete.test.ts. Network
+// calls to Supabase Auth and PostgREST are intercepted via globalThis.fetch
+// stubs so no real Supabase instance is needed.
 //
 // Test names follow the "unit:" / "integration:" prefix convention.
 
@@ -14,7 +15,7 @@ Deno.env.set("SUPABASE_URL", "http://localhost:54321");
 Deno.env.set("SUPABASE_ANON_KEY", "test-anon-key");
 Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", "test-service-role-key");
 
-import { handleContext } from "./index.ts";
+import { handleContext, handleHealthCron } from "./index.ts";
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────
 
@@ -473,6 +474,151 @@ Deno.test("unit: GET /context — placeholders include null options when not set
     const placeholders = body.placeholders as Array<Record<string, unknown>>;
     assertEquals(placeholders.length, 1);
     assertEquals(placeholders[0].options, null);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GET /context/health/cron — unit tests
+// ═══════════════════════════════════════════════════════════════════════════
+
+const SERVICE_ROLE_KEY = "test-service-role-key";
+
+function makeHealthRequest(bearer?: string, method = "GET"): Request {
+  const headers: Record<string, string> = {};
+  if (bearer) headers["Authorization"] = `Bearer ${bearer}`;
+  return new Request("http://localhost/context/health/cron", {
+    method,
+    headers,
+  });
+}
+
+// ─── 401 — no bearer ─────────────────────────────────────────────────────
+
+Deno.test("unit: GET /context/health/cron — 401 when no Authorization header", async () => {
+  const res = await handleHealthCron(makeHealthRequest());
+  assertEquals(res.status, 401);
+  const body = await jsonBody(res);
+  assertEquals((body.error as Record<string, string>).code, "UNAUTHORIZED");
+});
+
+// ─── 401 — wrong bearer ──────────────────────────────────────────────────
+
+Deno.test("unit: GET /context/health/cron — 401 when bearer is not the service-role key", async () => {
+  const res = await handleHealthCron(makeHealthRequest("wrong-key"));
+  assertEquals(res.status, 401);
+  const body = await jsonBody(res);
+  assertEquals((body.error as Record<string, string>).code, "UNAUTHORIZED");
+});
+
+// ─── 200 — no cron errors in the last 25 hours ───────────────────────────
+
+Deno.test("unit: GET /context/health/cron — 200 when no cron_errors rows", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = typeof input === "string"
+      ? input
+      : input instanceof URL
+      ? input.href
+      : (input as Request).url;
+    if (url.includes("/rest/v1/cron_errors")) {
+      return new Response(JSON.stringify([]), { status: 200 });
+    }
+    throw new Error(`Unexpected fetch in health test: ${url}`);
+  }) as typeof fetch;
+
+  try {
+    const res = await handleHealthCron(makeHealthRequest(SERVICE_ROLE_KEY));
+    assertEquals(res.status, 200);
+    const body = await jsonBody(res);
+    assertEquals(body.status, "ok");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// ─── 503 — cron errors present ───────────────────────────────────────────
+
+Deno.test("unit: GET /context/health/cron — 503 when cron_errors rows exist", async () => {
+  const MOCK_ERROR_ROW = {
+    job_name: "send_payment_reminders",
+    error: "Connection timeout",
+    occurred_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+  };
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = typeof input === "string"
+      ? input
+      : input instanceof URL
+      ? input.href
+      : (input as Request).url;
+    if (url.includes("/rest/v1/cron_errors")) {
+      return new Response(JSON.stringify([MOCK_ERROR_ROW]), { status: 200 });
+    }
+    throw new Error(`Unexpected fetch in health test: ${url}`);
+  }) as typeof fetch;
+
+  try {
+    const res = await handleHealthCron(makeHealthRequest(SERVICE_ROLE_KEY));
+    assertEquals(res.status, 503);
+    const body = await jsonBody(res);
+    assertEquals(body.status, "error");
+    const errors = body.errors as Array<Record<string, unknown>>;
+    assertEquals(errors.length, 1);
+    assertEquals(errors[0].job_name, "send_payment_reminders");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// ─── 405 — wrong HTTP method ──────────────────────────────────────────────
+
+Deno.test("unit: GET /context/health/cron — 405 when POST is used", async () => {
+  const res = await handleHealthCron(
+    makeHealthRequest(SERVICE_ROLE_KEY, "POST"),
+  );
+  assertEquals(res.status, 405);
+  const body = await jsonBody(res);
+  assertEquals(
+    (body.error as Record<string, string>).code,
+    "METHOD_NOT_ALLOWED",
+  );
+});
+
+// ─── OPTIONS preflight ────────────────────────────────────────────────────
+
+Deno.test("unit: GET /context/health/cron — OPTIONS returns 200 with CORS headers", async () => {
+  const res = await handleHealthCron(makeHealthRequest(undefined, "OPTIONS"));
+  assertEquals(res.status, 200);
+  assertEquals(res.headers.get("Access-Control-Allow-Origin") !== null, true);
+});
+
+// ─── DB error fallback ────────────────────────────────────────────────────
+
+Deno.test("unit: GET /context/health/cron — 500 when DB query fails", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = typeof input === "string"
+      ? input
+      : input instanceof URL
+      ? input.href
+      : (input as Request).url;
+    if (url.includes("/rest/v1/cron_errors")) {
+      return new Response(
+        JSON.stringify({ message: "connection refused", code: "PGRST000" }),
+        { status: 500 },
+      );
+    }
+    throw new Error(`Unexpected fetch in health test: ${url}`);
+  }) as typeof fetch;
+
+  try {
+    const res = await handleHealthCron(makeHealthRequest(SERVICE_ROLE_KEY));
+    assertEquals(res.status, 500);
+    const body = await jsonBody(res);
+    assertEquals((body.error as Record<string, string>).code, "DB_ERROR");
   } finally {
     globalThis.fetch = originalFetch;
   }
