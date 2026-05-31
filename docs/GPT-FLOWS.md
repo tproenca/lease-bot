@@ -187,10 +187,9 @@ GPT                         Edge Functions              Browser (landlord)
 
 Session start sequence is strict:
 
-1. Call `getContext` and `getTemplatesDiff`.
-2. If `cron_errors` is non-empty, warn the landlord about failed automated reminders, ask whether to send them manually, and WAIT for response.
-3. After handling the reminder response, if `templates/diff` returned non-empty changes, enter **Flow 2** and complete it fully.
-4. Only after steps 2 and 3 are resolved, greet the landlord by name and show the menu.
+1. Call `getContext`.
+2. Call `getTemplatesDiff`. If non-empty changes, enter **Flow 2** and complete it fully.
+3. Only after step 2 is resolved, greet the landlord by name and show the menu.
 
 ```
 GPT ──GET /context──────────────────────────────────────────────►
@@ -204,9 +203,6 @@ GPT ──GET /templates/diff ────────────────�
               witnesses: {added} } ──────────────────────────────
 ```
 
-Never combine the cron warning and the template-sync flow into one message.
-Never move to Flow 2 before waiting for the landlord's response about the
-cron warning.
 If both are clean, GPT greets the landlord by name and shows the menu:
 
 ```
@@ -467,7 +463,7 @@ For each tenant to remind:
   (or 422 WHATSAPP_SEND_FAILED — GPT informs landlord)
 ```
 
-**Note:** Automated reminders are sent by pg_cron (no GPT involvement). If `cron_errors` were returned in `/context`, GPT surfaces them here and offers to send manually.
+**Note:** Automated reminders are sent by pg_cron (no GPT involvement). Cron job failures are monitored externally via `GET /context/health/cron` and do not interrupt the GPT session.
 
 **API calls:**
 
@@ -688,6 +684,7 @@ desconecte e conecte novamente.
 | Method | Path | GPT-callable | Auth | Purpose |
 |--------|------|:---:|------|---------|
 | GET | `/context` | ✅ | Bearer JWT | Load all landlord data (called every session) |
+| GET | `/context/health/cron` | ❌ monitor-only | Bearer service-role key | Cron health check — 200 ok / 503 error |
 | GET | `/templates/diff` | ✅ | Bearer JWT | Detect Drive template/placeholder changes |
 | POST | `/templates` | ✅ | Bearer JWT | Register a template + property-type mappings |
 | DELETE | `/templates/:id` | ✅ | Bearer JWT | Remove a template |
