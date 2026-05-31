@@ -4,7 +4,6 @@
 
 ### Fixed
 - `GET /templates/diff`: "Lista de Placeholders" is now excluded from diff results alongside "Guia de Placeholders". Previously the dynamic reference doc was treated as a new template, causing the GPT to ask for property types. (issue 126)
-
 ### Changed
 - `placeholders.derived_from` column dropped; the "base field" shown in the "Lista de Placeholders" Google Doc is now computed on the fly from `derived_formula` via regex (`/^[a-z_][a-z0-9_]*/i`). `POST /placeholders` no longer accepts `derived_from`; `GET /context` and `GET /placeholders` no longer return it. `gpt/SYSTEM_PROMPT.md` updated to remove `— derived_from=1º campo` from 3 flow prompts; `docs/GPT-FLOWS.md` and `gpt/openapi.yaml` updated accordingly. (issue 124)
 

@@ -101,9 +101,6 @@ components:
         default:
           type: string
           nullable: true
-        derived_from:
-          type: string
-          nullable: true
         derived_formula:
           type: string
           nullable: true

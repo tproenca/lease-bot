@@ -59,20 +59,20 @@ Deno.test("unit: buildPlaceholderListContent — null optional fields render as 
     format: "text",
     case: null,
     default: null,
-    derived_from: null,
+    derived_formula: null,
   }]);
   const dashes = (md.match(/—/g) ?? []).length;
   assertEquals(dashes >= 3, true);
 });
 
-Deno.test("unit: buildPlaceholderListContent — provided optional fields are included", () => {
+Deno.test("unit: buildPlaceholderListContent — base field extracted from derived_formula", () => {
   const md = buildPlaceholderListContent([{
     name: "data_fim",
     required: false,
     format: "date",
     case: "minúsculas",
     default: "hoje",
-    derived_from: "data_inicio",
+    derived_formula: "data_inicio + prazo_meses",
   }]);
   assertStringIncludes(md, "minúsculas");
   assertStringIncludes(md, "hoje");
