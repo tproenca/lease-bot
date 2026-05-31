@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Fixed
+- `supabase/migrations/011_app_config_table.sql` (new migration): replaces the GUC-based (`ALTER DATABASE SET`) approach from migration 010 with an `app_config` key/value table. `send_payment_reminders()` now reads `service_role_key` and `functions_base_url` from `app_config` instead of `current_setting()`, eliminating the superuser requirement and the daily `cron_errors` rows that resulted from the silent skip in local dev. `REVOKE ALL` on `app_config` from `anon`/`authenticated` roles keeps secrets inaccessible to tenant requests. (issue 116)
 - `supabase/migrations/010_local_dev_guc.sql` (new migration): sets `app.service_role_key` and `app.functions_base_url` GUC settings on `supabase db reset` so the `send_payment_reminders()` pg_cron job can reach Edge Functions internally. Guards prevent overwriting production values or failing in CI. Eliminates daily `cron_errors` rows in local dev. (issue 113)
 
 ### Fixed
