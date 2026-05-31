@@ -392,7 +392,6 @@ Deno.test("unit: POST /placeholders — 201 accepts optional fields", async () =
           ...VALID_BODY,
           case: "maiúsculas",
           default: "valor padrão",
-          derived_from: "outro placeholder",
           derived_formula: "fórmula de derivação",
         },
         "valid.jwt",

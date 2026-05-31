@@ -462,7 +462,6 @@ export async function upsertPlaceholderList(params: {
     format: string;
     case?: string | null;
     default?: string | null;
-    derived_from?: string | null;
     derived_formula?: string | null;
   }>;
 }): Promise<string> {
@@ -490,14 +489,14 @@ export function buildPlaceholderListContent(
     format: string;
     case?: string | null;
     default?: string | null;
-    derived_from?: string | null;
+    derived_formula?: string | null;
   }>,
 ): string {
   const sorted = [...placeholders].sort((a, b) => a.name.localeCompare(b.name));
   const rows = sorted.map((p) => {
     const req = p.required ? "sim" : "não";
     const caseVal = p.case ?? "—";
-    const base = p.derived_from ?? "—";
+    const base = p.derived_formula?.match(/^[a-z_][a-z0-9_]*/i)?.[0] ?? "—";
     const def = p.default ?? "—";
     return `| {{${p.name}}} | ${p.format} | ${req} | ${caseVal} | ${base} | ${def} |`;
   });

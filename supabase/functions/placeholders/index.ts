@@ -101,7 +101,6 @@ async function handleCreatePlaceholder(req: Request): Promise<Response> {
     format: string;
     case: string | null;
     default: string | null;
-    derived_from: string | null;
     derived_formula: string | null;
     options: string[] | null;
   }> = [];
@@ -113,7 +112,6 @@ async function handleCreatePlaceholder(req: Request): Promise<Response> {
       format,
       case: caseField,
       default: defaultField,
-      derived_from,
       derived_formula,
       options,
     } = (item ?? {}) as Record<string, unknown>;
@@ -162,7 +160,6 @@ async function handleCreatePlaceholder(req: Request): Promise<Response> {
       format: format as string,
       case: (caseField ?? null) as string | null,
       default: (defaultField ?? null) as string | null,
-      derived_from: (derived_from ?? null) as string | null,
       derived_formula: (derived_formula ?? null) as string | null,
       options: optionsValue,
     });
@@ -284,7 +281,7 @@ async function regeneratePlaceholderList(
     const { data: placeholders } = await db
       .from("placeholders")
       .select(
-        "name, required, format, case, default, derived_from, derived_formula, options",
+        "name, required, format, case, default, derived_formula, options",
       )
       .order("name");
 
@@ -298,7 +295,6 @@ async function regeneratePlaceholderList(
         format: string;
         case?: string | null;
         default?: string | null;
-        derived_from?: string | null;
         derived_formula?: string | null;
         options?: string[] | null;
       }>,

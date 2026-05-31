@@ -101,7 +101,7 @@ export async function handleContext(req: Request): Promise<Response> {
     db
       .from("placeholders")
       .select(
-        "name, required, format, case, default, derived_from, derived_formula, options",
+        "name, required, format, case, default, derived_formula, options",
       )
       .order("name"),
     db
