@@ -10,7 +10,7 @@
 //   - Codes expire after 5 minutes (enforced by the expires_at DB column).
 //   - Codes are deleted on first successful exchange (single-use).
 //   - Tokens stored here are Supabase JWTs, never Google tokens.
-//   - All DB operations use the service-role client (oauth_codes has no RLS).
+//   - All DB operations use the service-role client (service-role bypasses RLS).
 //
 // See migration 007_oauth_codes.sql and issue #89.
 
