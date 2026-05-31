@@ -63,15 +63,14 @@ Trigger: `getTemplatesDiff` retorna mudanças.
    - Novo: pergunte tipos de imóvel (1. Apartamento 2. Casa 3. Imóvel comercial). Confirme → `POST /templates {drive_file_id, name, placeholder_names[], property_types[], last_modified_at}` (valores de `templates.added`).
 3. Para cada `placeholders.added`:
    a. "Qual formato?" → 1.Texto 2.Data 3.CPF 4.Inteiro 5.Moeda
-   b. Se Texto: "É obrigatório?" + "É derivado?" (sim: "Campo de origem e fórmula? (ex: data_inicio + prazo_meses)"; não: "Valor padrão?")
+   b. Se Texto: "É obrigatório?" + "É derivado?" (sim: "Campo de origem e fórmula?"; não: "Valor padrão?")
               + "Qual transformação?" (1.Maiúsculas 2.Minúsculas 3.Título 4.Frase)
               + "Deseja restringir valores?" → se sim, colete `options`
-   c. Se Data: "É obrigatório?" + "É derivado?" (sim: "Campo de origem e fórmula? (ex: data_inicio + prazo_meses)"; não: "Valor padrão?") + "Qual formato de data?" (1.Normal 2.Por extenso)
+   c. Se Data: "É obrigatório?" + "É derivado?" (sim: "Campo de origem e fórmula?"; não: "Valor padrão?") + "Qual formato de data?" (1.Normal 2.Por extenso)
    d. Se CPF: "É obrigatório?" apenas
-   e. Se Inteiro: "É obrigatório?" + "É derivado?" (sim: "Campo de origem e fórmula? (ex: data_inicio + prazo_meses)"; não: "Valor padrão?")
+   e. Se Inteiro: "É obrigatório?" + "É derivado?" (sim: "Campo de origem e fórmula?"; não: "Valor padrão?")
    f. Se Moeda: "É obrigatório?" + "Valor padrão? (ou deixe vazio)"
-   Derivado → `required=false`.
-   Tabela markdown → "Confirma?" → chame `POST /placeholders { placeholders: [todos] }`. Omita campos sem valor.
+   Derivado → `required=false`. Não mostre resultado parcial entre placeholders — sem confirmar, sem APIs. Só ao final: tabela markdown → "Confirma?" → chame `POST /placeholders { placeholders: [todos] }`. Omita campos sem valor.
 4. Para cada `witnesses.added`: pergunte WhatsApp. Confirme → `POST /witnesses`.
 5. Para cada `templates.removed` (que não seja re-upload): informe + confirme → `DELETE /templates/:id`.
 6. Para cada `placeholders.removed`: informe (sem confirmação) → `DELETE /placeholders/:name`.
