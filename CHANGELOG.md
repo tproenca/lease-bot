@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Security
+- `supabase/migrations/20260531012207_rls-app-config.sql`: enable Row Level Security on `public.app_config`. The Supabase security advisor flagged the table because RLS was disabled despite `REVOKE ALL` from `anon`/`authenticated`. No policies are added — deny-all by default is the intent. `SECURITY DEFINER` functions bypass RLS and are unaffected. (issue 118)
+
 ### Fixed
 - `supabase/migrations/011_app_config_table.sql` (new migration): replaces the GUC-based (`ALTER DATABASE SET`) approach from migration 010 with an `app_config` key/value table. `send_payment_reminders()` now reads `service_role_key` and `functions_base_url` from `app_config` instead of `current_setting()`, eliminating the superuser requirement and the daily `cron_errors` rows that resulted from the silent skip in local dev. `REVOKE ALL` on `app_config` from `anon`/`authenticated` roles keeps secrets inaccessible to tenant requests. (issue 116)
 - `supabase/migrations/010_local_dev_guc.sql` (new migration): sets `app.service_role_key` and `app.functions_base_url` GUC settings on `supabase db reset` so the `send_payment_reminders()` pg_cron job can reach Edge Functions internally. Guards prevent overwriting production values or failing in CI. Eliminates daily `cron_errors` rows in local dev. (issue 113)
