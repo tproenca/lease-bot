@@ -3,7 +3,7 @@
 ## Unreleased
 
 ### Fixed
-- `supabase/seed.sql` (new file): seeds `app.service_role_key` and `app.functions_base_url` GUC settings on `supabase db reset` so the `send_payment_reminders()` pg_cron job can reach Edge Functions internally. Eliminates daily `cron_errors` rows in local dev. (issue 113)
+- `supabase/migrations/010_local_dev_guc.sql` (new migration): sets `app.service_role_key` and `app.functions_base_url` GUC settings on `supabase db reset` so the `send_payment_reminders()` pg_cron job can reach Edge Functions internally. Guards prevent overwriting production values or failing in CI. Eliminates daily `cron_errors` rows in local dev. (issue 113)
 
 ### Fixed
 - `POST /signatures/send`: `exportAndMergePdfs` now has a guard around its internal `refreshGoogleAccessToken` call. If the landlord's token is revoked between the initial Drive auth (step 6) and the export (step 7), the handler returns `401 GOOGLE_REAUTH_REQUIRED` instead of an unhandled `500`. Other export failures continue to return `502 PDF_EXPORT_FAILED`. (issue 107)
