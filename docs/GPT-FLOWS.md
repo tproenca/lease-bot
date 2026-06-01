@@ -107,11 +107,10 @@ If the landlord declines a chain step (e.g. "não" to generating a contract afte
 
 ### Confirmation protocol
 
-Before any write API call, the GPT shows a summary and waits for explicit confirmation:
+Before any write API call, the GPT shows the data as bullets (no numbered list, no "Resumo" heading) and waits for explicit confirmation:
 
 ```
-GPT: Resumo:
-     - Template: Contrato Residencial
+GPT: - Template: Contrato Residencial
      - Tipos: apartamento, casa
 
      Confirma? (Sim para continuar)
