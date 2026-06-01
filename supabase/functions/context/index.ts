@@ -185,10 +185,12 @@ export async function handleContext(req: Request): Promise<Response> {
     address: string;
   }>;
   const buildingAddressById = new Map(buildings.map((b) => [b.id, b.address]));
+  const buildingNameById = new Map(buildings.map((b) => [b.id, b.name]));
 
   // For apartments, derive the display address from the building's address:
   //   "{building.address}, {property.name}"
   // For house/commercial, the address is stored directly on the property.
+  // Also add display_name for apartments: "{building.name} - {property.name}"
   const properties = (
     (propertiesResult.data ?? []) as Array<{
       id: string;
@@ -199,11 +201,14 @@ export async function handleContext(req: Request): Promise<Response> {
       current_tenant_folder_id: string | null;
     }>
   ).map((p) => {
-    if (p.type === "apartment" && p.address === null && p.building_id) {
+    if (p.type === "apartment" && p.building_id) {
       const bldgAddress = buildingAddressById.get(p.building_id) ?? "";
+      const bldgName = buildingNameById.get(p.building_id) ?? "";
       return {
         ...p,
-        address: bldgAddress ? `${bldgAddress}, ${p.name}` : p.name,
+        address: p.address ??
+          (bldgAddress ? `${bldgAddress}, ${p.name}` : p.name),
+        display_name: bldgName ? `${bldgName} - ${p.name}` : p.name,
       };
     }
     return p;

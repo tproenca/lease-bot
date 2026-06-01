@@ -247,8 +247,10 @@ Deno.test("unit: GET /context — 200 returns full landlord context", async () =
     assertEquals(landlord.whatsapp, MOCK_LANDLORD.whatsapp);
 
     // properties
-    const properties = body.properties as unknown[];
+    const properties = body.properties as Array<Record<string, unknown>>;
     assertEquals(properties.length, 1);
+    // apartment gets display_name composed from building name
+    assertEquals(properties[0].display_name, "Edifício Central - Apto 101");
 
     // buildings
     const buildings = body.buildings as unknown[];
@@ -619,6 +621,49 @@ Deno.test("unit: GET /context/health/cron — 500 when DB query fails", async ()
     assertEquals(res.status, 500);
     const body = await jsonBody(res);
     assertEquals((body.error as Record<string, string>).code, "DB_ERROR");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("unit: GET /context — house property has no display_name", async () => {
+  const originalFetch = globalThis.fetch;
+  const houseProperty = [{
+    id: "prop-uuid-2",
+    type: "house",
+    name: "Casa Verde",
+    address: "Rua B, 10",
+    building_id: null,
+    current_tenant_folder_id: null,
+  }];
+  globalThis.fetch = buildMockFetch({});
+  // Override the properties stub to return a house
+  const inner = globalThis.fetch;
+  const innerFetch = inner;
+  globalThis.fetch =
+    (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === "string"
+        ? input
+        : input instanceof URL
+        ? input.href
+        : (input as Request).url;
+      if (url.includes("/rest/v1/properties")) {
+        return new Response(JSON.stringify(houseProperty), { status: 200 });
+      }
+      return innerFetch(input, init);
+    }) as typeof fetch;
+
+  try {
+    const req = new Request("http://localhost/functions/v1/context", {
+      headers: { Authorization: "Bearer valid-jwt" },
+    });
+    const res = await handleContext(req);
+    assertEquals(res.status, 200);
+    const body = await res.json() as Record<string, unknown>;
+    const properties = body.properties as Array<Record<string, unknown>>;
+    assertEquals(properties.length, 1);
+    assertEquals(properties[0].name, "Casa Verde");
+    assertEquals(properties[0].display_name, undefined);
   } finally {
     globalThis.fetch = originalFetch;
   }
