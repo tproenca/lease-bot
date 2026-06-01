@@ -14,7 +14,8 @@
 //   and update the DB cache.
 //
 // Special rules:
-//   - Templates named exactly "Guia de Placeholders" are always excluded.
+//   - Templates named exactly "Guia de Placeholders" or "Lista de Placeholders"
+//     are always excluded.
 //   - Witness names come only from changed templates' signature blocks.
 //   - Unchanged templates' placeholders come from the DB cache.
 //
@@ -35,7 +36,10 @@ import {
   refreshGoogleAccessToken,
 } from "../../_shared/google.ts";
 
-const GUIA_EXACT_NAME = "Guia de Placeholders";
+const EXCLUDED_NAMES = new Set([
+  "Guia de Placeholders",
+  "Lista de Placeholders",
+]);
 
 // ── Placeholder extraction ────────────────────────────────────────────────
 
@@ -167,7 +171,7 @@ export async function handleTemplatesDiff(req: Request): Promise<Response> {
     placeholder_names: string[];
   };
   const allTemplates = (templatesResult.data ?? []) as TemplateRow[];
-  const templates = allTemplates.filter((t) => t.name !== GUIA_EXACT_NAME);
+  const templates = allTemplates.filter((t) => !EXCLUDED_NAMES.has(t.name));
 
   // Compute unconfigured placeholders: names present in any template's
   // placeholder_names cache but absent from the placeholders table.
@@ -227,7 +231,7 @@ export async function handleTemplatesDiff(req: Request): Promise<Response> {
   // Compute template-level diff (Drive files not in DB, and DB rows gone from Drive).
   // Keep { id, name } internally so we can export content for placeholder extraction.
   const addedDriveFiles = driveFiles
-    .filter((f) => !dbFileIds.has(f.id) && f.name !== GUIA_EXACT_NAME)
+    .filter((f) => !dbFileIds.has(f.id) && !EXCLUDED_NAMES.has(f.name))
     .sort((a, b) => a.name.localeCompare(b.name));
 
   const removedDbTemplates = templates.filter(

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Fixed
+- `GET /templates/diff`: "Lista de Placeholders" is now excluded from diff results alongside "Guia de Placeholders". Previously the dynamic reference doc was treated as a new template, causing the GPT to ask for property types. (issue 126)
+
+### Changed
+- `placeholders.derived_from` column dropped; the "base field" shown in the "Lista de Placeholders" Google Doc is now computed on the fly from `derived_formula` via regex (`/^[a-z_][a-z0-9_]*/i`). `POST /placeholders` no longer accepts `derived_from`; `GET /context` and `GET /placeholders` no longer return it. `gpt/SYSTEM_PROMPT.md` updated to remove `— derived_from=1º campo` from 3 flow prompts; `docs/GPT-FLOWS.md` and `gpt/openapi.yaml` updated accordingly. (issue 124)
+
 ### Added
 - `GET /context/health/cron`: new sub-route of the `context` Edge Function. Returns `200 { status: "ok" }` when no `cron_errors` rows exist in the last 25 hours, or `503 { status: "error", errors: [...] }` otherwise. Authenticated with the service-role key for use by external uptime monitors (e.g. UptimeRobot). (issue 119)
 - `gpt/SYSTEM_PROMPT.md`: removed cron error handling from Flow 1 and the `cron_errors` entry from the Erros section — cron failures are now monitored externally and no longer interrupt GPT sessions. (issue 119)
