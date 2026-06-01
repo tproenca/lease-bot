@@ -396,7 +396,7 @@ Deno.test("unit: POST /properties — 400 when type=apartment and building_id is
   try {
     const res = await handleProperties(
       makeRequest(
-        { type: "apartment", name: "Apto 101", address: "Rua A, 1" },
+        { type: "apartment", name: "Apto 101" },
         "valid.jwt",
       ),
     );
@@ -446,7 +446,6 @@ Deno.test("unit: POST /properties — 404 when building_id not found or belongs 
           type: "apartment",
           building_id: "nonexistent-bldg",
           name: "Apto 101",
-          address: "Rua A, 1",
         },
         "valid.jwt",
       ),
@@ -575,9 +574,9 @@ Deno.test("unit: POST /properties — 201 creates commercial property under root
   }
 });
 
-// ─── 201 — apartment happy path ───────────────────────────────────────────
+// ─── 201 — apartment happy path (no address required) ────────────────────
 
-Deno.test("unit: POST /properties — 201 creates apartment inside building folder", async () => {
+Deno.test("unit: POST /properties — 201 creates apartment inside building folder without address", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -587,6 +586,31 @@ Deno.test("unit: POST /properties — 201 creates apartment inside building fold
           type: "apartment",
           building_id: MOCK_BUILDING.id,
           name: "Apto 202",
+        },
+        "valid.jwt",
+      ),
+    );
+    assertEquals(res.status, 201);
+    const body = await jsonBody(res) as Record<string, unknown>;
+    assertEquals(typeof body.id, "string");
+    assertEquals(typeof body.drive_folder_id, "string");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// ─── 201 — apartment with address ignored ────────────────────────────────
+
+Deno.test("unit: POST /properties — 201 creates apartment even if address is sent (field ignored)", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({}) as typeof fetch;
+  try {
+    const res = await handleProperties(
+      makeRequest(
+        {
+          type: "apartment",
+          building_id: MOCK_BUILDING.id,
+          name: "Apto 303",
           address: "Rua A, 1",
         },
         "valid.jwt",
@@ -596,6 +620,46 @@ Deno.test("unit: POST /properties — 201 creates apartment inside building fold
     const body = await jsonBody(res) as Record<string, unknown>;
     assertEquals(typeof body.id, "string");
     assertEquals(typeof body.drive_folder_id, "string");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// ─── 400 — house without address ──────────────────────────────────────────
+
+Deno.test("unit: POST /properties — 400 when type=house and address is missing", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({}) as typeof fetch;
+  try {
+    const res = await handleProperties(
+      makeRequest({ type: "house", name: "Casa A" }, "valid.jwt"),
+    );
+    assertEquals(res.status, 400);
+    const body = await jsonBody(res) as Record<string, unknown>;
+    assertEquals(
+      (body.error as Record<string, string>).code,
+      "MISSING_ADDRESS",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// ─── 400 — commercial without address ────────────────────────────────────
+
+Deno.test("unit: POST /properties — 400 when type=commercial and address is missing", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({}) as typeof fetch;
+  try {
+    const res = await handleProperties(
+      makeRequest({ type: "commercial", name: "Loja A" }, "valid.jwt"),
+    );
+    assertEquals(res.status, 400);
+    const body = await jsonBody(res) as Record<string, unknown>;
+    assertEquals(
+      (body.error as Record<string, string>).code,
+      "MISSING_ADDRESS",
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }

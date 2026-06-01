@@ -143,8 +143,8 @@ Trigger: menu "Adicionar imóvel" → tipo apartamento.
 1. Edifício existente ou novo?
    - Novo: pergunte nome e endereço → confirme → `POST /buildings {name, address}`.
    - Existente: selecione da lista do contexto.
-2. Pergunte nome e endereço do apartamento.
-3. Confirme → `POST /properties {type: "apartment", name, address, building_id}`.
+2. Pergunte apenas o nome do apartamento (ex: "Apto 42"). Não peça endereço — o edifício já tem um.
+3. Confirme → `POST /properties {type: "apartment", name, building_id}`.
 
 ## Flow 10 — Configurar Lembretes
 

@@ -177,13 +177,45 @@ export async function handleContext(req: Request): Promise<Response> {
     property_types: typesByTemplate.get(t.id) ?? [],
   }));
 
+  // Build a lookup map from building ID to building address so we can
+  // compose the display address for apartments whose own address is NULL.
+  const buildings = (buildingsResult.data ?? []) as Array<{
+    id: string;
+    name: string;
+    address: string;
+  }>;
+  const buildingAddressById = new Map(buildings.map((b) => [b.id, b.address]));
+
+  // For apartments, derive the display address from the building's address:
+  //   "{building.address}, {property.name}"
+  // For house/commercial, the address is stored directly on the property.
+  const properties = (
+    (propertiesResult.data ?? []) as Array<{
+      id: string;
+      type: string;
+      name: string;
+      address: string | null;
+      building_id: string | null;
+      current_tenant_folder_id: string | null;
+    }>
+  ).map((p) => {
+    if (p.type === "apartment" && p.address === null && p.building_id) {
+      const bldgAddress = buildingAddressById.get(p.building_id) ?? "";
+      return {
+        ...p,
+        address: bldgAddress ? `${bldgAddress}, ${p.name}` : p.name,
+      };
+    }
+    return p;
+  });
+
   const body = {
     landlord: {
       name: landlord.name,
       whatsapp: landlord.whatsapp,
     },
-    properties: propertiesResult.data ?? [],
-    buildings: buildingsResult.data ?? [],
+    properties,
+    buildings,
     templates,
     placeholders: placeholdersResult.data ?? [],
     witnesses: witnessesResult.data ?? [],

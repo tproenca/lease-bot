@@ -2,14 +2,17 @@
 //
 // GET  — returns all properties for the authenticated landlord.
 // POST — creates a new property:
-//   1. Validates inputs: type (apartment|house|commercial), name, address
-//      all required. building_id required when type=apartment.
+//   1. Validates inputs: type (apartment|house|commercial), name required.
+//      address required for house/commercial; NOT required for apartment
+//      (the apartment's building already has an address).
+//      building_id required when type=apartment.
 //   2. If type=apartment, verifies building_id belongs to this landlord.
 //   3. Creates a Drive folder:
 //      - apartment  → Root/{BuildingName}/{PropertyName}/
 //      - house      → Root/{PropertyName}/
 //      - commercial → Root/{PropertyName}/
 //   4. Inserts a properties row and returns 201 { id, drive_folder_id }.
+//      For apartments, address is stored as NULL in the DB.
 //
 // Auth: Bearer JWT verified via Supabase Auth — returns 401 if missing/invalid.
 // Uses userClient(jwt) for all DB reads and writes — RLS enforces landlord
@@ -149,7 +152,9 @@ async function handleCreateProperty(req: Request): Promise<Response> {
     );
   }
 
-  if (!isNonEmptyString(address)) {
+  // address is required for house and commercial, but not for apartments
+  // (their building already has an address stored in the buildings table).
+  if (type !== "apartment" && !isNonEmptyString(address)) {
     return errorResponse(
       400,
       "MISSING_ADDRESS",
@@ -251,6 +256,7 @@ async function handleCreateProperty(req: Request): Promise<Response> {
   }
 
   // 7. Insert the properties row using userClient (RLS enforced).
+  //    Apartments store address as NULL — their building already has an address.
   const { data: property, error: insertError } = await db
     .from("properties")
     .insert({
@@ -258,7 +264,7 @@ async function handleCreateProperty(req: Request): Promise<Response> {
       type: type as string,
       building_id: type === "apartment" ? (building_id as string) : null,
       name: name as string,
-      address: address as string,
+      address: type === "apartment" ? null : (address as string),
       drive_folder_id: driveFolderId,
     })
     .select("id, drive_folder_id")
