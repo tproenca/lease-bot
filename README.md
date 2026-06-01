@@ -58,7 +58,7 @@ cp .env.example supabase/.env.local
 supabase functions serve --env-file supabase/.env.local
 
 # Expose local functions to ChatGPT (required — ChatGPT cannot reach localhost)
-ngrok http 54321 --domain <your-domain>.ngrok-free.dev
+ngrok http 54321 --url <your-domain>.ngrok-free.dev
 ```
 
 The local API is available at `http://localhost:54321/functions/v1/`.
@@ -74,7 +74,7 @@ testing.
    go to Your Authtoken → Static Domain. Your domain (`abc.ngrok-free.dev`) is
    permanent and never changes between restarts.
 2. **Start the tunnel** —
-   `ngrok http 54321 --domain <your-domain>.ngrok-free.dev`
+   `ngrok http 54321 --url <your-domain>.ngrok-free.dev`
 3. **Update the GPT action URL** — in the Custom GPT → Actions, set the server
    URL to `https://<your-domain>.ngrok-free.dev/functions/v1`
 4. **Add the bypass header** — in the GPT action config, add a custom header:

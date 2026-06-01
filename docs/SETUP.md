@@ -202,7 +202,8 @@ full list) and start the local stack:
 
 ```sh
 supabase start
-ngrok http 54321 --domain <your-domain>.ngrok-free.dev
+supabase functions serve --env-file supabase/.env.local
+ngrok http 54321 --url <your-domain>.ngrok-free.dev
 ```
 
 Then follow `docs/MANUAL-TEST.md` to run the flows end-to-end.
