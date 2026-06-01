@@ -547,11 +547,12 @@ If new building:
    ◄──201 { id, drive_folder_id } ──────────────────────────────
      (Drive folder created: Root/{BuildingName}/)
 
-2. GPT asks: apartment name and address
+2. GPT asks: apartment name (unit identifier, e.g. "Apto 42")
+   — do NOT ask for address; the building already has one
 3. GPT shows summary + "Confirma? (Sim para continuar)"
 
 ──POST /properties────────────────────────────────────────────────►
-  { type: "apartment", name, address, building_id }
+  { type: "apartment", name, building_id }
 ◄──201 { id, drive_folder_id } ──────────────────────────────────
   (Drive folder created: Root/{Building}/{ApartmentName}/)
 ```
@@ -561,7 +562,7 @@ If new building:
 | Method | Path | Auth | Key fields |
 |--------|------|------|------------|
 | POST | `/buildings` | Bearer JWT | `name`, `address` |
-| POST | `/properties` | Bearer JWT | `type: "apartment"`, `name`, `address`, `building_id` |
+| POST | `/properties` | Bearer JWT | `type: "apartment"`, `name`, `building_id` |
 
 ---
 
