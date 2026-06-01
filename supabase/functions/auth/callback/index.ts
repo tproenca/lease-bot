@@ -161,7 +161,13 @@ export async function handleAuthCallback(req: Request): Promise<Response> {
       .maybeSingle();
 
     if (landlord) {
-      // Landlord already set up — skip the form entirely.
+      // Landlord already set up — refresh the stored Google token so the next
+      // API call doesn't hit GOOGLE_REAUTH_REQUIRED with the old token.
+      await svc
+        .from("landlords")
+        .update({ google_refresh_token: tokens.refresh_token })
+        .eq("id", signInData.user.id);
+
       let oneTimeCode: string;
       try {
         oneTimeCode = await issueOAuthCode({
