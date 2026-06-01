@@ -563,6 +563,70 @@ Deno.test("unit: GET /templates/diff — Guia de Placeholders is never included 
   }
 });
 
+// ─── Lista de Placeholders exclusion ─────────────────────────────────────
+
+Deno.test("unit: GET /templates/diff — Lista de Placeholders is never included in diff", async () => {
+  const originalFetch = globalThis.fetch;
+  const templatesWithLista = [
+    ...MOCK_TEMPLATES_CHANGED,
+    {
+      id: "tmpl-lista",
+      name: "Lista de Placeholders",
+      drive_file_id: "drive-lista-id",
+      last_modified_at: "2020-01-01T00:00:00.000Z", // old time → would trigger slow path
+      placeholder_names: [],
+    },
+  ];
+  const driveFilesWithLista = [
+    ...MOCK_DRIVE_FILES,
+    {
+      id: "drive-lista-id",
+      name: "Lista de Placeholders",
+      modifiedTime: "2024-06-01T00:00:00.000Z", // newer than cached
+    },
+  ];
+  let exportCallCount = 0;
+  globalThis.fetch =
+    (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === "string"
+        ? input
+        : input instanceof URL
+        ? input.href
+        : (input as Request).url;
+
+      if (url.includes("/export")) {
+        exportCallCount++;
+      }
+      return buildMockFetch({
+        templates: templatesWithLista,
+        driveFiles: driveFilesWithLista,
+      })(input as string, init);
+    }) as typeof fetch;
+
+  try {
+    const res = await handleTemplatesDiff(makeRequest("valid.jwt"));
+    assertEquals(res.status, 200);
+    const body = await jsonBody(res);
+    const templates = body.templates as {
+      added: Array<{ name: string }>;
+      removed: unknown[];
+    };
+    // Lista de Placeholders must not appear in templates.added
+    const listaInAdded = templates.added.some(
+      (t) => t.name === "Lista de Placeholders",
+    );
+    assertEquals(
+      listaInAdded,
+      false,
+      "Lista de Placeholders must not appear in templates.added",
+    );
+    // Export should only be called for the non-Lista changed template, not for Lista
+    assertEquals(exportCallCount, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 // ─── 404 — landlord not found ─────────────────────────────────────────────
 
 Deno.test("unit: GET /templates/diff — 404 when landlord row does not exist", async () => {
