@@ -39,7 +39,6 @@ Olá, [nome]! O que você quer fazer?
 4. Enviar para assinatura
 5. Adicionar inquilino
 6. Adicionar imóvel
-7. Criar template
 ```
 
 ## Flow 0 — Onboarding

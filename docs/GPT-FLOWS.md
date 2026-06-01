@@ -94,7 +94,6 @@ Feito! Posso ajudar com mais alguma coisa?
 4. Enviar para assinatura
 5. Adicionar inquilino
 6. Adicionar imóvel
-7. Criar template
 ```
 
 **Exception — chained flows:** flows that naturally lead into another do NOT re-show the menu between steps. The menu only appears at the end of the full chain or when the landlord declines to continue:
@@ -607,7 +606,7 @@ If new building:
 
 ## Flow 11 — Create Template _(planned)_
 
-> **Status:** Not yet implemented. Tracked in [#77](https://github.com/tproenca/lease-bot/issues/77).
+> **Status:** Not yet implemented. Tracked in [#77](https://github.com/tproenca/lease-bot/issues/77). Future work. Don't add to the system prompt.
 
 **Trigger:** Menu item "Criar template" or user intent ("quero criar um novo template", "preciso de um aditivo de renovação").
 
