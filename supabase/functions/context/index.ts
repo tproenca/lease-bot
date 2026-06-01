@@ -206,7 +206,8 @@ export async function handleContext(req: Request): Promise<Response> {
       const bldgName = buildingNameById.get(p.building_id) ?? "";
       return {
         ...p,
-        address: p.address ?? (bldgAddress ? `${bldgAddress}, ${p.name}` : p.name),
+        address: p.address ??
+          (bldgAddress ? `${bldgAddress}, ${p.name}` : p.name),
         display_name: bldgName ? `${bldgName} - ${p.name}` : p.name,
       };
     }
