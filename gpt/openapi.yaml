@@ -519,7 +519,6 @@ paths:
                   type: string
                 address:
                   type: string
-                  description: Required for house and commercial. Omit for apartment (address is inherited from the building).
       responses:
         '201':
           description: Property created
