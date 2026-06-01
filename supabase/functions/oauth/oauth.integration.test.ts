@@ -86,6 +86,7 @@ const MOCK_GOOGLE_ID_TOKEN = "mock.google.id.token";
  */
 function buildAuthCallbackFetchStub(opts: {
   landlordExists: boolean;
+  onLandlordTokenUpdate?: (body: unknown) => void;
 }): typeof fetch {
   const realFetch = globalThis.fetch;
   return async function (
@@ -172,6 +173,19 @@ function buildAuthCallbackFetchStub(opts: {
       );
     }
 
+    // landlords table: update google_refresh_token (PATCH by id).
+    if (
+      url.includes("/rest/v1/landlords") &&
+      url.includes(MOCK_USER_ID) &&
+      method === "PATCH"
+    ) {
+      if (opts.onLandlordTokenUpdate) {
+        const body = await new Request(input, init).json().catch(() => null);
+        opts.onLandlordTokenUpdate(body);
+      }
+      return new Response(null, { status: 204 });
+    }
+
     // oauth_codes table: INSERT (issueOAuthCode).
     if (url.includes("/rest/v1/oauth_codes") && method === "POST") {
       return new Response(null, { status: 201 });
@@ -220,7 +234,13 @@ Deno.test(
     if (skipIfUnavailable()) return;
 
     const originalFetch = globalThis.fetch;
-    globalThis.fetch = buildAuthCallbackFetchStub({ landlordExists: true });
+    let capturedTokenUpdate: unknown = undefined;
+    globalThis.fetch = buildAuthCallbackFetchStub({
+      landlordExists: true,
+      onLandlordTokenUpdate: (body) => {
+        capturedTokenUpdate = body;
+      },
+    });
 
     try {
       const req = new Request(
@@ -258,6 +278,12 @@ Deno.test(
         location.includes("/setup"),
         false,
         "Must not redirect to /setup for existing landlord",
+      );
+      // Must have updated the landlord's google_refresh_token.
+      assertEquals(
+        capturedTokenUpdate,
+        { google_refresh_token: "google-refresh-token" },
+        "Expected landlords PATCH with fresh Google refresh token",
       );
     } finally {
       globalThis.fetch = originalFetch;
