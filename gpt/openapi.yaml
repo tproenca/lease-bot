@@ -904,6 +904,108 @@ paths:
 
   # ── Witnesses ─────────────────────────────────────────────
 
+  # ── Workflow ──────────────────────────────────────────────
+
+  /workflow/next:
+    post:
+      operationId: workflowNext
+      summary: Advance the stateless backend workflow state machine one step
+      description: >
+        Stateless round-trip orchestrator. The GPT sends the current
+        `intent/collected/stage` it received last turn plus the user's latest
+        `message`. The backend advances the state machine, validates inputs, and
+        returns the next `assistant_message`, updated `collected`, and new
+        `stage/status`. On `status:"done"` the flow is complete.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                intent:
+                  type: string
+                  nullable: true
+                  description: Intent returned by the previous response, or null on first turn.
+                  example: add_tenant
+                collected:
+                  type: object
+                  nullable: true
+                  additionalProperties: true
+                  description: Collected state returned by the previous response, or null on first turn.
+                stage:
+                  type: string
+                  nullable: true
+                  enum: [collect, confirm]
+                  description: Stage returned by the previous response, or null on first turn.
+                message:
+                  type: string
+                  description: The user's latest reply to relay to the backend.
+      responses:
+        '200':
+          description: Next step in the workflow
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [assistant_message, intent, collected, stage, status]
+                properties:
+                  assistant_message:
+                    type: string
+                    description: Message to relay verbatim to the user.
+                  intent:
+                    type: string
+                    description: Current intent — echo this back on the next turn.
+                  collected:
+                    type: object
+                    additionalProperties: true
+                    description: Current collected state — echo this back on the next turn.
+                  stage:
+                    type: string
+                    enum: [collect, confirm]
+                    description: Current stage — echo this back on the next turn.
+                  status:
+                    type: string
+                    enum: [collecting, confirming, done]
+                    description: >
+                      `collecting` — continue the conversation;
+                      `confirming` — waiting for explicit "Sim";
+                      `done` — flow complete, return to menu.
+                  options:
+                    type: array
+                    nullable: true
+                    items:
+                      type: object
+                      properties:
+                        label:
+                          type: string
+                        value:
+                          type: string
+                    description: Numbered options to present to the user, if applicable.
+                  error:
+                    type: object
+                    nullable: true
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+        '400':
+          description: Malformed request or unknown intent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ── Witnesses ─────────────────────────────────────────────
+
   /witnesses:
     post:
       operationId: createWitness

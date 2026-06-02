@@ -38,6 +38,7 @@ import {
 } from "../_shared/google.ts";
 import {
   isNonEmptyString,
+  isValidCpf,
   normalizeBrazilianWhatsapp,
 } from "../_shared/validation.ts";
 
@@ -46,13 +47,6 @@ const corsHeaders: Record<string, string> = {
   ...baseCorsHeaders,
   "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
 };
-
-// CPF format: XXX.XXX.XXX-XX
-const CPF_RE = /^\d{3}\.\d{3}\.\d{3}-\d{2}$/;
-
-function isValidCpf(v: unknown): v is string {
-  return typeof v === "string" && CPF_RE.test(v.trim());
-}
 
 export async function handleTenants(req: Request): Promise<Response> {
   // Handle CORS preflight.
