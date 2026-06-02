@@ -1009,3 +1009,48 @@ Deno.test("unit: generate — optional placeholder absent from request is substi
     globalThis.fetch = originalFetch;
   }
 });
+
+Deno.test("unit: generate — 400 when use_case is invalid", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({});
+  try {
+    const res = await handleGenerateDocuments(
+      makePostRequest({ ...VALID_BODY, use_case: "invalid" }, "valid.jwt"),
+    );
+    assertEquals(res.status, 400);
+    const body = await res.json() as Record<string, Record<string, string>>;
+    assertEquals(body.error.code, "INVALID_USE_CASE");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("unit: generate — defaults use_case to initial when omitted", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({});
+  try {
+    // VALID_BODY has no use_case — should succeed (defaults to initial)
+    const res = await handleGenerateDocuments(
+      makePostRequest(VALID_BODY, "valid.jwt"),
+    );
+    assertEquals(res.status, 200);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("unit: generate — 404 when no templates match use_case", async () => {
+  const originalFetch = globalThis.fetch;
+  // Return empty templates list to simulate no templates for this use_case
+  globalThis.fetch = buildMockFetch({ templates: null });
+  try {
+    const res = await handleGenerateDocuments(
+      makePostRequest({ ...VALID_BODY, use_case: "renewal" }, "valid.jwt"),
+    );
+    assertEquals(res.status, 404);
+    const body = await res.json() as Record<string, Record<string, string>>;
+    assertEquals(body.error.code, "NO_TEMPLATES_FOUND");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

@@ -30,6 +30,7 @@ const MOCK_TEMPLATE_ID = "template-uuid-1";
 const VALID_BODY = {
   drive_file_id: "drive-file-id-1",
   name: "Contrato de Locação",
+  use_case: "initial",
   placeholder_names: ["nome do inquilino", "cpf do inquilino"],
   property_types: ["apartment", "house"],
 };

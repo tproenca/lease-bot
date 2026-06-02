@@ -297,8 +297,24 @@ export async function handleGenerateDocuments(req: Request): Promise<Response> {
     return errorResponse(400, "INVALID_JSON", "Corpo da requisição inválido.");
   }
 
-  const { property_id, tenant_id, placeholders: rawPlaceholders } =
-    (body ?? {}) as Record<string, unknown>;
+  const {
+    property_id,
+    tenant_id,
+    placeholders: rawPlaceholders,
+    use_case: rawUseCase,
+  } = (body ?? {}) as Record<string, unknown>;
+
+  const VALID_USE_CASES = new Set(["initial", "renewal", "termination"]);
+  const useCase: string = rawUseCase === undefined || rawUseCase === null
+    ? "initial"
+    : (rawUseCase as string);
+  if (!VALID_USE_CASES.has(useCase)) {
+    return errorResponse(
+      400,
+      "INVALID_USE_CASE",
+      "O campo 'use_case' deve ser 'initial', 'renewal' ou 'termination'.",
+    );
+  }
 
   if (!isNonEmptyString(property_id)) {
     return errorResponse(
@@ -490,11 +506,12 @@ export async function handleGenerateDocuments(req: Request): Promise<Response> {
     );
   }
 
-  // 12. Load template rows.
+  // 12. Load template rows, filtered by use_case.
   const { data: templates, error: templateError } = await db
     .from("templates")
     .select("id, name, drive_file_id")
-    .in("id", templateIds);
+    .in("id", templateIds)
+    .eq("use_case", useCase);
 
   if (templateError || !templates) {
     return errorResponse(
@@ -509,6 +526,14 @@ export async function handleGenerateDocuments(req: Request): Promise<Response> {
     name: string;
     drive_file_id: string;
   }>;
+
+  if (templateRows.length === 0) {
+    return errorResponse(
+      404,
+      "NO_TEMPLATES_FOUND",
+      `Nenhum template encontrado para imóveis do tipo '${prop.type}' e ocasião '${useCase}'.`,
+    );
+  }
 
   // 13. Obtain a fresh Google access token.
   let accessToken: string;
