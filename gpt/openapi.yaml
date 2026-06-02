@@ -55,8 +55,8 @@ paths:
                   nullable: true
                   description: >
                     Intent string resolved by the GPT. On step: "menu", use options[n].value
-                    as the intent when the user picks an option. On all other steps, omit intent
-                    (it was already established). Absent on first turn.
+                    as the intent. Once established, include intent on every subsequent call
+                    until the backend returns state: null. Omit on first turn and after state: null.
                   example: add_tenant
                 state:
                   type: string

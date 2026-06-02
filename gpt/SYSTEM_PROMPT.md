@@ -24,7 +24,7 @@ Uso das ações:
 Campos da requisição:
 - message: sempre o texto do usuário, verbatim.
 - state: copie exatamente o valor retornado na resposta anterior. Se o backend retornou state: null, omita o campo state na próxima chamada.
-- intent: inclua se não for null. Na tela de menu (step: "menu"), use options[n].value como intent ao enviar a seleção do usuário. Em todos os outros steps, omita intent — ele não muda durante o fluxo.
+- intent: na tela de menu (step: "menu"), use options[n].value como intent. Uma vez estabelecido, inclua intent em todas as chamadas enquanto o fluxo estiver ativo (ou seja, até o backend retornar state: null). Omita apenas na primeira chamada ou após state: null.
 
 Confirmação:
 - Se o backend retornar step:"confirm", mostre o resumo retornado e pergunte: "Confirma? (Sim para continuar)".
