@@ -102,7 +102,7 @@ export async function handleContext(req: Request): Promise<Response> {
     db
       .from("placeholders")
       .select(
-        "name, required, format, case, default, derived_from, derived_formula, options",
+        "name, required, format, case, default, derived_formula, options",
       )
       .order("name"),
     db
@@ -197,11 +197,9 @@ export async function handleContext(req: Request): Promise<Response> {
   };
 
   const templates = (
-    (templatesResult.data ?? []) as Array<{
-      id: string;
-      name: string;
-      use_case: string | null;
-    }>
+    (templatesResult.data ?? []) as Array<
+      { id: string; name: string; use_case: string }
+    >
   ).map((t) => ({
     id: t.id,
     name: t.name,

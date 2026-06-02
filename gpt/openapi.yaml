@@ -37,11 +37,10 @@ paths:
       operationId: workflowNext
       summary: Advance the stateless backend workflow state machine one step
       description: >
-        Stateless round-trip orchestrator. The GPT sends the current
-        `intent/values` it received last turn plus the user's latest
-        `message`. The backend infers the current step from the values
-        present, validates inputs, and returns the next `message`, updated
-        `values`, and the current `step`. On `step:"done"` the flow is complete.
+        Stateless orchestrator. GPT sends the `intent`, `values`, and user
+        `message` from the last turn. Backend infers the current step,
+        validates inputs, and returns the next `message`, updated `values`,
+        and `step`. Flow ends when `step` is `done`.
       requestBody:
         required: true
         content:
@@ -52,14 +51,12 @@ paths:
               properties:
                 intent:
                   type: string
-                  nullable: true
-                  description: Intent returned by the previous response, or null on first turn.
+                  description: Intent returned by the previous response. Omit on first turn.
                   example: add_tenant
                 values:
                   type: object
-                  nullable: true
                   additionalProperties: true
-                  description: Collected values returned by the previous response, or null on first turn.
+                  description: Collected values returned by the previous response. Omit on first turn.
                 message:
                   type: string
                   description: The user's latest reply to relay to the backend.
