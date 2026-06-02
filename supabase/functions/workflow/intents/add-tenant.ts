@@ -4,21 +4,9 @@ import {
   isValidCpf,
   normalizeBrazilianWhatsapp,
 } from "../../_shared/validation.ts";
+import { ERROR_MAP } from "../../_shared/error-map.ts";
 import type { ContextPayload, WorkflowOption } from "../index.ts";
 import type { ExecuteResult, FlowDefinition } from "../flow-engine.ts";
-
-// ─── Error mapping ────────────────────────────────────────────────────────────
-
-const ERROR_MAP: Record<string, string> = {
-  GOOGLE_REAUTH_REQUIRED:
-    "Sua conexão com o Google Drive expirou. Reconecte sua conta Google nas configurações do ChatGPT → Apps conectados → Lease Assistant → desconectar e reconectar.",
-  INVALID_CPF:
-    "O CPF informado não é válido. Por favor, informe o CPF no formato XXX.XXX.XXX-XX.",
-  PROPERTY_NOT_FOUND:
-    "Imóvel não encontrado. Por favor, selecione um imóvel válido.",
-  LANDLORD_NOT_FOUND:
-    "Cadastro do proprietário não encontrado. Conclua o processo de configuração.",
-};
 
 // ─── ADD_TENANT flow definition ───────────────────────────────────────────────
 
