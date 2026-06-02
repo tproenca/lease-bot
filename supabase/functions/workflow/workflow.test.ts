@@ -780,6 +780,86 @@ Deno.test("unit: workflow/next — INVALID_CPF from write maps to friendly messa
   assertStringIncludes(body.message as string, "CPF");
 });
 
+Deno.test("unit: workflow/next — GOOGLE_AUTH_FAILED maps to friendly message", async () => {
+  const deps = makeStubDeps({ createResult: MOCK_CREATE_GOOGLE_AUTH_FAILED });
+  const handler = handleWorkflowNext(deps);
+  const state = btoa(JSON.stringify({
+    property_id: "prop-uuid-1",
+    property_name: "Prédio A - Apto 101",
+    name: "Maria Silva",
+    cpf: "123.456.789-09",
+    whatsapp: null,
+  }));
+  const res = await withMockFetch(
+    MOCK_USER,
+    () => handler(makeReq({ intent: "add_tenant", state, message: "Sim" })),
+  );
+  assertEquals(res.status, 200);
+  const body = await json(res) as Record<string, unknown>;
+  assertEquals(body.step, "confirm");
+  assertStringIncludes(body.message as string, "Google Drive");
+});
+
+Deno.test("unit: workflow/next — DRIVE_CREATE_FOLDER_FAILED maps to friendly message", async () => {
+  const deps = makeStubDeps({ createResult: MOCK_CREATE_DRIVE_FOLDER_FAILED });
+  const handler = handleWorkflowNext(deps);
+  const state = btoa(JSON.stringify({
+    property_id: "prop-uuid-1",
+    property_name: "Prédio A - Apto 101",
+    name: "Maria Silva",
+    cpf: "123.456.789-09",
+    whatsapp: null,
+  }));
+  const res = await withMockFetch(
+    MOCK_USER,
+    () => handler(makeReq({ intent: "add_tenant", state, message: "Sim" })),
+  );
+  assertEquals(res.status, 200);
+  const body = await json(res) as Record<string, unknown>;
+  assertEquals(body.step, "confirm");
+  assertStringIncludes(body.message as string, "Google Drive");
+});
+
+Deno.test("unit: workflow/next — DB_ERROR maps to friendly message", async () => {
+  const deps = makeStubDeps({ createResult: MOCK_CREATE_DB_ERROR });
+  const handler = handleWorkflowNext(deps);
+  const state = btoa(JSON.stringify({
+    property_id: "prop-uuid-1",
+    property_name: "Prédio A - Apto 101",
+    name: "Maria Silva",
+    cpf: "123.456.789-09",
+    whatsapp: null,
+  }));
+  const res = await withMockFetch(
+    MOCK_USER,
+    () => handler(makeReq({ intent: "add_tenant", state, message: "Sim" })),
+  );
+  assertEquals(res.status, 200);
+  const body = await json(res) as Record<string, unknown>;
+  assertEquals(body.step, "confirm");
+  assertStringIncludes(body.message as string, "salvar");
+});
+
+Deno.test("unit: workflow/next — unknown error code falls back to generic message", async () => {
+  const deps = makeStubDeps({ createResult: MOCK_CREATE_UNKNOWN_ERROR });
+  const handler = handleWorkflowNext(deps);
+  const state = btoa(JSON.stringify({
+    property_id: "prop-uuid-1",
+    property_name: "Prédio A - Apto 101",
+    name: "Maria Silva",
+    cpf: "123.456.789-09",
+    whatsapp: null,
+  }));
+  const res = await withMockFetch(
+    MOCK_USER,
+    () => handler(makeReq({ intent: "add_tenant", state, message: "Sim" })),
+  );
+  assertEquals(res.status, 200);
+  const body = await json(res) as Record<string, unknown>;
+  assertEquals(body.step, "confirm");
+  assertStringIncludes(body.message as string, "Erro ao criar inquilino");
+});
+
 // ─── No-active-tenant path ─────────────────────────────────────────────────────
 
 Deno.test("unit: workflow/next — no active tenant on property is not an error (add_tenant)", async () => {
