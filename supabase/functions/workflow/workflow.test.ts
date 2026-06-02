@@ -263,6 +263,30 @@ Deno.test("unit: workflow/next — first message returns main menu with 6 option
   assertStringIncludes(body.message as string, "João");
 });
 
+Deno.test("unit: workflow/next — menu greeting uses first name only for multi-word landlord name", async () => {
+  const deps: WorkflowDeps = {
+    ...makeStubDeps({}),
+    loadContext: async (_jwt) => ({
+      status: 200,
+      body: {
+        ...MOCK_CONTEXT,
+        landlord: { name: "Tiago Proença", whatsapp: "+5511999999999" },
+      },
+    }),
+  };
+  const handler = handleWorkflowNext(deps);
+
+  const res = await withMockFetch(
+    MOCK_USER,
+    () => handler(makeReq({ message: "oi" })),
+  );
+
+  assertEquals(res.status, 200);
+  const body = await res.clone().json() as Record<string, unknown>;
+  assertStringIncludes(body.message as string, "Tiago");
+  assertEquals((body.message as string).includes("Proença"), false);
+});
+
 Deno.test("unit: workflow/next — startup calls loadTemplatesDiff", async () => {
   let diffCalled = false;
   const deps: WorkflowDeps = {
