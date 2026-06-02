@@ -28,6 +28,47 @@ export function normalizeCpf(v: unknown): string | null {
   return CPF_RE.test(trimmed) ? trimmed : null;
 }
 
+/**
+ * Validates CPF check digits using the standard Brazilian algorithm.
+ * Input must be exactly 11 digits (no formatting).
+ * Returns false for all-same-digit sequences (e.g. "00000000000").
+ */
+function cpfCheckDigitsValid(digits: string): boolean {
+  // All-same-digit CPFs are trivially invalid
+  if (/^(\d)\1{10}$/.test(digits)) return false;
+
+  const d = digits.split("").map(Number);
+
+  // First check digit
+  let sum = 0;
+  for (let i = 0; i < 9; i++) sum += d[i] * (10 - i);
+  let rem = (sum * 10) % 11;
+  if (rem === 10 || rem === 11) rem = 0;
+  if (rem !== d[9]) return false;
+
+  // Second check digit
+  sum = 0;
+  for (let i = 0; i < 10; i++) sum += d[i] * (11 - i);
+  rem = (sum * 10) % 11;
+  if (rem === 10 || rem === 11) rem = 0;
+  return rem === d[10];
+}
+
+/**
+ * Accepts a CPF in either formatted (XXX.XXX.XXX-XX) or digit-only form.
+ * Strips all non-digit characters, validates length and check digits,
+ * and returns the formatted string "XXX.XXX.XXX-XX" on success or null on failure.
+ */
+export function parseCpfInput(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const digits = v.replace(/\D/g, "");
+  if (digits.length !== 11) return null;
+  if (!cpfCheckDigitsValid(digits)) return null;
+  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${
+    digits.slice(9)
+  }`;
+}
+
 // ─── WhatsApp ──────────────────────────────────────────────────────────────
 
 const BR_WHATSAPP_RE = /^\+55\d{10,11}$/;
