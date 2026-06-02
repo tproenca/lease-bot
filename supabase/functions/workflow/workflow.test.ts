@@ -79,6 +79,24 @@ const MOCK_CREATE_INVALID_CPF = {
   status: 400,
   body: { error: { code: "INVALID_CPF", message: "CPF inválido" } },
 };
+const MOCK_CREATE_GOOGLE_AUTH_FAILED = {
+  status: 502,
+  body: { error: { code: "GOOGLE_AUTH_FAILED", message: "Auth failed" } },
+};
+const MOCK_CREATE_DRIVE_FOLDER_FAILED = {
+  status: 502,
+  body: {
+    error: { code: "DRIVE_CREATE_FOLDER_FAILED", message: "Drive error" },
+  },
+};
+const MOCK_CREATE_DB_ERROR = {
+  status: 500,
+  body: { error: { code: "DB_ERROR", message: "DB error" } },
+};
+const MOCK_CREATE_UNKNOWN_ERROR = {
+  status: 500,
+  body: { error: { code: "SOME_UNKNOWN_CODE", message: "Unknown" } },
+};
 
 // ─── Stub builders ─────────────────────────────────────────────────────────────
 

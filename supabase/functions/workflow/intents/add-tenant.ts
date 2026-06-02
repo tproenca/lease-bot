@@ -141,10 +141,18 @@ export const ADD_TENANT: FlowDefinition = {
       | null
       | undefined;
     const code = errorBody?.error?.code ?? "";
+    const friendlyMessage = ERROR_MAP[code];
+    if (!friendlyMessage) {
+      console.error(
+        `[add-tenant] createTenant failed with unmapped error code: ${
+          JSON.stringify(code)
+        } (status ${result.status})`,
+      );
+    }
     return {
       ok: false,
       step: "confirm",
-      message: ERROR_MAP[code] ??
+      message: friendlyMessage ??
         "Erro ao criar inquilino. Por favor, tente novamente.",
     };
   },
