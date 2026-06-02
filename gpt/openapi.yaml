@@ -37,20 +37,11 @@ paths:
       operationId: workflowNext
       summary: Advance the stateless backend workflow state machine one step
       description: >
-        Stateless orchestrator. GPT sends the `intent`, `state`, and user
-        `message`. Backend decodes state, infers the current step,
-        validates inputs, and returns the next `message`, updated opaque
-        `state` token, and `step`.
-
-        Enter/Process split:
-          - `state` absent → Enter phase: backend renders first prompt (no validation).
-          - `state` present → Process phase: backend validates the user message.
-
-        Session boundaries (menu, onboarding, reauth, error) always return `state: null`.
-        GPT omits `state` on the next call when it is null.
-
-        `step: done` never reaches the GPT — the backend auto-transitions to
-        the menu response instead.
+        Stateless workflow step. Send `intent`, `state`, `message`; receive `message`, `state`, `step`.
+        `state` absent = Enter (render prompt, no validation).
+        `state` present = Process (validate input).
+        `state: null` = session boundary; omit on next call.
+        `step: done` auto-transitions to menu.
       requestBody:
         required: true
         content:
