@@ -161,8 +161,7 @@ Deno.test("unit: workflow/next — 401 when no JWT", async () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         intent: null,
-        collected: null,
-        stage: null,
+        values: {},
         message: "5",
       }),
     }),
@@ -176,7 +175,7 @@ Deno.test("unit: workflow/next — 401 when JWT invalid", async () => {
   const handler = handleWorkflowNext(makeStubDeps({}));
   const res = await withMockFetch(null, () =>
     handler(
-      makeReq({ intent: null, collected: null, stage: null, message: "5" }),
+      makeReq({ intent: null, values: {}, message: "5" }),
     ));
   assertEquals(res.status, 401);
 });
@@ -207,8 +206,7 @@ Deno.test("unit: workflow/next — routes intent 'adicionar inquilino'", async (
     handler(
       makeReq({
         intent: null,
-        collected: null,
-        stage: null,
+        values: {},
         message: "adicionar inquilino",
       }),
     ));
@@ -216,10 +214,10 @@ Deno.test("unit: workflow/next — routes intent 'adicionar inquilino'", async (
   assertEquals(res.status, 200);
   const body = await json(res) as Record<string, unknown>;
   assertEquals(body.intent, "add_tenant");
-  assertEquals(body.status, "collecting");
+  assertEquals(body.step, "ask_property");
   // Should ask for property
   assertStringIncludes(
-    body.assistant_message as string,
+    body.message as string,
     "imóvel",
   );
 });
@@ -230,13 +228,13 @@ Deno.test("unit: workflow/next — routes intent '5'", async () => {
 
   const res = await withMockFetch(MOCK_USER, () =>
     handler(
-      makeReq({ intent: null, collected: null, stage: null, message: "5" }),
+      makeReq({ intent: null, values: {}, message: "5" }),
     ));
 
   assertEquals(res.status, 200);
   const body = await json(res) as Record<string, unknown>;
   assertEquals(body.intent, "add_tenant");
-  assertEquals(body.status, "collecting");
+  assertEquals(body.step, "ask_property");
 });
 
 Deno.test("unit: workflow/next — 400 for unknown intent", async () => {
@@ -245,7 +243,7 @@ Deno.test("unit: workflow/next — 400 for unknown intent", async () => {
 
   const res = await withMockFetch(MOCK_USER, () =>
     handler(
-      makeReq({ intent: null, collected: null, stage: null, message: "oi" }),
+      makeReq({ intent: null, values: {}, message: "oi" }),
     ));
 
   assertEquals(res.status, 400);
@@ -261,11 +259,11 @@ Deno.test("unit: workflow/next — first turn returns property options with disp
 
   const res = await withMockFetch(MOCK_USER, () =>
     handler(
-      makeReq({ intent: null, collected: null, stage: null, message: "5" }),
+      makeReq({ intent: null, values: {}, message: "5" }),
     ));
 
   const body = await json(res) as Record<string, unknown>;
-  assertEquals(body.status, "collecting");
+  assertEquals(body.step, "ask_property");
 
   const options = body.options as Array<{ label: string; value: string }>;
   assertEquals(Array.isArray(options), true);
@@ -283,21 +281,17 @@ Deno.test("unit: workflow/next — property selection by number advances to ask_
     handler(
       makeReq({
         intent: "add_tenant",
-        collected: {
-          _properties: [MOCK_PROPERTY, MOCK_PROPERTY_WITH_TENANT],
-          _machine_stage: "ask_property",
-        },
-        stage: "collect",
+        values: {},
         message: "1",
       }),
     ));
 
   assertEquals(res.status, 200);
   const body = await json(res) as Record<string, unknown>;
-  assertEquals(body.status, "collecting");
-  const collected = body.collected as Record<string, unknown>;
-  assertEquals(collected.property_id, MOCK_PROPERTY.id);
-  assertStringIncludes(body.assistant_message as string, "nome");
+  assertEquals(body.step, "ask_name");
+  const values = body.values as Record<string, unknown>;
+  assertEquals(values.property_id, MOCK_PROPERTY.id);
+  assertStringIncludes(body.message as string, "nome");
 });
 
 Deno.test("unit: workflow/next — invalid property number re-asks", async () => {
@@ -308,11 +302,7 @@ Deno.test("unit: workflow/next — invalid property number re-asks", async () =>
     handler(
       makeReq({
         intent: "add_tenant",
-        collected: {
-          _properties: [MOCK_PROPERTY],
-          _machine_stage: "ask_property",
-        },
-        stage: "collect",
+        values: {},
         message: "99",
       }),
     ));
@@ -322,7 +312,7 @@ Deno.test("unit: workflow/next — invalid property number re-asks", async () =>
   // Should re-ask with options
   const options = body.options as Array<unknown>;
   assertEquals(Array.isArray(options), true);
-  assertStringIncludes(body.assistant_message as string, "Não entendi");
+  assertStringIncludes(body.message as string, "Não entendi");
 });
 
 // ─── Name collection ────────────────────────────────────────────────────────────
@@ -335,22 +325,20 @@ Deno.test("unit: workflow/next — name advances to ask_cpf", async () => {
     handler(
       makeReq({
         intent: "add_tenant",
-        collected: {
+        values: {
           property_id: "prop-uuid-1",
           property_name: "Prédio A - Apto 101",
-          _machine_stage: "ask_name",
         },
-        stage: "collect",
         message: "Maria Silva",
       }),
     ));
 
   assertEquals(res.status, 200);
   const body = await json(res) as Record<string, unknown>;
-  assertEquals(body.status, "collecting");
-  const collected = body.collected as Record<string, unknown>;
-  assertEquals(collected.name, "Maria Silva");
-  assertStringIncludes(body.assistant_message as string, "CPF");
+  assertEquals(body.step, "ask_cpf");
+  const values = body.values as Record<string, unknown>;
+  assertEquals(values.name, "Maria Silva");
+  assertStringIncludes(body.message as string, "CPF");
 });
 
 // ─── CPF validation ────────────────────────────────────────────────────────────
@@ -363,24 +351,20 @@ Deno.test("unit: workflow/next — invalid CPF re-asks, does not advance", async
     handler(
       makeReq({
         intent: "add_tenant",
-        collected: {
+        values: {
           property_id: "prop-uuid-1",
           property_name: "Prédio A - Apto 101",
           name: "Maria Silva",
-          _machine_stage: "ask_cpf",
         },
-        stage: "collect",
         message: "123",
       }),
     ));
 
   assertEquals(res.status, 200);
   const body = await json(res) as Record<string, unknown>;
-  assertEquals(body.status, "collecting");
-  // Machine stage should still be ask_cpf (no advancement)
-  const collected = body.collected as Record<string, unknown>;
-  assertEquals(collected._machine_stage, "ask_cpf");
-  assertStringIncludes(body.assistant_message as string, "CPF inválido");
+  // Step should still be ask_cpf (no advancement)
+  assertEquals(body.step, "ask_cpf");
+  assertStringIncludes(body.message as string, "CPF inválido");
 });
 
 Deno.test("unit: workflow/next — valid CPF advances to ask_whatsapp", async () => {
@@ -391,23 +375,21 @@ Deno.test("unit: workflow/next — valid CPF advances to ask_whatsapp", async ()
     handler(
       makeReq({
         intent: "add_tenant",
-        collected: {
+        values: {
           property_id: "prop-uuid-1",
           property_name: "Prédio A - Apto 101",
           name: "Maria Silva",
-          _machine_stage: "ask_cpf",
         },
-        stage: "collect",
         message: "123.456.789-09",
       }),
     ));
 
   assertEquals(res.status, 200);
   const body = await json(res) as Record<string, unknown>;
-  assertEquals(body.status, "collecting");
-  const collected = body.collected as Record<string, unknown>;
-  assertEquals(collected.cpf, "123.456.789-09");
-  assertStringIncludes(body.assistant_message as string, "WhatsApp");
+  assertEquals(body.step, "ask_whatsapp");
+  const values = body.values as Record<string, unknown>;
+  assertEquals(values.cpf, "123.456.789-09");
+  assertStringIncludes(body.message as string, "WhatsApp");
 });
 
 // ─── WhatsApp collection ───────────────────────────────────────────────────────
@@ -420,27 +402,24 @@ Deno.test("unit: workflow/next — 'pular' sets whatsapp to null and advances to
     handler(
       makeReq({
         intent: "add_tenant",
-        collected: {
+        values: {
           property_id: "prop-uuid-1",
           property_name: "Prédio A - Apto 101",
           name: "Maria Silva",
           cpf: "123.456.789-09",
-          _machine_stage: "ask_whatsapp",
         },
-        stage: "collect",
         message: "pular",
       }),
     ));
 
   assertEquals(res.status, 200);
   const body = await json(res) as Record<string, unknown>;
-  assertEquals(body.stage, "confirm");
-  assertEquals(body.status, "confirming");
-  const collected = body.collected as Record<string, unknown>;
-  assertEquals(collected.whatsapp, null);
+  assertEquals(body.step, "confirm");
+  const values = body.values as Record<string, unknown>;
+  assertEquals(values.whatsapp, null);
   // Should show bold heading
-  assertStringIncludes(body.assistant_message as string, "**Novo inquilino**");
-  assertStringIncludes(body.assistant_message as string, "Confirma?");
+  assertStringIncludes(body.message as string, "**Novo inquilino**");
+  assertStringIncludes(body.message as string, "Confirma?");
 });
 
 Deno.test("unit: workflow/next — valid whatsapp advances to confirm", async () => {
@@ -451,23 +430,21 @@ Deno.test("unit: workflow/next — valid whatsapp advances to confirm", async ()
     handler(
       makeReq({
         intent: "add_tenant",
-        collected: {
+        values: {
           property_id: "prop-uuid-1",
           property_name: "Prédio A - Apto 101",
           name: "Maria Silva",
           cpf: "123.456.789-09",
-          _machine_stage: "ask_whatsapp",
         },
-        stage: "collect",
         message: "+5511999999999",
       }),
     ));
 
   assertEquals(res.status, 200);
   const body = await json(res) as Record<string, unknown>;
-  assertEquals(body.stage, "confirm");
-  const collected = body.collected as Record<string, unknown>;
-  assertEquals(collected.whatsapp, "+5511999999999");
+  assertEquals(body.step, "confirm");
+  const values = body.values as Record<string, unknown>;
+  assertEquals(values.whatsapp, "+5511999999999");
 });
 
 Deno.test("unit: workflow/next — invalid whatsapp re-asks", async () => {
@@ -478,23 +455,19 @@ Deno.test("unit: workflow/next — invalid whatsapp re-asks", async () => {
     handler(
       makeReq({
         intent: "add_tenant",
-        collected: {
+        values: {
           property_id: "prop-uuid-1",
           property_name: "Prédio A - Apto 101",
           name: "Maria Silva",
           cpf: "123.456.789-09",
-          _machine_stage: "ask_whatsapp",
         },
-        stage: "collect",
         message: "not-a-phone",
       }),
     ));
 
   assertEquals(res.status, 200);
   const body = await json(res) as Record<string, unknown>;
-  assertEquals(body.status, "collecting");
-  const collected = body.collected as Record<string, unknown>;
-  assertEquals(collected._machine_stage, "ask_whatsapp");
+  assertEquals(body.step, "ask_whatsapp");
 });
 
 // ─── Confirmation gate ─────────────────────────────────────────────────────────
@@ -507,15 +480,13 @@ Deno.test("unit: workflow/next — confirm non-'Sim' re-opens collection", async
     handler(
       makeReq({
         intent: "add_tenant",
-        collected: {
+        values: {
           property_id: "prop-uuid-1",
           property_name: "Prédio A - Apto 101",
           name: "Maria Silva",
           cpf: "123.456.789-09",
           whatsapp: null,
-          _machine_stage: "confirm",
         },
-        stage: "confirm",
         message: "não",
       }),
     ));
@@ -523,9 +494,9 @@ Deno.test("unit: workflow/next — confirm non-'Sim' re-opens collection", async
   assertEquals(res.status, 200);
   const body = await json(res) as Record<string, unknown>;
   // Should re-ask what to change — no write
-  assertEquals(body.status, "confirming");
+  assertEquals(body.step, "confirm");
   assertStringIncludes(
-    body.assistant_message as string,
+    body.message as string,
     "O que deseja alterar",
   );
 });
@@ -538,29 +509,27 @@ Deno.test("unit: workflow/next — 'Sim' triggers write and returns done", async
     handler(
       makeReq({
         intent: "add_tenant",
-        collected: {
+        values: {
           property_id: "prop-uuid-1",
           property_name: "Prédio A - Apto 101",
           name: "Maria Silva",
           cpf: "123.456.789-09",
           whatsapp: null,
-          _machine_stage: "confirm",
         },
-        stage: "confirm",
         message: "Sim",
       }),
     ));
 
   assertEquals(res.status, 200);
   const body = await json(res) as Record<string, unknown>;
-  assertEquals(body.status, "done");
+  assertEquals(body.step, "done");
   assertStringIncludes(
-    body.assistant_message as string,
+    body.message as string,
     "Inquilino adicionado",
   );
-  assertStringIncludes(body.assistant_message as string, "contrato");
-  const collected = body.collected as Record<string, unknown>;
-  assertEquals(collected.tenant_id, "tenant-uuid-1");
+  assertStringIncludes(body.message as string, "contrato");
+  const values = body.values as Record<string, unknown>;
+  assertEquals(values.tenant_id, "tenant-uuid-1");
 });
 
 // ─── Write error mapping ───────────────────────────────────────────────────────
@@ -573,15 +542,13 @@ Deno.test("unit: workflow/next — GOOGLE_REAUTH_REQUIRED maps to friendly messa
     handler(
       makeReq({
         intent: "add_tenant",
-        collected: {
+        values: {
           property_id: "prop-uuid-1",
           property_name: "Prédio A - Apto 101",
           name: "Maria Silva",
           cpf: "123.456.789-09",
           whatsapp: null,
-          _machine_stage: "confirm",
         },
-        stage: "confirm",
         message: "Sim",
       }),
     ));
@@ -589,9 +556,9 @@ Deno.test("unit: workflow/next — GOOGLE_REAUTH_REQUIRED maps to friendly messa
   assertEquals(res.status, 200);
   const body = await json(res) as Record<string, unknown>;
   // Not done — error occurred
-  assertEquals(body.status, "confirming");
+  assertEquals(body.step, "confirm");
   assertStringIncludes(
-    body.assistant_message as string,
+    body.message as string,
     "Google Drive expirou",
   );
 });
@@ -604,23 +571,21 @@ Deno.test("unit: workflow/next — INVALID_CPF from write maps to friendly messa
     handler(
       makeReq({
         intent: "add_tenant",
-        collected: {
+        values: {
           property_id: "prop-uuid-1",
           property_name: "Prédio A - Apto 101",
           name: "Maria Silva",
           cpf: "123.456.789-09",
           whatsapp: null,
-          _machine_stage: "confirm",
         },
-        stage: "confirm",
         message: "Sim",
       }),
     ));
 
   assertEquals(res.status, 200);
   const body = await json(res) as Record<string, unknown>;
-  assertEquals(body.status, "confirming");
-  assertStringIncludes(body.assistant_message as string, "CPF");
+  assertEquals(body.step, "confirm");
+  assertStringIncludes(body.message as string, "CPF");
 });
 
 // ─── No-active-tenant path ─────────────────────────────────────────────────────
@@ -637,15 +602,15 @@ Deno.test("unit: workflow/next — no active tenant on property is not an error 
 
   const res = await withMockFetch(MOCK_USER, () =>
     handler(
-      makeReq({ intent: null, collected: null, stage: null, message: "5" }),
+      makeReq({ intent: null, values: {}, message: "5" }),
     ));
 
   assertEquals(res.status, 200);
   const body = await json(res) as Record<string, unknown>;
   assertEquals(body.intent, "add_tenant");
-  assertEquals(body.status, "collecting");
+  assertEquals(body.step, "ask_property");
   // Should list the property even though there's no tenant
-  assertStringIncludes(body.assistant_message as string, "imóvel");
+  assertStringIncludes(body.message as string, "imóvel");
 });
 
 // ─── Existing add_tenant intent passed directly ────────────────────────────────
@@ -658,8 +623,7 @@ Deno.test("unit: workflow/next — add_tenant intent in request body is accepted
     handler(
       makeReq({
         intent: "add_tenant",
-        collected: null,
-        stage: null,
+        values: {},
         message: "add_tenant",
       }),
     ));

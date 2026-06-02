@@ -124,10 +124,10 @@ Trigger: menu "Ver inadimplentes".
 Trigger: menu "Adicionar inquilino" (opção 5).
 
 Este flow é orquestrado pelo backend via `POST /workflow/next`. O GPT é um relay:
-1. Primeira mensagem: chame `workflowNext` com `{intent:null, collected:null, stage:null, message:"5"}`.
-2. A cada turno: exiba `assistant_message` ao usuário; se houver `options`, apresente como lista numerada.
-3. Resposta do usuário: chame `workflowNext` com `{intent, collected, stage}` exatamente como retornados pelo backend, e `message` com o texto do usuário.
-4. Quando `status:"done"`: exiba `assistant_message` e encadeie o Flow 3 se o usuário aceitar.
+1. Primeira mensagem: chame `workflowNext` com `{intent:null, values:{}, message:"5"}`.
+2. A cada turno: exiba `message` ao usuário; se houver `options`, apresente como lista numerada.
+3. Resposta do usuário: chame `workflowNext` com `{intent, values}` exatamente como retornados pelo backend, e `message` com o texto do usuário.
+4. Quando `step:"done"`: exiba `message` e encadeie o Flow 3 se o usuário aceitar.
 Nunca intervenha na sequência — o backend valida CPF, WhatsApp e confirmação.
 
 ## Flow 8 — Adicionar Imóvel (Casa/Comercial)
