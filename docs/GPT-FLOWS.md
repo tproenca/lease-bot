@@ -485,19 +485,19 @@ For each tenant to remind:
 ```
 GPT → backend (each turn):
   { intent: "add_tenant" | null,
-    collected: { ... } | null,   ← echoed back from previous response
-    stage: "collect" | "confirm" | null,
+    values: { ... } | null,      ← echoed back from previous response
     message: "<user text>" }
 
 Backend → GPT (each turn):
-  { assistant_message: "...",    ← relay verbatim to user
+  { message: "...",              ← relay verbatim to user
     intent: "add_tenant",        ← echo back next turn
-    collected: { ... },          ← echo back next turn (canonical state)
-    stage: "collect" | "confirm",
-    status: "collecting" | "confirming" | "done",
+    values: { ... },             ← echo back next turn (canonical state, no _machine_stage, no _properties)
+    step: "ask_property" | "ask_name" | "ask_cpf" | "ask_whatsapp" | "confirm" | "done",
     options?: [{ label, value }] ← numbered list when present
     error?: { code, message } }
 ```
+
+Step is inferred by the backend from the values present — the GPT does NOT echo `step` back. When `step:"done"`, the flow is complete.
 
 ### State machine (backend-owned)
 
@@ -533,33 +533,33 @@ done          ← "Inquilino adicionado! Vamos gerar o contrato agora?"
 
 ```
 GPT ──POST /workflow/next──────────────────────────────────────────►
-  { intent: null, collected: null, stage: null, message: "5" }
+  { intent: null, values: {}, message: "5" }
 ◄──200─────────────────────────────────────────────────────────────
-  { assistant_message: "Para qual imóvel...?\n1. Prédio A - Apto 101",
-    intent: "add_tenant", collected: {...}, stage: "collect",
-    status: "collecting", options: [{label: "1. ...", value: "prop-id"}] }
+  { message: "Para qual imóvel...?\n1. Prédio A - Apto 101",
+    intent: "add_tenant", values: {}, step: "ask_property",
+    options: [{label: "1. ...", value: "prop-id"}] }
 
 GPT relays message + numbered list to user.
 User: "1"
 
 GPT ──POST /workflow/next──────────────────────────────────────────►
-  { intent: "add_tenant", collected: {...}, stage: "collect", message: "1" }
+  { intent: "add_tenant", values: {}, message: "1" }
 ◄──200─────────────────────────────────────────────────────────────
-  { assistant_message: "Qual é o nome completo do inquilino?",
-    intent: "add_tenant", collected: { property_id: "prop-id", ... },
-    stage: "collect", status: "collecting" }
+  { message: "Qual é o nome completo do inquilino?",
+    intent: "add_tenant", values: { property_id: "prop-id", property_name: "Prédio A - Apto 101" },
+    step: "ask_name" }
 
 ... (name → CPF → whatsapp → confirm) ...
 
 User: "Sim"
 
 GPT ──POST /workflow/next──────────────────────────────────────────►
-  { intent: "add_tenant", collected: {..., _machine_stage: "confirm"},
-    stage: "confirm", message: "Sim" }
+  { intent: "add_tenant", values: { property_id: "...", name: "...", cpf: "...", whatsapp: null },
+    message: "Sim" }
 ◄──200─────────────────────────────────────────────────────────────
-  { assistant_message: "Inquilino adicionado! Vamos gerar o contrato agora?",
-    intent: "add_tenant", collected: {..., tenant_id: "uuid"},
-    stage: "collect", status: "done" }
+  { message: "Inquilino adicionado! Vamos gerar o contrato agora?",
+    intent: "add_tenant", values: {..., tenant_id: "uuid"},
+    step: "done" }
 ```
 
 **Happy path chain:** Add Tenant → Generate Contract (Flow 3) → Send for Signature (Flow 4)

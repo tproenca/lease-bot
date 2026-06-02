@@ -912,10 +912,10 @@ paths:
       summary: Advance the stateless backend workflow state machine one step
       description: >
         Stateless round-trip orchestrator. The GPT sends the current
-        `intent/collected/stage` it received last turn plus the user's latest
-        `message`. The backend advances the state machine, validates inputs, and
-        returns the next `assistant_message`, updated `collected`, and new
-        `stage/status`. On `status:"done"` the flow is complete.
+        `intent/values` it received last turn plus the user's latest
+        `message`. The backend infers the current step from the values
+        present, validates inputs, and returns the next `message`, updated
+        `values`, and the current `step`. On `step:"done"` the flow is complete.
       requestBody:
         required: true
         content:
@@ -929,16 +929,11 @@ paths:
                   nullable: true
                   description: Intent returned by the previous response, or null on first turn.
                   example: add_tenant
-                collected:
+                values:
                   type: object
                   nullable: true
                   additionalProperties: true
-                  description: Collected state returned by the previous response, or null on first turn.
-                stage:
-                  type: string
-                  nullable: true
-                  enum: [collect, confirm]
-                  description: Stage returned by the previous response, or null on first turn.
+                  description: Collected values returned by the previous response, or null on first turn.
                 message:
                   type: string
                   description: The user's latest reply to relay to the backend.
@@ -949,28 +944,23 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [assistant_message, intent, collected, stage, status]
+                required: [message, intent, values, step]
                 properties:
-                  assistant_message:
+                  message:
                     type: string
                     description: Message to relay verbatim to the user.
                   intent:
                     type: string
                     description: Current intent — echo this back on the next turn.
-                  collected:
+                  values:
                     type: object
                     additionalProperties: true
-                    description: Current collected state — echo this back on the next turn.
-                  stage:
+                    description: Current collected values — echo this back on the next turn.
+                  step:
                     type: string
-                    enum: [collect, confirm]
-                    description: Current stage — echo this back on the next turn.
-                  status:
-                    type: string
-                    enum: [collecting, confirming, done]
                     description: >
-                      `collecting` — continue the conversation;
-                      `confirming` — waiting for explicit "Sim";
+                      Current workflow step, inferred from values present.
+                      `ask_property` | `ask_name` | `ask_cpf` | `ask_whatsapp` | `confirm` | `done`.
                       `done` — flow complete, return to menu.
                   options:
                     type: array

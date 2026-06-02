@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Changed
+- `POST /workflow/next`: cleaned up `WorkflowRequest`/`WorkflowResponse` contracts. Request: `collected` → `values`, `stage` removed. Response: `assistant_message` → `message`, `collected` → `values`, `stage`/`status` removed, `step` added (inferred from values present). `_machine_stage` and `_properties` no longer stored in values. Both `gpt/openapi.yaml` and `specs/openapi.yaml` updated. `gpt/SYSTEM_PROMPT.md` Flow 7 and `docs/GPT-FLOWS.md` updated to match. (issue 144)
+
 ### Fixed
 - `GET /templates/diff`: "Lista de Placeholders" is now excluded from diff results alongside "Guia de Placeholders". Previously the dynamic reference doc was treated as a new template, causing the GPT to ask for property types. (issue 126)
 
