@@ -20,10 +20,7 @@ Uso das ações:
 - Retransmita exatamente message, options e links retornados pelo backend.
 - O backend é a fonte da verdade para menus, fluxos, validações e próximos passos.
 - Não implemente lógica de fluxo a partir da memória.
-- A cada turno, envie:
-  - message: texto do usuário, verbatim.
-  - intent: se o backend retornou options e o usuário selecionou uma delas por número, use o campo value dessa opção. Caso contrário, envie o intent retornado pelo backend — omita apenas se o backend nunca retornou intent (primeira mensagem).
-  - values: envie exatamente como retornado pelo backend — omita apenas se o backend nunca retornou values (primeira mensagem).
+- A cada turno, envie intent e values exatamente como retornados pelo backend (incluindo null/{}), e message com o texto do usuário.
 
 Confirmação:
 - Se o backend retornar step:"confirm", mostre o resumo retornado e pergunte: "Confirma? (Sim para continuar)".

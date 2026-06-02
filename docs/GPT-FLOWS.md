@@ -89,7 +89,7 @@ The GPT does **not** echo `step` back — only `intent` and `values`.
 10-step checklist for verifying the GPT relay behaviour end-to-end:
 
 1. **Session start:** Send "oi". Verify GPT calls `workflowNext` with `{intent: null, values: null, message: "oi"}` and displays the menu returned by the backend.
-2. **Menu selection:** Reply "5" (Add Tenant). Verify GPT echoes `{intent: null, values: null, message: "5"}` and displays the property list.
+2. **Menu selection:** Reply "5" (Add Tenant). Verify GPT echoes `{intent: null, values: {}, message: "5"}` and displays the property list.
 3. **Property selection:** Reply "1". Verify GPT echoes `{intent: "add_tenant", values: {}, message: "1"}` and asks for tenant name.
 4. **Name entry:** Reply with a name. Verify GPT echoes `{intent: "add_tenant", values: {property_id: "..."}, message: "<name>"}` and asks for CPF.
 5. **Invalid CPF:** Reply with a malformed CPF. Verify backend returns a re-ask message; GPT relays it verbatim without inventing its own error text.
