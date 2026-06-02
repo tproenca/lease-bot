@@ -478,7 +478,7 @@ For each tenant to remind:
 
 **Trigger:** Menu item "Adicionar inquilino" (option 5).
 
-> **Architecture:** This flow is a **stateless round-trip pilot**. The GPT is a thin relay — all sequencing, validation, confirmation, and error mapping are owned by the backend. No session table is used. State lives in the `intent/collected/stage` fields echoed back each turn.
+> **Architecture:** This flow is a **stateless round-trip pilot**. The GPT is a thin relay — all sequencing, validation, confirmation, and error mapping are owned by the backend. No session table is used. State lives in the `intent/values` fields echoed back each turn.
 
 ### Stateless round-trip contract
 
@@ -564,7 +564,7 @@ GPT ──POST /workflow/next─────────────────
 
 **Happy path chain:** Add Tenant → Generate Contract (Flow 3) → Send for Signature (Flow 4)
 
-**Error mapping** (backend returns friendly `assistant_message` on write failure):
+**Error mapping** (backend returns friendly `message` on write failure):
 
 | Error code | User-visible message |
 |------------|---------------------|
