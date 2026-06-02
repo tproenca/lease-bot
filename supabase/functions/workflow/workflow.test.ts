@@ -717,3 +717,192 @@ Deno.test("unit: workflow/next — add_tenant intent in request body goes to ask
   assertEquals(body.intent, "add_tenant");
   assertEquals(body.step, "ask_property");
 });
+
+// ─── ADD_TENANT definition assertions ─────────────────────────────────────────
+
+import { ADD_TENANT } from "./intents/add-tenant.ts";
+
+Deno.test("unit: ADD_TENANT — has 4 steps: property_id, name, cpf, whatsapp", () => {
+  const keys = ADD_TENANT.steps.map((s) => s.key);
+  assertEquals(keys, ["property_id", "name", "cpf", "whatsapp"]);
+});
+
+Deno.test("unit: ADD_TENANT — whatsapp step is optional", () => {
+  const whatsapp = ADD_TENANT.steps.find((s) => s.key === "whatsapp");
+  assertEquals(whatsapp?.optional, true);
+});
+
+Deno.test("unit: ADD_TENANT — property_id step has options builder", () => {
+  const step = ADD_TENANT.steps.find((s) => s.key === "property_id");
+  assertEquals(typeof step?.options, "function");
+});
+
+Deno.test("unit: ADD_TENANT — name validate rejects empty string", () => {
+  const step = ADD_TENANT.steps.find((s) => s.key === "name")!;
+  const result = step.validate!("", {}, { properties: [] } as ContextPayload);
+  assertEquals(result.ok, false);
+});
+
+Deno.test("unit: ADD_TENANT — cpf validate accepts valid format", () => {
+  const step = ADD_TENANT.steps.find((s) => s.key === "cpf")!;
+  const result = step.validate!(
+    "123.456.789-09",
+    {},
+    { properties: [] } as ContextPayload,
+  );
+  assertEquals(result.ok, true);
+  if (result.ok) assertEquals(result.value, "123.456.789-09");
+});
+
+// ─── Generic engine tests (2-step test definition) ─────────────────────────────
+//
+// Uses a minimal FlowDefinition independent of add_tenant to verify the engine:
+//   collect → invalid re-ask → advance → optional "pular" → confirm → Sim → done
+//   confirm non-Sim → re-opens
+
+import { type FlowDefinition, runFlowEngine } from "./flow-engine.ts";
+import type { WorkflowRequest } from "./index.ts";
+
+const EMPTY_CONTEXT: ContextPayload = {
+  properties: [],
+};
+
+const MOCK_DEPS_ENGINE: WorkflowDeps = {
+  loadContext: async (_jwt) => ({ status: 200, body: EMPTY_CONTEXT }),
+  loadTemplatesDiff: async (_jwt) => ({ status: 200, body: {} }),
+  createTenant: async (_jwt, _payload) => ({ status: 201, body: {} }),
+};
+
+const TEST_FLOW: FlowDefinition = {
+  intent: "test_flow",
+  confirmationTitle: "Test Summary",
+  steps: [
+    {
+      key: "username",
+      prompt: "What is your username?",
+      validate: (input) => {
+        const trimmed = input.trim();
+        return trimmed.length >= 3
+          ? { ok: true, value: trimmed }
+          : { ok: false, error: "Username must be at least 3 characters." };
+      },
+    },
+    {
+      key: "nickname",
+      prompt: "What is your nickname? (say 'pular' to skip)",
+      optional: true,
+      validate: (input) => {
+        const trimmed = input.trim();
+        return trimmed.length > 0
+          ? { ok: true, value: trimmed }
+          : { ok: false, error: "Nickname cannot be empty if provided." };
+      },
+    },
+  ],
+  execute: async (_values, _jwt, _deps) => {
+    return { ok: true, message: "Test flow complete!" };
+  },
+};
+
+function engineReq(
+  values: Record<string, unknown>,
+  message: string,
+): WorkflowRequest {
+  return { intent: "test_flow", values, message };
+}
+
+Deno.test("unit: engine — initial call returns first step prompt", async () => {
+  const res = await runFlowEngine(
+    TEST_FLOW,
+    engineReq({}, ""),
+    EMPTY_CONTEXT,
+    MOCK_DEPS_ENGINE,
+    "jwt",
+  );
+  assertEquals(res.step, "ask_username");
+  assertStringIncludes(res.message, "username");
+  assertEquals(res.intent, "test_flow");
+});
+
+Deno.test("unit: engine — invalid input re-asks same step", async () => {
+  // "ab" is too short → validation fails
+  const res = await runFlowEngine(
+    TEST_FLOW,
+    engineReq({}, "ab"),
+    EMPTY_CONTEXT,
+    MOCK_DEPS_ENGINE,
+    "jwt",
+  );
+  assertEquals(res.step, "ask_username");
+  assertStringIncludes(res.message, "at least 3");
+});
+
+Deno.test("unit: engine — valid input advances to next step", async () => {
+  const res = await runFlowEngine(
+    TEST_FLOW,
+    engineReq({}, "alice"),
+    EMPTY_CONTEXT,
+    MOCK_DEPS_ENGINE,
+    "jwt",
+  );
+  assertEquals(res.step, "ask_nickname");
+  assertEquals((res.values as Record<string, unknown>).username, "alice");
+});
+
+Deno.test("unit: engine — 'pular' on optional step stores null and advances to confirm", async () => {
+  const res = await runFlowEngine(
+    TEST_FLOW,
+    engineReq({ username: "alice" }, "pular"),
+    EMPTY_CONTEXT,
+    MOCK_DEPS_ENGINE,
+    "jwt",
+  );
+  assertEquals(res.step, "confirm");
+  assertEquals((res.values as Record<string, unknown>).nickname, null);
+  assertStringIncludes(res.message, "**Test Summary**");
+  assertStringIncludes(res.message, "Confirma?");
+});
+
+Deno.test("unit: engine — confirm non-Sim re-opens (asks what to change)", async () => {
+  const res = await runFlowEngine(
+    TEST_FLOW,
+    engineReq({ username: "alice", nickname: null }, "não"),
+    EMPTY_CONTEXT,
+    MOCK_DEPS_ENGINE,
+    "jwt",
+  );
+  assertEquals(res.step, "confirm");
+  assertStringIncludes(res.message, "O que deseja alterar");
+});
+
+Deno.test("unit: engine — 'Sim' calls execute and returns done", async () => {
+  const res = await runFlowEngine(
+    TEST_FLOW,
+    engineReq({ username: "alice", nickname: null }, "Sim"),
+    EMPTY_CONTEXT,
+    MOCK_DEPS_ENGINE,
+    "jwt",
+  );
+  assertEquals(res.step, "done");
+  assertStringIncludes(res.message, "Test flow complete");
+});
+
+Deno.test("unit: engine — execute failure returns error message at given step", async () => {
+  const failingFlow: FlowDefinition = {
+    ...TEST_FLOW,
+    execute: async () => ({
+      ok: false,
+      step: "confirm",
+      message: "Write failed.",
+    }),
+  };
+  const res = await runFlowEngine(
+    failingFlow,
+    engineReq({ username: "alice", nickname: null }, "Sim"),
+    EMPTY_CONTEXT,
+    MOCK_DEPS_ENGINE,
+    "jwt",
+  );
+  assertEquals(res.step, "confirm");
+  assertStringIncludes(res.message, "Write failed");
+});
