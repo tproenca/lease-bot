@@ -385,6 +385,26 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Witness'
+                  tenants:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        property_id:
+                          type: string
+                          format: uuid
+                        name:
+                          type: string
+                        cpf:
+                          type: string
+                        whatsapp:
+                          type: string
+                          nullable: true
+                        drive_folder_id:
+                          type: string
                   account_config:
                     type: object
                     properties:

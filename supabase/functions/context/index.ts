@@ -76,6 +76,7 @@ export async function handleContext(req: Request): Promise<Response> {
     pttResult,
     placeholdersResult,
     witnessesResult,
+    tenantsResult,
     cronErrorsResult,
   ] = await Promise.all([
     db
@@ -109,6 +110,10 @@ export async function handleContext(req: Request): Promise<Response> {
       .select("name, whatsapp")
       .order("name"),
     db
+      .from("tenants")
+      .select("id, property_id, name, cpf, whatsapp, drive_folder_id")
+      .order("name"),
+    db
       .from("cron_errors")
       .select("id, job_name, error, occurred_at")
       .gte(
@@ -128,6 +133,7 @@ export async function handleContext(req: Request): Promise<Response> {
       pttResult,
       placeholdersResult,
       witnessesResult,
+      tenantsResult,
       cronErrorsResult,
     ]
   ) {
@@ -224,6 +230,7 @@ export async function handleContext(req: Request): Promise<Response> {
     templates,
     placeholders: placeholdersResult.data ?? [],
     witnesses: witnessesResult.data ?? [],
+    tenants: tenantsResult.data ?? [],
     account_config: {
       payment_reminder_frequency: landlord.payment_reminder_frequency,
     },
