@@ -1,4 +1,4 @@
-# GPT Conversation Flows & API Reference
+# GPT Architecture & /workflow/next Contract
 
 This document describes the architecture of the Lease Assistant Custom GPT, the stateless round-trip contract with the backend, and the manual test plan.
 
