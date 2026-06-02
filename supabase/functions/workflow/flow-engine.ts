@@ -149,12 +149,8 @@ export async function runFlowEngine(
     const options = resolveOptions(pending, values, context);
     const promptText = resolvePrompt(pending, values, context);
 
-    // Build prompt with options list appended (same pattern as original machine)
-    let fullPrompt = promptText;
-    if (options && options.length > 0) {
-      const optionsList = options.map((o) => o.label).join("\n");
-      fullPrompt = `${promptText}\n${optionsList}`;
-    }
+    // The options array carries the list — no need to append labels to the prompt.
+    const fullPrompt = promptText;
 
     // If this is the very first call (no message yet or the initial routing
     // message that equals the intent name), just ask the prompt.
@@ -187,11 +183,7 @@ export async function runFlowEngine(
       const result = pending.validate(message, values, context);
       if (!result.ok) {
         // Re-ask with error prepended.
-        let errorPrompt = `${result.error}\n${fullPrompt}`;
-        if (options && options.length > 0) {
-          // prompt already has options, just prepend error
-          errorPrompt = `${result.error}\n${fullPrompt}`;
-        }
+        const errorPrompt = `${result.error}\n${fullPrompt}`;
         return {
           message: errorPrompt,
           intent,
@@ -281,13 +273,8 @@ function nextStep(
   if (nextPending) {
     const options = resolveOptions(nextPending, values, context);
     const promptText = resolvePrompt(nextPending, values, context);
-    let fullPrompt = promptText;
-    if (options && options.length > 0) {
-      const optionsList = options.map((o) => o.label).join("\n");
-      fullPrompt = `${promptText}\n${optionsList}`;
-    }
     return {
-      message: fullPrompt,
+      message: promptText,
       intent,
       values,
       step: stepName(nextPending),
