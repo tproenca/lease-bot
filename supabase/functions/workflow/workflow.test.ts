@@ -578,6 +578,83 @@ Deno.test("unit: workflow/next — valid CPF advances to ask_whatsapp", async ()
   assertStringIncludes(body.message as string, "WhatsApp");
 });
 
+Deno.test("unit: workflow/next — unformatted CPF digits accepted and auto-formatted", async () => {
+  const deps = makeStubDeps({});
+  const handler = handleWorkflowNext(deps);
+
+  const state = btoa(JSON.stringify({
+    property_id: "prop-uuid-1",
+    property_name: "Prédio A - Apto 101",
+    name: "Maria Silva",
+  }));
+  // 22342645880 → 223.426.458-80 (valid check digits)
+  const res = await withMockFetch(MOCK_USER, () =>
+    handler(
+      makeReq({
+        intent: "add_tenant",
+        state,
+        message: "22342645880",
+      }),
+    ));
+
+  assertEquals(res.status, 200);
+  const body = await json(res) as Record<string, unknown>;
+  assertEquals(body.step, "ask_whatsapp");
+  const values = decodeState(body);
+  // Stored value must be the formatted version
+  assertEquals(values.cpf, "223.426.458-80");
+  assertStringIncludes(body.message as string, "WhatsApp");
+});
+
+Deno.test("unit: workflow/next — CPF with wrong check digits is rejected", async () => {
+  const deps = makeStubDeps({});
+  const handler = handleWorkflowNext(deps);
+
+  const state = btoa(JSON.stringify({
+    property_id: "prop-uuid-1",
+    property_name: "Prédio A - Apto 101",
+    name: "Maria Silva",
+  }));
+  // 22342645899 has wrong check digits (should end in 80)
+  const res = await withMockFetch(MOCK_USER, () =>
+    handler(
+      makeReq({
+        intent: "add_tenant",
+        state,
+        message: "22342645899",
+      }),
+    ));
+
+  assertEquals(res.status, 200);
+  const body = await json(res) as Record<string, unknown>;
+  assertEquals(body.step, "ask_cpf");
+  assertStringIncludes(body.message as string, "CPF inválido");
+});
+
+Deno.test("unit: workflow/next — all-same-digit CPF is rejected", async () => {
+  const deps = makeStubDeps({});
+  const handler = handleWorkflowNext(deps);
+
+  const state = btoa(JSON.stringify({
+    property_id: "prop-uuid-1",
+    property_name: "Prédio A - Apto 101",
+    name: "Maria Silva",
+  }));
+  const res = await withMockFetch(MOCK_USER, () =>
+    handler(
+      makeReq({
+        intent: "add_tenant",
+        state,
+        message: "11111111111",
+      }),
+    ));
+
+  assertEquals(res.status, 200);
+  const body = await json(res) as Record<string, unknown>;
+  assertEquals(body.step, "ask_cpf");
+  assertStringIncludes(body.message as string, "CPF inválido");
+});
+
 // ─── WhatsApp collection ───────────────────────────────────────────────────────
 
 Deno.test("unit: workflow/next — 'pular' sets whatsapp to null and advances to confirm", async () => {
@@ -989,6 +1066,28 @@ Deno.test("unit: ADD_TENANT — cpf validate accepts valid format", () => {
   );
   assertEquals(result.ok, true);
   if (result.ok) assertEquals(result.value, "123.456.789-09");
+});
+
+Deno.test("unit: ADD_TENANT — cpf validate accepts unformatted digits and formats them", () => {
+  const step = ADD_TENANT.steps.find((s) => s.key === "cpf")!;
+  const result = step.validate!(
+    "12345678909",
+    {},
+    { properties: [] } as ContextPayload,
+  );
+  assertEquals(result.ok, true);
+  if (result.ok) assertEquals(result.value, "123.456.789-09");
+});
+
+Deno.test("unit: ADD_TENANT — cpf validate rejects invalid check digits", () => {
+  const step = ADD_TENANT.steps.find((s) => s.key === "cpf")!;
+  const result = step.validate!(
+    "12345678900",
+    {},
+    { properties: [] } as ContextPayload,
+  );
+  assertEquals(result.ok, false);
+  if (!result.ok) assertStringIncludes(result.error, "CPF inválido");
 });
 
 // ─── Generic engine tests (2-step test definition) ─────────────────────────────

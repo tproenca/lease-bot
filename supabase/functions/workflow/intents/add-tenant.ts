@@ -1,8 +1,8 @@
 // ADD_TENANT FlowDefinition — collects property, name, CPF, whatsapp and creates a tenant.
 
 import {
-  isValidCpf,
   normalizeBrazilianWhatsapp,
+  parseCpfInput,
 } from "../../_shared/validation.ts";
 import { ERROR_MAP } from "../../_shared/error-map.ts";
 import type { ContextPayload, WorkflowOption } from "../index.ts";
@@ -94,11 +94,13 @@ export const ADD_TENANT: FlowDefinition = {
     },
     {
       key: "cpf",
-      prompt: "Qual é o CPF? (formato: XXX.XXX.XXX-XX)",
+      prompt: "Qual é o CPF do inquilino?",
       validate: (input: string) => {
-        return isValidCpf(input)
-          ? { ok: true, value: input.trim() }
-          : { ok: false, error: "CPF inválido. Use o formato XXX.XXX.XXX-XX." };
+        const formatted = parseCpfInput(input);
+        return formatted !== null ? { ok: true, value: formatted } : {
+          ok: false,
+          error: "CPF inválido. Verifique os dígitos e tente novamente.",
+        };
       },
     },
     {
