@@ -821,9 +821,9 @@ Deno.test("unit: workflow/next — 'Sim' triggers write and transitions to menu 
   assertEquals(body.step, "menu");
   assertEquals(body.state, null); // session boundary
   assertEquals(body.intent, null);
-  // Success message prepended to menu message
-  assertStringIncludes(body.message as string, "Inquilino adicionado");
-  assertStringIncludes(body.message as string, "O que você quer fazer");
+  // Success message prepended to "O que mais posso te ajudar?"
+  assertStringIncludes(body.message as string, "Inquilino adicionado.");
+  assertStringIncludes(body.message as string, "O que mais posso te ajudar?");
 });
 
 // ─── Write error mapping ───────────────────────────────────────────────────────
