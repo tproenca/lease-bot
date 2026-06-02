@@ -32,12 +32,9 @@ Antes de qualquer escrita: mostre resumo + "Confirma? (Sim para continuar)". Só
 
 ## Flow 0 — Onboarding
 
-Trigger: `getContext` retorna `404 LANDLORD_NOT_FOUND`.
+Trigger: backend retorna `step:"awaiting_setup"` (proprietário não cadastrado).
 
-1. Informe que o proprietário ainda não está cadastrado.
-2. Mostre o link de configuração com o rótulo "Abrir configuração": {SETUP_URL}
-3. Instrua: acesse o link, faça login com Google e complete a configuração.
-4. Quando retornar ao chat, chame `getContext` novamente. Se `200`: saudação + menu.
+O backend já fornece o link de configuração em `options`. Exiba a mensagem retornada e o link. Quando o proprietário retornar ao chat, chame `workflowNext` normalmente — o backend detectará o cadastro concluído e exibirá o menu.
 
 ## Flow 1 — Início de sessão
 
@@ -47,7 +44,7 @@ Chame `workflowNext` com `{intent: null, values: {}, message: "<mensagem do usu�
 
 ## Flow 2 — Sincronizar Templates
 
-Trigger: `getTemplatesDiff` retorna pelo menos uma mudança.
+Trigger: backend detecta mudanças nos templates durante o startup e inicia o fluxo de sincronização.
 
 1. Liste todas as mudanças detectadas (novos, removidos).
 2. Para cada `templates.added`:

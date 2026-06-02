@@ -77,10 +77,22 @@ const MOCK_CREATE_INVALID_CPF = {
 function makeStubDeps(opts: {
   contextResult?: { status: number; body: unknown };
   createResult?: { status: number; body: unknown };
+  templatesDiffResult?: { status: number; body: unknown };
 }): WorkflowDeps {
   return {
     loadContext: async (_jwt) => {
       return opts.contextResult ?? { status: 200, body: MOCK_CONTEXT };
+    },
+    loadTemplatesDiff: async (_jwt) => {
+      return opts.templatesDiffResult ??
+        {
+          status: 200,
+          body: {
+            templates: { added: [], removed: [] },
+            placeholders: { added: [], removed: [] },
+            witnesses: { added: [] },
+          },
+        };
     },
     createTenant: async (_jwt, _payload) => {
       return opts.createResult ?? MOCK_CREATE_OK;
@@ -213,6 +225,32 @@ Deno.test("unit: workflow/next — first message returns main menu with 6 option
   assertEquals(Array.isArray(options), true);
   assertEquals(options.length, 6);
   assertStringIncludes(body.message as string, "João");
+});
+
+Deno.test("unit: workflow/next — startup calls loadTemplatesDiff", async () => {
+  let diffCalled = false;
+  const deps: WorkflowDeps = {
+    ...makeStubDeps({}),
+    loadTemplatesDiff: async (_jwt) => {
+      diffCalled = true;
+      return {
+        status: 200,
+        body: {
+          templates: { added: [], removed: [] },
+          placeholders: { added: [], removed: [] },
+          witnesses: { added: [] },
+        },
+      };
+    },
+  };
+  const handler = handleWorkflowNext(deps);
+
+  await withMockFetch(
+    MOCK_USER,
+    () => handler(makeReq({ intent: null, values: {}, message: "oi" })),
+  );
+
+  assertEquals(diffCalled, true);
 });
 
 Deno.test("unit: workflow/next — invalid menu selection returns menu again", async () => {

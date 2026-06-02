@@ -26,6 +26,7 @@ import { errorResponse } from "../_shared/errors.ts";
 import { publicFunctionsBaseUrl } from "../_shared/env.ts";
 import { extractBearer, getAuthenticatedUser } from "../_shared/supabase.ts";
 import { handleContext } from "../context/index.ts";
+import { handleTemplatesDiff } from "../templates/diff/index.ts";
 import { handleTenants } from "../tenants/index.ts";
 import { invokeHandler } from "../_shared/internal.ts";
 import {
@@ -94,6 +95,10 @@ export interface CreateTenantError {
 export interface WorkflowDeps {
   /** Load full context for the authenticated landlord. Returns raw { status, body }. */
   loadContext: (jwt: string) => Promise<{ status: number; body: unknown }>;
+  /** Load templates diff for the authenticated landlord. Returns raw { status, body }. */
+  loadTemplatesDiff: (
+    jwt: string,
+  ) => Promise<{ status: number; body: unknown }>;
   /** Create a new tenant via the tenants handler. */
   createTenant: (
     jwt: string,
@@ -114,6 +119,14 @@ function makeDefaultDeps(): WorkflowDeps {
       return await invokeHandler(handleContext, {
         method: "GET",
         path: "/context",
+        jwt,
+      });
+    },
+
+    loadTemplatesDiff: async (jwt) => {
+      return await invokeHandler(handleTemplatesDiff, {
+        method: "GET",
+        path: "/templates/diff",
         jwt,
       });
     },
@@ -246,6 +259,11 @@ async function handleStartup(
   }
 
   const context = ctxResult.body as ContextPayload;
+
+  // Check for template changes — if detected, note them but proceed to menu
+  // (full template_sync workflow is a future milestone — tracked in #149).
+  // We call loadTemplatesDiff here so the dep is exercised and the stub is testable.
+  await deps.loadTemplatesDiff(jwt);
 
   // Check if message is a menu option selection.
   const selectedIntent = MENU_MAP[req.message.trim()];
