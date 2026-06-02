@@ -1,23 +1,25 @@
 // POST /workflow/next — stateless backend workflow orchestrator.
 //
-// The backend owns startup (context loading, menu) and intent routing.
-// The GPT is a thin relay: it sends { intent, values, message } each turn
-// and displays the response verbatim.
+// Contract redesign (issue #169):
+//   Request:  { intent?, state?, message }
+//   Response: { message, intent?, state, step, options? }
 //
-// Startup (intent: null):
-//   1. Load context internally (getContext).
-//   2. If landlord not found → onboarding response.
-//   3. If GOOGLE_REAUTH_REQUIRED → reauth response.
-//   4. If message is a menu option number (1-6) → route to that workflow.
-//   5. Otherwise → return main menu.
+// state is an opaque base64-encoded JSON token carrying all flow state.
+// The GPT echoes it verbatim each turn — it never decodes or inspects it.
 //
-// Stateless round-trip design:
-//   Request:  { intent, values, message }
-//   Response: { message, intent, values, step, options?, error? }
+// Enter/Process split:
+//   state absent → Enter phase: engine renders first prompt (no validation)
+//   state present → Process phase: engine validates user message
 //
-// The GPT echoes back the intent/values the backend returned last turn.
-// The backend infers the current step from the values present (no _machine_stage).
-// No session_id or server-side session table needed.
+// Session boundaries (menu, onboarding, reauth, error) → state: null
+//
+// Intent router (when intent is absent):
+//   Try MENU_MAP by number: "5" → add_tenant
+//   Try text match (case-insensitive): "Adicionar inquilino" → add_tenant
+//   Match found → Enter phase → start flow
+//   No match → load context → return menu
+//
+// step: done auto-transition → return menu response with success message prepended
 //
 // Auth: Bearer JWT verified via Supabase Auth — returns 401 if missing/invalid.
 
@@ -39,13 +41,36 @@ export interface WorkflowOption {
   value: string;
 }
 
+/** Wire request shape sent by GPT. */
+export interface WorkflowRawRequest {
+  intent?: string | null;
+  state?: string | null;
+  message: string;
+}
+
+/**
+ * Internal request type used by the flow engine.
+ * values is decoded from the opaque state token.
+ */
 export interface WorkflowRequest {
   intent: string | null;
   values: Record<string, unknown>;
   message: string;
 }
 
+/** Wire response shape returned to GPT. */
 export interface WorkflowResponse {
+  message: string;
+  intent: string | null;
+  /** Opaque state token. null = session boundary (menu, onboarding, reauth, error). */
+  state: string | null;
+  step: string;
+  options?: WorkflowOption[];
+  error?: { code: string; message: string };
+}
+
+/** Internal engine response (uses values, not state). */
+export interface EngineResponse {
   message: string;
   intent: string | null;
   values: Record<string, unknown>;
@@ -136,6 +161,43 @@ function makeDefaultDeps(): WorkflowDeps {
   };
 }
 
+// ─── State token helpers ──────────────────────────────────────────────────────
+
+/** Encode values as opaque base64 state token. */
+function encodeState(values: Record<string, unknown>): string {
+  return btoa(JSON.stringify(values));
+}
+
+/** Decode opaque state token into values. Returns {} on failure. */
+function decodeState(state: string): Record<string, unknown> {
+  try {
+    return JSON.parse(atob(state)) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
+// ─── Response builder ─────────────────────────────────────────────────────────
+
+/**
+ * Convert an engine response to the wire response.
+ * state: null for session boundaries (menu, onboarding, reauth, error).
+ * state: encoded values for flows in progress.
+ */
+function toWireResponse(
+  eng: EngineResponse,
+  isBoundary: boolean,
+): WorkflowResponse {
+  return {
+    message: eng.message,
+    intent: eng.intent ?? null,
+    state: isBoundary ? null : encodeState(eng.values),
+    step: eng.step,
+    ...(eng.options ? { options: eng.options } : {}),
+    ...(eng.error ? { error: eng.error } : {}),
+  };
+}
+
 // ─── Menu helpers ─────────────────────────────────────────────────────────────
 
 // Maps menu option number (1-6) to intent string.
@@ -148,14 +210,25 @@ const MENU_MAP: Record<string, string> = {
   "6": "add_property",
 };
 
-function mainMenu(name: string): WorkflowResponse {
+// Maps text labels (lowercase) to intent string for natural language routing.
+const LABEL_MAP: Record<string, string> = {
+  "registrar pagamento": "record_payment",
+  "ver inadimplentes": "view_overdue",
+  "gerar documento": "generate_document",
+  "enviar para assinatura": "send_signature",
+  "adicionar inquilino": "add_tenant",
+  "adicionar imóvel": "add_property",
+  "adicionar imovel": "add_property",
+};
+
+function mainMenuResponse(name: string): WorkflowResponse {
   const greeting = name
     ? `Olá, ${name}! O que você quer fazer?`
     : "O que você quer fazer?";
   return {
     message: greeting,
     intent: null,
-    values: {},
+    state: null,
     step: "menu",
     options: [
       { label: "1. Registrar pagamento", value: "record_payment" },
@@ -168,14 +241,36 @@ function mainMenu(name: string): WorkflowResponse {
   };
 }
 
-// ─── Startup sequence (intent: null) ─────────────────────────────────────────
+// ─── Intent router ─────────────────────────────────────────────────────────────
 
-async function handleStartup(
+/**
+ * Resolve an intent from a user message (when no intent is provided by GPT).
+ * Tries numeric MENU_MAP first, then case-insensitive text label match.
+ * Returns null if no match.
+ */
+function resolveIntentFromMessage(message: string): string | null {
+  const trimmed = message.trim();
+
+  // Try numeric match.
+  const byNumber = MENU_MAP[trimmed];
+  if (byNumber) return byNumber;
+
+  // Try text label match (case-insensitive).
+  const byLabel = LABEL_MAP[trimmed.toLowerCase()];
+  if (byLabel) return byLabel;
+
+  return null;
+}
+
+// ─── Context loader ────────────────────────────────────────────────────────────
+
+async function loadContext(
   jwt: string,
-  req: WorkflowRequest,
   deps: WorkflowDeps,
-): Promise<WorkflowResponse> {
-  // Load context internally.
+): Promise<
+  | { ok: true; context: ContextPayload }
+  | { ok: false; response: WorkflowResponse }
+> {
   const ctxResult = await deps.loadContext(jwt);
 
   // Handle GOOGLE_REAUTH_REQUIRED.
@@ -185,15 +280,18 @@ async function handleStartup(
       "GOOGLE_REAUTH_REQUIRED"
   ) {
     return {
-      message:
-        "Sua conexão com o Google Drive expirou. Reconecte em Configurações do ChatGPT → Apps conectados → Lease Assistant → desconectar e reconectar.",
-      intent: null,
-      values: {},
-      step: "reauth_required",
+      ok: false,
+      response: {
+        message:
+          "Sua conexão com o Google Drive expirou. Reconecte em Configurações do ChatGPT → Apps conectados → Lease Assistant → desconectar e reconectar.",
+        intent: null,
+        state: null,
+        step: "reauth_required",
+      },
     };
   }
 
-  // Handle landlord not found (404 or LANDLORD_NOT_FOUND error code).
+  // Handle landlord not found.
   const bodyAsObj = ctxResult.body as
     | { error?: { code?: string } }
     | null
@@ -206,72 +304,32 @@ async function handleStartup(
   ) {
     const setupUrl = `${publicFunctionsBaseUrl()}/setup`;
     return {
-      message:
-        "Você ainda não está cadastrado. Abra a configuração, faça login com Google e volte aqui.",
-      intent: "onboarding",
-      values: {},
-      step: "awaiting_setup",
-      options: [{ label: "Abrir configuração", value: setupUrl }],
+      ok: false,
+      response: {
+        message:
+          "Você ainda não está cadastrado. Abra a configuração, faça login com Google e volte aqui.",
+        intent: "onboarding",
+        state: null,
+        step: "awaiting_setup",
+        options: [{ label: "Abrir configuração", value: setupUrl }],
+      },
     };
   }
 
   // Any other non-200 error.
   if (ctxResult.status !== 200) {
     return {
-      message: "Erro ao carregar seus dados. Por favor, tente novamente.",
-      intent: null,
-      values: {},
-      step: "error",
+      ok: false,
+      response: {
+        message: "Erro ao carregar seus dados. Por favor, tente novamente.",
+        intent: null,
+        state: null,
+        step: "error",
+      },
     };
   }
 
-  const context = ctxResult.body as ContextPayload;
-
-  // Check for template changes — if detected, note them but proceed to menu
-  // (full template_sync workflow is a future milestone).
-  // We call loadTemplatesDiff here so the dep is exercised and the stub is testable.
-  await deps.loadTemplatesDiff(jwt);
-
-  // Check if message is a menu option selection.
-  const selectedIntent = MENU_MAP[req.message.trim()];
-
-  if (selectedIntent && FLOWS[selectedIntent]) {
-    // Route to the flow engine — pass an empty-message initial request so the
-    // engine shows the first prompt without trying to interpret the menu number
-    // as a flow answer.
-    const flow = FLOWS[selectedIntent];
-    const initialReq: WorkflowRequest = {
-      intent: selectedIntent,
-      values: {},
-      message: "",
-    };
-    return runFlowEngine(flow, initialReq, context, deps, jwt);
-  }
-
-  if (selectedIntent) {
-    // Other intents not yet implemented — return menu with note.
-    const menu = mainMenu(context.landlord?.name ?? "");
-    return {
-      ...menu,
-      message:
-        `O fluxo "${selectedIntent}" ainda não está disponível via workflow. ${menu.message}`,
-    };
-  }
-
-  // No valid selection — return menu (first message or invalid input).
-  return mainMenu(context.landlord?.name ?? "");
-}
-
-// Helper: load context or throw on error.
-async function loadContextOrThrow(
-  jwt: string,
-  deps: WorkflowDeps,
-): Promise<ContextPayload> {
-  const result = await deps.loadContext(jwt);
-  if (result.status !== 200) {
-    throw new Error(`loadContext failed with status ${result.status}`);
-  }
-  return result.body as ContextPayload;
+  return { ok: true, context: ctxResult.body as ContextPayload };
 }
 
 // ─── Handler ──────────────────────────────────────────────────────────────────
@@ -309,10 +367,10 @@ export function handleWorkflowNext(
     }
 
     // 2. Parse body.
-    let body: WorkflowRequest;
+    let raw: WorkflowRawRequest;
     try {
-      const raw = await req.json();
-      body = raw as WorkflowRequest;
+      const parsed = await req.json();
+      raw = parsed as WorkflowRawRequest;
     } catch {
       return errorResponse(
         400,
@@ -321,7 +379,7 @@ export function handleWorkflowNext(
       );
     }
 
-    if (typeof body.message !== "string") {
+    if (typeof raw.message !== "string") {
       return errorResponse(
         400,
         "MISSING_MESSAGE",
@@ -329,24 +387,113 @@ export function handleWorkflowNext(
       );
     }
 
-    // 3. Route by intent.
-    let machineResult: WorkflowResponse;
+    // 3. Route by intent + state.
+    let wireResult: WorkflowResponse;
     try {
-      if (!body.intent) {
-        // Startup sequence: load context, handle errors, show menu or route.
-        machineResult = await handleStartup(jwt, body, deps);
-      } else {
-        const flow = body.intent ? FLOWS[body.intent] : undefined;
-        if (flow) {
-          // Load context for the flow engine (needed for steps that use context).
-          const context = await loadContextOrThrow(jwt, deps);
-          machineResult = await runFlowEngine(flow, body, context, deps, jwt);
+      const intent = raw.intent ?? null;
+      const statePresent = raw.state != null;
+
+      if (!intent) {
+        // ── No intent: intent router or startup ─────────────────────────
+        const resolved = resolveIntentFromMessage(raw.message);
+
+        if (resolved && FLOWS[resolved]) {
+          // Match found — Enter phase: start the flow (no validation).
+          const ctxResult = await loadContext(jwt, deps);
+          if (!ctxResult.ok) {
+            wireResult = ctxResult.response;
+          } else {
+            const engReq: WorkflowRequest = {
+              intent: resolved,
+              values: {},
+              message: "", // Enter phase — no message to validate
+            };
+            const engResp = await runFlowEngine(
+              FLOWS[resolved],
+              engReq,
+              ctxResult.context,
+              deps,
+              jwt,
+            );
+            wireResult = toWireResponse(engResp, false);
+          }
+        } else if (resolved) {
+          // Intent matched but flow not yet implemented — load context for
+          // the menu, showing a note.
+          const ctxResult = await loadContext(jwt, deps);
+          if (!ctxResult.ok) {
+            wireResult = ctxResult.response;
+          } else {
+            await deps.loadTemplatesDiff(jwt);
+            const menu = mainMenuResponse(
+              ctxResult.context.landlord?.name ?? "",
+            );
+            wireResult = {
+              ...menu,
+              message:
+                `O fluxo "${resolved}" ainda não está disponível via workflow. ${menu.message}`,
+            };
+          }
         } else {
+          // No match — load context and show menu.
+          const ctxResult = await loadContext(jwt, deps);
+          if (!ctxResult.ok) {
+            wireResult = ctxResult.response;
+          } else {
+            await deps.loadTemplatesDiff(jwt);
+            wireResult = mainMenuResponse(
+              ctxResult.context.landlord?.name ?? "",
+            );
+          }
+        }
+      } else {
+        // ── Intent present: Enter or Process phase ────────────────────────
+        const flow = FLOWS[intent];
+        if (!flow) {
           return errorResponse(
             400,
             "UNKNOWN_INTENT",
             "Intenção não reconhecida. Por favor, selecione uma opção do menu.",
           );
+        }
+
+        // Load context (needed for steps that use context).
+        const ctxResult = await loadContext(jwt, deps);
+        if (!ctxResult.ok) {
+          wireResult = ctxResult.response;
+        } else {
+          // Decode state or use empty values for Enter phase.
+          const values = statePresent ? decodeState(raw.state!) : {};
+          // Enter phase: state absent → pass empty message (no validation).
+          // Process phase: state present → pass actual message (validate input).
+          const messageToEngine = statePresent ? raw.message : "";
+
+          const engReq: WorkflowRequest = {
+            intent,
+            values,
+            message: messageToEngine,
+          };
+
+          const engResp = await runFlowEngine(
+            flow,
+            engReq,
+            ctxResult.context,
+            deps,
+            jwt,
+          );
+
+          // step: done auto-transition — return menu with success message prepended.
+          if (engResp.step === "done") {
+            const ctxMenu = await loadContext(jwt, deps);
+            const name = ctxMenu.ok ? ctxMenu.context.landlord?.name ?? "" : "";
+            const menu = mainMenuResponse(name);
+            wireResult = {
+              ...menu,
+              message: `${engResp.message}\n\n${menu.message}`,
+            };
+          } else {
+            wireResult = toWireResponse(engResp, false);
+          }
         }
       }
     } catch (err) {
@@ -358,7 +505,7 @@ export function handleWorkflowNext(
       );
     }
 
-    return new Response(JSON.stringify(machineResult), {
+    return new Response(JSON.stringify(wireResult), {
       status: 200,
       headers: {
         ...corsHeaders,

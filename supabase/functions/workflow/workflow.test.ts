@@ -4,6 +4,14 @@
 // instance or Google account is needed. The pattern mirrors
 // documents/generate/generate.test.ts.
 //
+// Contract (issue #169):
+//   Request:  { intent?, state?, message }
+//   Response: { message, intent?, state, step, options? }
+//
+// state is an opaque base64-encoded JSON token.
+// state: null = session boundary (menu, onboarding, reauth, error).
+// state: string = flow in progress.
+//
 // Test names follow the "unit:" prefix convention.
 
 import {
@@ -141,7 +149,7 @@ function withMockFetch<T>(
   });
 }
 
-// ─── Request helper ────────────────────────────────────────────────────────────
+// ─── Request helpers ────────────────────────────────────────────────────────────
 
 function makeReq(
   body: unknown,
@@ -161,6 +169,17 @@ async function json(res: Response): Promise<unknown> {
   return await res.json();
 }
 
+/** Decode opaque state token from response body. Returns {} on null/absent. */
+function decodeState(body: Record<string, unknown>): Record<string, unknown> {
+  const state = body.state as string | null | undefined;
+  if (!state) return {};
+  try {
+    return JSON.parse(atob(state)) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
 // ─── Auth tests ────────────────────────────────────────────────────────────────
 
 Deno.test("unit: workflow/next — 401 when no JWT", async () => {
@@ -170,8 +189,6 @@ Deno.test("unit: workflow/next — 401 when no JWT", async () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        intent: null,
-        values: {},
         message: "5",
       }),
     }),
@@ -185,7 +202,7 @@ Deno.test("unit: workflow/next — 401 when JWT invalid", async () => {
   const handler = handleWorkflowNext(makeStubDeps({}));
   const res = await withMockFetch(null, () =>
     handler(
-      makeReq({ intent: null, values: {}, message: "5" }),
+      makeReq({ message: "5" }),
     ));
   assertEquals(res.status, 401);
 });
@@ -208,19 +225,20 @@ Deno.test("unit: workflow/next — 200 on OPTIONS (CORS preflight)", async () =>
 
 // ─── Menu (startup) ────────────────────────────────────────────────────────────
 
-Deno.test("unit: workflow/next — first message returns main menu with 6 options", async () => {
+Deno.test("unit: workflow/next — first message returns main menu with 6 options and state: null", async () => {
   const deps = makeStubDeps({});
   const handler = handleWorkflowNext(deps);
 
   const res = await withMockFetch(
     MOCK_USER,
-    () => handler(makeReq({ intent: null, values: {}, message: "oi" })),
+    () => handler(makeReq({ message: "oi" })),
   );
 
   assertEquals(res.status, 200);
   const body = await json(res) as Record<string, unknown>;
   assertEquals(body.step, "menu");
   assertEquals(body.intent, null);
+  assertEquals(body.state, null); // session boundary
   const options = body.options as Array<{ label: string; value: string }>;
   assertEquals(Array.isArray(options), true);
   assertEquals(options.length, 6);
@@ -247,35 +265,36 @@ Deno.test("unit: workflow/next — startup calls loadTemplatesDiff", async () =>
 
   await withMockFetch(
     MOCK_USER,
-    () => handler(makeReq({ intent: null, values: {}, message: "oi" })),
+    () => handler(makeReq({ message: "oi" })),
   );
 
   assertEquals(diffCalled, true);
 });
 
-Deno.test("unit: workflow/next — invalid menu selection returns menu again", async () => {
+Deno.test("unit: workflow/next — invalid menu selection returns menu again (state: null)", async () => {
   const deps = makeStubDeps({});
   const handler = handleWorkflowNext(deps);
 
   const res = await withMockFetch(
     MOCK_USER,
-    () => handler(makeReq({ intent: null, values: {}, message: "9" })),
+    () => handler(makeReq({ message: "9" })),
   );
 
   assertEquals(res.status, 200);
   const body = await json(res) as Record<string, unknown>;
   assertEquals(body.step, "menu");
+  assertEquals(body.state, null);
   const options = body.options as Array<unknown>;
   assertEquals(options.length, 6);
 });
 
-Deno.test("unit: workflow/next — menu selection '5' routes to add_tenant ask_property", async () => {
+Deno.test("unit: workflow/next — menu number '5' routes to add_tenant ask_property (Enter phase)", async () => {
   const deps = makeStubDeps({});
   const handler = handleWorkflowNext(deps);
 
   const res = await withMockFetch(
     MOCK_USER,
-    () => handler(makeReq({ intent: null, values: {}, message: "5" })),
+    () => handler(makeReq({ message: "5" })),
   );
 
   assertEquals(res.status, 200);
@@ -283,9 +302,27 @@ Deno.test("unit: workflow/next — menu selection '5' routes to add_tenant ask_p
   assertEquals(body.intent, "add_tenant");
   assertEquals(body.step, "ask_property");
   assertStringIncludes(body.message as string, "imóvel");
+  // state must be present (flow in progress)
+  assertEquals(typeof body.state, "string");
 });
 
-Deno.test("unit: workflow/next — context 404 returns onboarding response", async () => {
+Deno.test("unit: workflow/next — text label routes to add_tenant (Enter phase)", async () => {
+  const deps = makeStubDeps({});
+  const handler = handleWorkflowNext(deps);
+
+  const res = await withMockFetch(
+    MOCK_USER,
+    () => handler(makeReq({ message: "Adicionar inquilino" })),
+  );
+
+  assertEquals(res.status, 200);
+  const body = await json(res) as Record<string, unknown>;
+  assertEquals(body.intent, "add_tenant");
+  assertEquals(body.step, "ask_property");
+  assertEquals(typeof body.state, "string");
+});
+
+Deno.test("unit: workflow/next — context 404 returns onboarding response (state: null)", async () => {
   const deps = makeStubDeps({
     contextResult: {
       status: 404,
@@ -296,13 +333,14 @@ Deno.test("unit: workflow/next — context 404 returns onboarding response", asy
 
   const res = await withMockFetch(
     MOCK_USER,
-    () => handler(makeReq({ intent: null, values: {}, message: "oi" })),
+    () => handler(makeReq({ message: "oi" })),
   );
 
   assertEquals(res.status, 200);
   const body = await json(res) as Record<string, unknown>;
   assertEquals(body.step, "awaiting_setup");
   assertEquals(body.intent, "onboarding");
+  assertEquals(body.state, null); // session boundary
   assertStringIncludes(body.message as string, "não está cadastrado");
   const options = body.options as Array<{ label: string; value: string }>;
   assertEquals(Array.isArray(options), true);
@@ -310,7 +348,7 @@ Deno.test("unit: workflow/next — context 404 returns onboarding response", asy
   assertStringIncludes(options[0].value, "/setup");
 });
 
-Deno.test("unit: workflow/next — context GOOGLE_REAUTH_REQUIRED returns reauth response", async () => {
+Deno.test("unit: workflow/next — context GOOGLE_REAUTH_REQUIRED returns reauth response (state: null)", async () => {
   const deps = makeStubDeps({
     contextResult: {
       status: 401,
@@ -323,14 +361,56 @@ Deno.test("unit: workflow/next — context GOOGLE_REAUTH_REQUIRED returns reauth
 
   const res = await withMockFetch(
     MOCK_USER,
-    () => handler(makeReq({ intent: null, values: {}, message: "oi" })),
+    () => handler(makeReq({ message: "oi" })),
   );
 
   assertEquals(res.status, 200);
   const body = await json(res) as Record<string, unknown>;
   assertEquals(body.step, "reauth_required");
   assertEquals(body.intent, null);
+  assertEquals(body.state, null); // session boundary
   assertStringIncludes(body.message as string, "Google Drive expirou");
+});
+
+// ─── Enter/Process phase tests ─────────────────────────────────────────────────
+
+Deno.test("unit: workflow/next — Enter phase: intent + no state renders prompt without validation", async () => {
+  // Sending intent + no state (Enter phase) should render the first prompt
+  // without attempting to validate the message.
+  const deps = makeStubDeps({});
+  const handler = handleWorkflowNext(deps);
+
+  const res = await withMockFetch(MOCK_USER, () =>
+    handler(
+      makeReq({ intent: "add_tenant", message: "anything" }),
+      // no state field → Enter phase
+    ));
+
+  assertEquals(res.status, 200);
+  const body = await json(res) as Record<string, unknown>;
+  // Should show ask_property prompt, not validate "anything" as a property
+  assertEquals(body.step, "ask_property");
+  assertStringIncludes(body.message as string, "imóvel");
+  assertEquals(typeof body.state, "string");
+});
+
+Deno.test("unit: workflow/next — Process phase: intent + state validates message", async () => {
+  // Encode empty values as state (simulating start of flow already entered).
+  const state = btoa(JSON.stringify({}));
+  const deps = makeStubDeps({});
+  const handler = handleWorkflowNext(deps);
+
+  const res = await withMockFetch(MOCK_USER, () =>
+    handler(
+      makeReq({ intent: "add_tenant", state, message: "1" }),
+    ));
+
+  assertEquals(res.status, 200);
+  const body = await json(res) as Record<string, unknown>;
+  // "1" is a valid property selection → should advance to ask_name
+  assertEquals(body.step, "ask_name");
+  const values = decodeState(body);
+  assertEquals(values.property_id, MOCK_PROPERTY.id);
 });
 
 // ─── Property selection ────────────────────────────────────────────────────────
@@ -341,7 +421,7 @@ Deno.test("unit: workflow/next — first turn returns property options with disp
 
   const res = await withMockFetch(MOCK_USER, () =>
     handler(
-      makeReq({ intent: null, values: {}, message: "5" }),
+      makeReq({ message: "5" }),
     ));
 
   const body = await json(res) as Record<string, unknown>;
@@ -359,11 +439,13 @@ Deno.test("unit: workflow/next — property selection by number advances to ask_
   const deps = makeStubDeps({});
   const handler = handleWorkflowNext(deps);
 
+  // Process phase: state present (empty values)
+  const state = btoa(JSON.stringify({}));
   const res = await withMockFetch(MOCK_USER, () =>
     handler(
       makeReq({
         intent: "add_tenant",
-        values: {},
+        state,
         message: "1",
       }),
     ));
@@ -371,7 +453,7 @@ Deno.test("unit: workflow/next — property selection by number advances to ask_
   assertEquals(res.status, 200);
   const body = await json(res) as Record<string, unknown>;
   assertEquals(body.step, "ask_name");
-  const values = body.values as Record<string, unknown>;
+  const values = decodeState(body);
   assertEquals(values.property_id, MOCK_PROPERTY.id);
   assertStringIncludes(body.message as string, "nome");
 });
@@ -380,11 +462,12 @@ Deno.test("unit: workflow/next — invalid property number re-asks", async () =>
   const deps = makeStubDeps({});
   const handler = handleWorkflowNext(deps);
 
+  const state = btoa(JSON.stringify({}));
   const res = await withMockFetch(MOCK_USER, () =>
     handler(
       makeReq({
         intent: "add_tenant",
-        values: {},
+        state,
         message: "99",
       }),
     ));
@@ -403,14 +486,15 @@ Deno.test("unit: workflow/next — name advances to ask_cpf", async () => {
   const deps = makeStubDeps({});
   const handler = handleWorkflowNext(deps);
 
+  const state = btoa(JSON.stringify({
+    property_id: "prop-uuid-1",
+    property_name: "Prédio A - Apto 101",
+  }));
   const res = await withMockFetch(MOCK_USER, () =>
     handler(
       makeReq({
         intent: "add_tenant",
-        values: {
-          property_id: "prop-uuid-1",
-          property_name: "Prédio A - Apto 101",
-        },
+        state,
         message: "Maria Silva",
       }),
     ));
@@ -418,7 +502,7 @@ Deno.test("unit: workflow/next — name advances to ask_cpf", async () => {
   assertEquals(res.status, 200);
   const body = await json(res) as Record<string, unknown>;
   assertEquals(body.step, "ask_cpf");
-  const values = body.values as Record<string, unknown>;
+  const values = decodeState(body);
   assertEquals(values.name, "Maria Silva");
   assertStringIncludes(body.message as string, "CPF");
 });
@@ -429,15 +513,16 @@ Deno.test("unit: workflow/next — invalid CPF re-asks, does not advance", async
   const deps = makeStubDeps({});
   const handler = handleWorkflowNext(deps);
 
+  const state = btoa(JSON.stringify({
+    property_id: "prop-uuid-1",
+    property_name: "Prédio A - Apto 101",
+    name: "Maria Silva",
+  }));
   const res = await withMockFetch(MOCK_USER, () =>
     handler(
       makeReq({
         intent: "add_tenant",
-        values: {
-          property_id: "prop-uuid-1",
-          property_name: "Prédio A - Apto 101",
-          name: "Maria Silva",
-        },
+        state,
         message: "123",
       }),
     ));
@@ -453,15 +538,16 @@ Deno.test("unit: workflow/next — valid CPF advances to ask_whatsapp", async ()
   const deps = makeStubDeps({});
   const handler = handleWorkflowNext(deps);
 
+  const state = btoa(JSON.stringify({
+    property_id: "prop-uuid-1",
+    property_name: "Prédio A - Apto 101",
+    name: "Maria Silva",
+  }));
   const res = await withMockFetch(MOCK_USER, () =>
     handler(
       makeReq({
         intent: "add_tenant",
-        values: {
-          property_id: "prop-uuid-1",
-          property_name: "Prédio A - Apto 101",
-          name: "Maria Silva",
-        },
+        state,
         message: "123.456.789-09",
       }),
     ));
@@ -469,7 +555,7 @@ Deno.test("unit: workflow/next — valid CPF advances to ask_whatsapp", async ()
   assertEquals(res.status, 200);
   const body = await json(res) as Record<string, unknown>;
   assertEquals(body.step, "ask_whatsapp");
-  const values = body.values as Record<string, unknown>;
+  const values = decodeState(body);
   assertEquals(values.cpf, "123.456.789-09");
   assertStringIncludes(body.message as string, "WhatsApp");
 });
@@ -480,16 +566,17 @@ Deno.test("unit: workflow/next — 'pular' sets whatsapp to null and advances to
   const deps = makeStubDeps({});
   const handler = handleWorkflowNext(deps);
 
+  const state = btoa(JSON.stringify({
+    property_id: "prop-uuid-1",
+    property_name: "Prédio A - Apto 101",
+    name: "Maria Silva",
+    cpf: "123.456.789-09",
+  }));
   const res = await withMockFetch(MOCK_USER, () =>
     handler(
       makeReq({
         intent: "add_tenant",
-        values: {
-          property_id: "prop-uuid-1",
-          property_name: "Prédio A - Apto 101",
-          name: "Maria Silva",
-          cpf: "123.456.789-09",
-        },
+        state,
         message: "pular",
       }),
     ));
@@ -497,7 +584,7 @@ Deno.test("unit: workflow/next — 'pular' sets whatsapp to null and advances to
   assertEquals(res.status, 200);
   const body = await json(res) as Record<string, unknown>;
   assertEquals(body.step, "confirm");
-  const values = body.values as Record<string, unknown>;
+  const values = decodeState(body);
   assertEquals(values.whatsapp, null);
   // Should show bold heading
   assertStringIncludes(body.message as string, "**Novo inquilino**");
@@ -508,16 +595,17 @@ Deno.test("unit: workflow/next — valid whatsapp advances to confirm", async ()
   const deps = makeStubDeps({});
   const handler = handleWorkflowNext(deps);
 
+  const state = btoa(JSON.stringify({
+    property_id: "prop-uuid-1",
+    property_name: "Prédio A - Apto 101",
+    name: "Maria Silva",
+    cpf: "123.456.789-09",
+  }));
   const res = await withMockFetch(MOCK_USER, () =>
     handler(
       makeReq({
         intent: "add_tenant",
-        values: {
-          property_id: "prop-uuid-1",
-          property_name: "Prédio A - Apto 101",
-          name: "Maria Silva",
-          cpf: "123.456.789-09",
-        },
+        state,
         message: "+5511999999999",
       }),
     ));
@@ -525,7 +613,7 @@ Deno.test("unit: workflow/next — valid whatsapp advances to confirm", async ()
   assertEquals(res.status, 200);
   const body = await json(res) as Record<string, unknown>;
   assertEquals(body.step, "confirm");
-  const values = body.values as Record<string, unknown>;
+  const values = decodeState(body);
   assertEquals(values.whatsapp, "+5511999999999");
 });
 
@@ -533,16 +621,17 @@ Deno.test("unit: workflow/next — invalid whatsapp re-asks", async () => {
   const deps = makeStubDeps({});
   const handler = handleWorkflowNext(deps);
 
+  const state = btoa(JSON.stringify({
+    property_id: "prop-uuid-1",
+    property_name: "Prédio A - Apto 101",
+    name: "Maria Silva",
+    cpf: "123.456.789-09",
+  }));
   const res = await withMockFetch(MOCK_USER, () =>
     handler(
       makeReq({
         intent: "add_tenant",
-        values: {
-          property_id: "prop-uuid-1",
-          property_name: "Prédio A - Apto 101",
-          name: "Maria Silva",
-          cpf: "123.456.789-09",
-        },
+        state,
         message: "not-a-phone",
       }),
     ));
@@ -558,17 +647,18 @@ Deno.test("unit: workflow/next — confirm non-'Sim' re-opens collection", async
   const deps = makeStubDeps({});
   const handler = handleWorkflowNext(deps);
 
+  const state = btoa(JSON.stringify({
+    property_id: "prop-uuid-1",
+    property_name: "Prédio A - Apto 101",
+    name: "Maria Silva",
+    cpf: "123.456.789-09",
+    whatsapp: null,
+  }));
   const res = await withMockFetch(MOCK_USER, () =>
     handler(
       makeReq({
         intent: "add_tenant",
-        values: {
-          property_id: "prop-uuid-1",
-          property_name: "Prédio A - Apto 101",
-          name: "Maria Silva",
-          cpf: "123.456.789-09",
-          whatsapp: null,
-        },
+        state,
         message: "não",
       }),
     ));
@@ -583,35 +673,35 @@ Deno.test("unit: workflow/next — confirm non-'Sim' re-opens collection", async
   );
 });
 
-Deno.test("unit: workflow/next — 'Sim' triggers write and returns done", async () => {
+Deno.test("unit: workflow/next — 'Sim' triggers write and transitions to menu (step: done auto-transition)", async () => {
   const deps = makeStubDeps({ createResult: MOCK_CREATE_OK });
   const handler = handleWorkflowNext(deps);
 
+  const state = btoa(JSON.stringify({
+    property_id: "prop-uuid-1",
+    property_name: "Prédio A - Apto 101",
+    name: "Maria Silva",
+    cpf: "123.456.789-09",
+    whatsapp: null,
+  }));
   const res = await withMockFetch(MOCK_USER, () =>
     handler(
       makeReq({
         intent: "add_tenant",
-        values: {
-          property_id: "prop-uuid-1",
-          property_name: "Prédio A - Apto 101",
-          name: "Maria Silva",
-          cpf: "123.456.789-09",
-          whatsapp: null,
-        },
+        state,
         message: "Sim",
       }),
     ));
 
   assertEquals(res.status, 200);
   const body = await json(res) as Record<string, unknown>;
-  assertEquals(body.step, "done");
-  assertStringIncludes(
-    body.message as string,
-    "Inquilino adicionado",
-  );
-  assertStringIncludes(body.message as string, "contrato");
-  const values = body.values as Record<string, unknown>;
-  assertEquals(values.tenant_id, "tenant-uuid-1");
+  // step: done auto-transitions to menu — response is the menu
+  assertEquals(body.step, "menu");
+  assertEquals(body.state, null); // session boundary
+  assertEquals(body.intent, null);
+  // Success message prepended to menu message
+  assertStringIncludes(body.message as string, "Inquilino adicionado");
+  assertStringIncludes(body.message as string, "O que você quer fazer");
 });
 
 // ─── Write error mapping ───────────────────────────────────────────────────────
@@ -620,24 +710,25 @@ Deno.test("unit: workflow/next — GOOGLE_REAUTH_REQUIRED maps to friendly messa
   const deps = makeStubDeps({ createResult: MOCK_CREATE_REAUTH });
   const handler = handleWorkflowNext(deps);
 
+  const state = btoa(JSON.stringify({
+    property_id: "prop-uuid-1",
+    property_name: "Prédio A - Apto 101",
+    name: "Maria Silva",
+    cpf: "123.456.789-09",
+    whatsapp: null,
+  }));
   const res = await withMockFetch(MOCK_USER, () =>
     handler(
       makeReq({
         intent: "add_tenant",
-        values: {
-          property_id: "prop-uuid-1",
-          property_name: "Prédio A - Apto 101",
-          name: "Maria Silva",
-          cpf: "123.456.789-09",
-          whatsapp: null,
-        },
+        state,
         message: "Sim",
       }),
     ));
 
   assertEquals(res.status, 200);
   const body = await json(res) as Record<string, unknown>;
-  // Not done — error occurred
+  // Not done — error occurred, still at confirm
   assertEquals(body.step, "confirm");
   assertStringIncludes(
     body.message as string,
@@ -649,17 +740,18 @@ Deno.test("unit: workflow/next — INVALID_CPF from write maps to friendly messa
   const deps = makeStubDeps({ createResult: MOCK_CREATE_INVALID_CPF });
   const handler = handleWorkflowNext(deps);
 
+  const state = btoa(JSON.stringify({
+    property_id: "prop-uuid-1",
+    property_name: "Prédio A - Apto 101",
+    name: "Maria Silva",
+    cpf: "123.456.789-09",
+    whatsapp: null,
+  }));
   const res = await withMockFetch(MOCK_USER, () =>
     handler(
       makeReq({
         intent: "add_tenant",
-        values: {
-          property_id: "prop-uuid-1",
-          property_name: "Prédio A - Apto 101",
-          name: "Maria Silva",
-          cpf: "123.456.789-09",
-          whatsapp: null,
-        },
+        state,
         message: "Sim",
       }),
     ));
@@ -686,7 +778,7 @@ Deno.test("unit: workflow/next — no active tenant on property is not an error 
 
   const res = await withMockFetch(MOCK_USER, () =>
     handler(
-      makeReq({ intent: null, values: {}, message: "5" }),
+      makeReq({ message: "5" }),
     ));
 
   assertEquals(res.status, 200);
@@ -697,9 +789,53 @@ Deno.test("unit: workflow/next — no active tenant on property is not an error 
   assertStringIncludes(body.message as string, "imóvel");
 });
 
-// ─── Existing add_tenant intent passed directly ────────────────────────────────
+// ─── Intent router tests ───────────────────────────────────────────────────────
 
-Deno.test("unit: workflow/next — add_tenant intent in request body goes to ask_property", async () => {
+Deno.test("unit: workflow/next — intent router: number maps to flow (Enter phase)", async () => {
+  const deps = makeStubDeps({});
+  const handler = handleWorkflowNext(deps);
+
+  const res = await withMockFetch(
+    MOCK_USER,
+    () => handler(makeReq({ message: "5" })),
+  );
+
+  const body = await json(res) as Record<string, unknown>;
+  assertEquals(body.intent, "add_tenant");
+  assertEquals(body.step, "ask_property");
+});
+
+Deno.test("unit: workflow/next — intent router: text label maps to flow (Enter phase)", async () => {
+  const deps = makeStubDeps({});
+  const handler = handleWorkflowNext(deps);
+
+  const res = await withMockFetch(
+    MOCK_USER,
+    () => handler(makeReq({ message: "adicionar inquilino" })),
+  );
+
+  const body = await json(res) as Record<string, unknown>;
+  assertEquals(body.intent, "add_tenant");
+  assertEquals(body.step, "ask_property");
+});
+
+Deno.test("unit: workflow/next — intent router: no match falls back to menu", async () => {
+  const deps = makeStubDeps({});
+  const handler = handleWorkflowNext(deps);
+
+  const res = await withMockFetch(
+    MOCK_USER,
+    () => handler(makeReq({ message: "preciso de ajuda" })),
+  );
+
+  const body = await json(res) as Record<string, unknown>;
+  assertEquals(body.step, "menu");
+  assertEquals(body.state, null);
+});
+
+// ─── add_tenant intent in request (Enter phase) ────────────────────────────────
+
+Deno.test("unit: workflow/next — add_tenant intent without state (Enter phase) goes to ask_property", async () => {
   const deps = makeStubDeps({});
   const handler = handleWorkflowNext(deps);
 
@@ -707,8 +843,8 @@ Deno.test("unit: workflow/next — add_tenant intent in request body goes to ask
     handler(
       makeReq({
         intent: "add_tenant",
-        values: {},
-        message: "add_tenant",
+        // no state → Enter phase
+        message: "oi",
       }),
     ));
 
@@ -811,7 +947,7 @@ function engineReq(
   return { intent: "test_flow", values, message };
 }
 
-Deno.test("unit: engine — initial call returns first step prompt", async () => {
+Deno.test("unit: engine — initial call (Enter phase: empty message) returns first step prompt", async () => {
   const res = await runFlowEngine(
     TEST_FLOW,
     engineReq({}, ""),

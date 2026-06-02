@@ -37,10 +37,20 @@ paths:
       operationId: workflowNext
       summary: Advance the stateless backend workflow state machine one step
       description: >
-        Stateless orchestrator. GPT sends the `intent`, `values`, and user
-        `message` from the last turn. Backend infers the current step,
-        validates inputs, and returns the next `message`, updated `values`,
-        and `step`. Flow ends when `step` is `done`.
+        Stateless orchestrator. GPT sends the `intent`, `state`, and user
+        `message`. Backend decodes state, infers the current step,
+        validates inputs, and returns the next `message`, updated opaque
+        `state` token, and `step`.
+
+        Enter/Process split:
+          - `state` absent → Enter phase: backend renders first prompt (no validation).
+          - `state` present → Process phase: backend validates the user message.
+
+        Session boundaries (menu, onboarding, reauth, error) always return `state: null`.
+        GPT omits `state` on the next call when it is null.
+
+        `step: done` never reaches the GPT — the backend auto-transitions to
+        the menu response instead.
       requestBody:
         required: true
         content:
@@ -51,12 +61,21 @@ paths:
               properties:
                 intent:
                   type: string
-                  description: Intent returned by the previous response. Omit on first turn.
+                  nullable: true
+                  description: >
+                    Intent string resolved by the GPT. On step: "menu", use options[n].value
+                    as the intent when the user picks an option. On all other steps, omit intent
+                    (it was already established). Absent on first turn.
                   example: add_tenant
-                values:
-                  type: object
-                  additionalProperties: true
-                  description: Collected values returned by the previous response. Omit on first turn.
+                state:
+                  type: string
+                  nullable: true
+                  description: >
+                    Opaque base64 token returned by the previous response.
+                    Echo verbatim — do not decode or modify.
+                    Omit (or send null) when the previous response returned state: null
+                    (session boundary: menu, onboarding, reauth, error).
+                  example: eyJwcm9wZXJ0eV9pZCI6InV1aWQifQ==
                 message:
                   type: string
                   description: The user's latest reply to relay to the backend.
@@ -67,7 +86,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [message, intent, values, step]
+                required: [message, intent, state, step]
                 properties:
                   message:
                     type: string
@@ -75,17 +94,23 @@ paths:
                   intent:
                     type: string
                     nullable: true
-                    description: Current intent — echo this back on the next turn. Null for menu and reauth responses.
-                  values:
-                    type: object
-                    additionalProperties: true
-                    description: Current collected values — echo this back on the next turn.
+                    description: >
+                      Current intent. Echo back on the next call (as intent field).
+                      Null for menu and session-boundary responses.
+                  state:
+                    type: string
+                    nullable: true
+                    description: >
+                      Opaque state token. Echo verbatim on the next call.
+                      null = session boundary (menu, onboarding, reauth, error) —
+                      omit state on the next call when null.
                   step:
                     type: string
                     description: >
-                      Current workflow step, inferred from values present.
+                      Current workflow step.
+                      `menu` — show options and wait for selection.
                       `confirm` — show summary and ask for explicit confirmation.
-                      `done` — flow complete, return to menu.
+                      `done` — never returned; backend auto-transitions to menu.
                   options:
                     type: array
                     nullable: true
@@ -94,9 +119,13 @@ paths:
                       properties:
                         label:
                           type: string
+                          description: Display text shown to the user.
                         value:
                           type: string
-                    description: Numbered options to present to the user, if applicable.
+                          description: >
+                            On step: "menu", this is the intent string to send on the next call.
+                            On other steps, this is a data value (e.g. property ID) — do not use as intent.
+                    description: Options to present to the user, if applicable.
                   links:
                     type: array
                     nullable: true
