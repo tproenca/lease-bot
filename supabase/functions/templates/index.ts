@@ -86,7 +86,21 @@ async function handleCreateTemplate(req: Request): Promise<Response> {
     placeholder_names,
     property_types,
     last_modified_at,
+    use_case: rawUseCase,
   } = (body ?? {}) as Record<string, unknown>;
+
+  const VALID_USE_CASES = new Set(["initial", "renewal", "termination"]);
+  const useCase =
+    typeof rawUseCase === "string" && VALID_USE_CASES.has(rawUseCase)
+      ? rawUseCase
+      : null;
+  if (!useCase) {
+    return errorResponse(
+      400,
+      "INVALID_REQUEST",
+      "O campo 'use_case' é obrigatório e deve ser 'initial', 'renewal' ou 'termination'.",
+    );
+  }
 
   // 3. Validate inputs.
   if (typeof drive_file_id !== "string" || drive_file_id.trim() === "") {
@@ -137,6 +151,7 @@ async function handleCreateTemplate(req: Request): Promise<Response> {
       landlord_id: user.id,
       drive_file_id: drive_file_id.trim(),
       name: name.trim(),
+      use_case: useCase,
       placeholder_names: placeholder_names as string[],
       last_modified_at: typeof last_modified_at === "string" &&
           last_modified_at.trim() !== ""

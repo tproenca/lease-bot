@@ -570,12 +570,15 @@ paths:
           application/json:
             schema:
               type: object
-              required: [drive_file_id, name, placeholder_names, property_types]
+              required: [drive_file_id, name, placeholder_names, property_types, use_case]
               properties:
                 drive_file_id:
                   type: string
                 name:
                   type: string
+                use_case:
+                  type: string
+                  enum: [initial, renewal, termination]
                 last_modified_at:
                   type: string
                   format: date-time
@@ -867,6 +870,10 @@ paths:
                 tenant_id:
                   type: string
                   format: uuid
+                use_case:
+                  type: string
+                  enum: [initial, renewal, termination]
+                  default: initial
                 placeholders:
                   type: object
                   additionalProperties:

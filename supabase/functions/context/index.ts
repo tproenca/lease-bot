@@ -93,7 +93,7 @@ export async function handleContext(req: Request): Promise<Response> {
       .order("name"),
     db
       .from("templates")
-      .select("id, name")
+      .select("id, name, use_case")
       .order("name"),
     db
       .from("property_type_templates")
