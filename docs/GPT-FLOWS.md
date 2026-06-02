@@ -52,7 +52,7 @@ Every GPT turn calls `POST /workflow/next`. No session table is used — state l
 
 | Field | Type | Notes |
 |-------|------|-------|
-| `intent` | `string \| null` | Intent returned by the previous response. `null` on first turn. |
+| `intent` | `string \| null` | Intent to route this turn. Rules in priority order: (1) if the previous response included `options` and the user selected one by number, use that option's `value` field; (2) otherwise echo the `intent` from the previous response; (3) `null` on the very first turn (no prior response). |
 | `values` | `object \| null` | Collected values returned by the previous response. `null` on first turn. |
 | `message` | `string` | The user's latest reply, relayed verbatim. |
 
@@ -89,7 +89,7 @@ The GPT does **not** echo `step` back — only `intent` and `values`.
 10-step checklist for verifying the GPT relay behaviour end-to-end:
 
 1. **Session start:** Send "oi". Verify GPT calls `workflowNext` with `{intent: null, values: null, message: "oi"}` and displays the menu returned by the backend.
-2. **Menu selection:** Reply "5" (Add Tenant). Verify GPT echoes `{intent: null, values: null, message: "5"}` and displays the property list.
+2. **Menu selection:** Reply "5" (Add Tenant). Verify GPT sends `{intent: "add_tenant", values: {}, message: "5"}` — intent resolved from `options[4].value` — and displays the property list.
 3. **Property selection:** Reply "1". Verify GPT echoes `{intent: "add_tenant", values: {}, message: "1"}` and asks for tenant name.
 4. **Name entry:** Reply with a name. Verify GPT echoes `{intent: "add_tenant", values: {property_id: "..."}, message: "<name>"}` and asks for CPF.
 5. **Invalid CPF:** Reply with a malformed CPF. Verify backend returns a re-ask message; GPT relays it verbatim without inventing its own error text.
