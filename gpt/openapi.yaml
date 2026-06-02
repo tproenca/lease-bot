@@ -51,7 +51,8 @@ paths:
               properties:
                 intent:
                   type: string
-                  description: Intent returned by the previous response. Omit on first turn.
+                  nullable: true
+                  description: Intent returned by the previous response. Null on first turn.
                   example: add_tenant
                 values:
                   type: object
