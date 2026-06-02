@@ -474,40 +474,112 @@ For each tenant to remind:
 
 ---
 
-## Flow 7 — Add Tenant
+## Flow 7 — Add Tenant _(backend-orchestrated — pilot)_
 
-**Trigger:** Menu item "Adicionar inquilino".
+**Trigger:** Menu item "Adicionar inquilino" (option 5).
+
+> **Architecture:** This flow is a **stateless round-trip pilot**. The GPT is a thin relay — all sequencing, validation, confirmation, and error mapping are owned by the backend. No session table is used. State lives in the `intent/collected/stage` fields echoed back each turn.
+
+### Stateless round-trip contract
 
 ```
-1. GPT asks: which property? (from context — shows numbered list)
-2. GPT asks: name, CPF, WhatsApp (optional)
-3. GPT shows summary + "Confirma? (Sim para continuar)"
-   Note: if property already has an active tenant, GPT warns the
-   previous tenant folder will be unstarred (archived in Drive)
+GPT → backend (each turn):
+  { intent: "add_tenant" | null,
+    collected: { ... } | null,   ← echoed back from previous response
+    stage: "collect" | "confirm" | null,
+    message: "<user text>" }
 
-──POST /tenants───────────────────────────────────────────────────►
-  { property_id, name, cpf, whatsapp? }
-◄──201 { id, drive_folder_id } ──────────────────────────────────
-  (Drive folder created: Root/{Property}/{TenantName}/)
+Backend → GPT (each turn):
+  { assistant_message: "...",    ← relay verbatim to user
+    intent: "add_tenant",        ← echo back next turn
+    collected: { ... },          ← echo back next turn (canonical state)
+    stage: "collect" | "confirm",
+    status: "collecting" | "confirming" | "done",
+    options?: [{ label, value }] ← numbered list when present
+    error?: { code, message } }
+```
 
-4. GPT confirms
-5. GPT proceeds directly to contract generation (Flow 3)
-   GPT: "Inquilino adicionado! Vamos gerar o contrato agora?
-         (Diga "não" para fazer isso depois)"
-   → if "não": return to menu
-   → otherwise: continue to Flow 3 without requiring any extra input
+### State machine (backend-owned)
+
+```
+start
+  │ intent recognised ("5" / "adicionar inquilino" / "add_tenant")
+  ▼
+ask_property  ← loads context, returns numbered property list (display_name)
+  │ user picks number or ID
+  ▼
+ask_name      ← asks for full name only
+  │ any non-empty reply
+  ▼
+ask_cpf       ← asks for CPF (XXX.XXX.XXX-XX)
+  │ invalid CPF → re-ask (no advancement, no POST)
+  │ valid CPF
+  ▼
+ask_whatsapp  ← optional; "pular"/empty → null
+  │ invalid format → re-ask
+  │ valid / skipped
+  ▼
+confirm       ← shows **Novo inquilino** summary + "Confirma? (Sim para continuar)"
+  │ anything ≠ "Sim" → "O que deseja alterar?" (stays in confirm)
+  │ "Sim"
+  ▼
+POST /tenants ← backend calls handleTenants internally (same JWT)
+  │ 201
+  ▼
+done          ← "Inquilino adicionado! Vamos gerar o contrato agora?"
+```
+
+### Conversation example
+
+```
+GPT ──POST /workflow/next──────────────────────────────────────────►
+  { intent: null, collected: null, stage: null, message: "5" }
+◄──200─────────────────────────────────────────────────────────────
+  { assistant_message: "Para qual imóvel...?\n1. Prédio A - Apto 101",
+    intent: "add_tenant", collected: {...}, stage: "collect",
+    status: "collecting", options: [{label: "1. ...", value: "prop-id"}] }
+
+GPT relays message + numbered list to user.
+User: "1"
+
+GPT ──POST /workflow/next──────────────────────────────────────────►
+  { intent: "add_tenant", collected: {...}, stage: "collect", message: "1" }
+◄──200─────────────────────────────────────────────────────────────
+  { assistant_message: "Qual é o nome completo do inquilino?",
+    intent: "add_tenant", collected: { property_id: "prop-id", ... },
+    stage: "collect", status: "collecting" }
+
+... (name → CPF → whatsapp → confirm) ...
+
+User: "Sim"
+
+GPT ──POST /workflow/next──────────────────────────────────────────►
+  { intent: "add_tenant", collected: {..., _machine_stage: "confirm"},
+    stage: "confirm", message: "Sim" }
+◄──200─────────────────────────────────────────────────────────────
+  { assistant_message: "Inquilino adicionado! Vamos gerar o contrato agora?",
+    intent: "add_tenant", collected: {..., tenant_id: "uuid"},
+    stage: "collect", status: "done" }
 ```
 
 **Happy path chain:** Add Tenant → Generate Contract (Flow 3) → Send for Signature (Flow 4)
 
-**"Gerar contrato" stays in the menu** for cases where the landlord skipped it earlier, needs to regenerate after a template update, or rent/terms changed.
+**Error mapping** (backend returns friendly `assistant_message` on write failure):
+
+| Error code | User-visible message |
+|------------|---------------------|
+| `GOOGLE_REAUTH_REQUIRED` | Asks landlord to reconnect Google account via ChatGPT settings |
+| `INVALID_CPF` | Explains CPF format and asks again |
+| `PROPERTY_NOT_FOUND` | Asks to select a valid property |
+| `LANDLORD_NOT_FOUND` | Directs to complete setup |
+| _(any other)_ | Generic retry message |
 
 **API calls:**
 
-| Method | Path | Auth | Key fields |
-|--------|------|------|------------|
-| POST | `/tenants` | Bearer JWT | `property_id`, `name`, `cpf`, `whatsapp` (optional) |
-| PATCH | `/tenants/:id` | Bearer JWT | Update `whatsapp` later |
+| Method | Path | Auth | Notes |
+|--------|------|------|-------|
+| POST | `/workflow/next` | Bearer JWT | Stateless turn-by-turn orchestration |
+| _(internal)_ | `/tenants` (POST) | same JWT | Called by backend on "Sim"; not called by GPT directly |
 
 ---
 
@@ -706,6 +778,7 @@ desconecte e conecte novamente.
 | GET | `/payments` | ✅ | Bearer JWT | Get paid/overdue tenants for a month |
 | POST | `/payments/remind` | ✅ | Bearer JWT | Send WhatsApp payment reminder |
 | PATCH | `/account/config` | ✅ | Bearer JWT | Update payment reminder frequency |
+| POST | `/workflow/next` | ✅ | Bearer JWT | Stateless workflow orchestrator (pilot: add_tenant) |
 | POST | `/webhooks/autentique/:landlord_id` | ❌ web-only | HMAC | Receive signed document notification from Autentique |
 | GET | `/setup` | ❌ web-only | Session | Render onboarding HTML (3 states) |
 | POST | `/setup/complete` | ❌ web-only | Bearer JWT | Complete landlord onboarding |

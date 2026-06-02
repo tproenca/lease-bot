@@ -5,6 +5,31 @@
 // form and also tolerate digit-only input that already starts with the 55
 // country code (normalized to `+55...`).
 
+// ─── CPF ──────────────────────────────────────────────────────────────────
+
+// CPF format: XXX.XXX.XXX-XX
+const CPF_RE = /^\d{3}\.\d{3}\.\d{3}-\d{2}$/;
+
+/**
+ * Returns true when `v` is a string that matches the CPF mask XXX.XXX.XXX-XX.
+ * Does not perform a mathematical checksum — format validation only.
+ */
+export function isValidCpf(v: unknown): v is string {
+  return typeof v === "string" && CPF_RE.test(v.trim());
+}
+
+/**
+ * Normalizes a CPF value: trims whitespace. Returns the trimmed string if it
+ * passes format validation, otherwise returns null.
+ */
+export function normalizeCpf(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const trimmed = v.trim();
+  return CPF_RE.test(trimmed) ? trimmed : null;
+}
+
+// ─── WhatsApp ──────────────────────────────────────────────────────────────
+
 const BR_WHATSAPP_RE = /^\+55\d{10,11}$/;
 
 export function normalizeBrazilianWhatsapp(input: unknown): string | null {
