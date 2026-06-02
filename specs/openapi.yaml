@@ -1221,7 +1221,8 @@ paths:
                     description: Message to relay verbatim to the user.
                   intent:
                     type: string
-                    description: Current intent — echo this back on the next turn.
+                    nullable: true
+                    description: Current intent — echo this back on the next turn. Null for menu and reauth responses.
                   values:
                     type: object
                     additionalProperties: true

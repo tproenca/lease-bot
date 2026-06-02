@@ -185,44 +185,37 @@ GPT                         Edge Functions              Browser (landlord)
 
 **Trigger:** Any message, including "oi", "menu", "ajuda", or any other first message.
 
-Session start sequence is strict:
+The GPT calls `POST /workflow/next` with `{ intent: null, values: {}, message: "<user text>" }`. The backend owns the startup sequence:
 
-1. Call `getContext`.
-2. Call `getTemplatesDiff`. If non-empty changes, enter **Flow 2** and complete it fully.
-3. Only after step 2 is resolved, greet the landlord by name and show the menu.
-
-```
-GPT ──GET /context──────────────────────────────────────────────►
-    ◄──200 { landlord, properties, buildings, templates,
-              placeholders, witnesses, account_config,
-              cron_errors } ─────────────────────────────────────
-
-GPT ──GET /templates/diff ───────────────────────────────────────►
-    ◄──200 { templates: {added, removed},
-              placeholders: {added, removed},
-              witnesses: {added} } ──────────────────────────────
-```
-
-If both are clean, GPT greets the landlord by name and shows the menu:
+1. Internally calls `GET /context`.
+2. If `LANDLORD_NOT_FOUND` → returns onboarding response (step: `awaiting_setup`).
+3. If `GOOGLE_REAUTH_REQUIRED` → returns reauth response (step: `reauth_required`).
+4. If message is a menu option number (1–6) → routes to the selected workflow.
+5. Otherwise → returns the main menu with `options[].value` carrying the intent string.
 
 ```
-Olá, [nome]! O que você quer fazer?
-
-1. Registrar pagamento
-2. Ver inadimplentes
-3. Gerar documento
-4. Enviar para assinatura
-5. Adicionar inquilino
-6. Adicionar imóvel
-7. Criar template
+GPT ──POST /workflow/next──────────────────────────────────────►
+  { intent: null, values: {}, message: "oi" }
+◄──200─────────────────────────────────────────────────────────
+  { message: "Olá, João! O que você quer fazer?",
+    intent: null, values: {}, step: "menu",
+    options: [
+      { label: "1. Registrar pagamento",   value: "record_payment" },
+      { label: "2. Ver inadimplentes",     value: "view_overdue" },
+      { label: "3. Gerar documento",       value: "generate_document" },
+      { label: "4. Enviar para assinatura",value: "send_signature" },
+      { label: "5. Adicionar inquilino",   value: "add_tenant" },
+      { label: "6. Adicionar imóvel",      value: "add_property" }
+    ] }
 ```
+
+The GPT displays the message and options as a numbered list. The landlord replies with a number; the GPT echoes `{ intent: null, values: {}, message: "5" }` back to the backend, which detects the menu selection and routes to the appropriate workflow.
 
 **API calls:**
 
-| Method | Path | Auth | Response |
-|--------|------|------|----------|
-| GET | `/context` | Bearer JWT | Full landlord context snapshot |
-| GET | `/templates/diff` | Bearer JWT | Detected changes vs Drive state |
+| Method | Path | Auth | Notes |
+|--------|------|------|-------|
+| POST | `/workflow/next` | Bearer JWT | Backend handles context, diff, and menu internally |
 
 ---
 
@@ -499,13 +492,17 @@ Backend → GPT (each turn):
 
 Step is inferred by the backend from the values present — the GPT does NOT echo `step` back. When `step:"done"`, the flow is complete.
 
+### How the flow starts
+
+The landlord selects option 5 from the main menu. The GPT sends `{ intent: null, values: {}, message: "5" }` to the backend (same as any menu selection). The backend detects the `"5"` → `add_tenant` mapping and immediately returns the property list at `step: "ask_property"` — no separate first-turn handshake needed.
+
 ### State machine (backend-owned)
 
 ```
-start
-  │ intent recognised ("5" / "adicionar inquilino" / "add_tenant")
+menu selection "5"
+  │ backend maps to add_tenant, loads context
   ▼
-ask_property  ← loads context, returns numbered property list (display_name)
+ask_property  ← returns numbered property list (display_name)
   │ user picks number or ID
   ▼
 ask_name      ← asks for full name only
@@ -532,6 +529,8 @@ done          ← "Inquilino adicionado! Vamos gerar o contrato agora?"
 ### Conversation example
 
 ```
+[User selects "5" from the main menu]
+
 GPT ──POST /workflow/next──────────────────────────────────────────►
   { intent: null, values: {}, message: "5" }
 ◄──200─────────────────────────────────────────────────────────────
