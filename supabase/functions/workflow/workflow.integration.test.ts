@@ -203,7 +203,7 @@ Deno.test(
       // Turn 3: select property 1 → ask_name.
       const t3 = await callNext(
         handler,
-        { intent: t2.intent, values: t2.values, message: "1" },
+        { intent: t2.intent, state: t2.state, message: "1" },
         jwt,
       );
       assertEquals(t3.intent, "add_tenant");
@@ -212,7 +212,7 @@ Deno.test(
       // Turn 4: provide name → ask_cpf.
       const t4 = await callNext(
         handler,
-        { intent: t3.intent, values: t3.values, message: "João Silva" },
+        { intent: t3.intent, state: t3.state, message: "João Silva" },
         jwt,
       );
       assertEquals(t4.step, "ask_cpf");
@@ -220,7 +220,7 @@ Deno.test(
       // Turn 5: provide valid CPF → ask_whatsapp.
       const t5 = await callNext(
         handler,
-        { intent: t4.intent, values: t4.values, message: "123.456.789-09" },
+        { intent: t4.intent, state: t4.state, message: "123.456.789-09" },
         jwt,
       );
       assertEquals(t5.step, "ask_whatsapp");
@@ -228,20 +228,20 @@ Deno.test(
       // Turn 6: skip whatsapp → confirm with summary.
       const t6 = await callNext(
         handler,
-        { intent: t5.intent, values: t5.values, message: "pular" },
+        { intent: t5.intent, state: t5.state, message: "pular" },
         jwt,
       );
       assertEquals(t6.step, "confirm");
       assertStringIncludes(t6.message as string, "João Silva");
       assertStringIncludes(t6.message as string, "123.456.789-09");
 
-      // Turn 7: confirm → done.
+      // Turn 7: confirm → step:done auto-transitions to menu with success message prepended.
       const t7 = await callNext(
         handler,
-        { intent: t6.intent, values: t6.values, message: "Sim" },
+        { intent: t6.intent, state: t6.state, message: "Sim" },
         jwt,
       );
-      assertEquals(t7.step, "done");
+      assertEquals(t7.step, "menu");
       assertStringIncludes(t7.message as string, "Inquilino adicionado");
     } finally {
       // Teardown — always runs even if assertions fail.

@@ -11,10 +11,10 @@
 
 import type {
   ContextPayload,
+  EngineResponse,
   WorkflowDeps,
   WorkflowOption,
   WorkflowRequest,
-  WorkflowResponse,
 } from "./index.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -137,7 +137,7 @@ export async function runFlowEngine(
   context: ContextPayload,
   deps: WorkflowDeps,
   jwt: string,
-): Promise<WorkflowResponse> {
+): Promise<EngineResponse> {
   const intent = def.intent;
   const values: Record<string, unknown> = req.values ?? {};
   const message = (req.message ?? "").trim();
@@ -152,11 +152,10 @@ export async function runFlowEngine(
     // The options array carries the list — no need to append labels to the prompt.
     const fullPrompt = promptText;
 
-    // If this is the very first call (no message yet or the initial routing
-    // message that equals the intent name), just ask the prompt.
-    // The intent router already confirmed the user selected this flow.
-    // We treat an empty message or intent-name echo as "no answer yet".
-    const isFirstPrompt = !message || message === intent;
+    // If this is the very first call (Enter phase — no message yet), just ask
+    // the prompt. The handler passes message: "" when state is absent (Enter
+    // phase), so the engine knows not to validate anything.
+    const isFirstPrompt = !message;
 
     if (isFirstPrompt) {
       return {
@@ -269,7 +268,7 @@ function nextStep(
   values: Record<string, unknown>,
   nextPending: FlowStep | undefined,
   context: ContextPayload,
-): WorkflowResponse {
+): EngineResponse {
   if (nextPending) {
     const options = resolveOptions(nextPending, values, context);
     const promptText = resolvePrompt(nextPending, values, context);
