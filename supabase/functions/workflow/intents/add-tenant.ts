@@ -130,8 +130,7 @@ export const ADD_TENANT: FlowDefinition = {
       const body = result.body as Record<string, unknown>;
       return {
         ok: true,
-        message:
-          "Inquilino adicionado! Vamos gerar o contrato agora? (Diga 'não' para fazer isso depois)",
+        message: "Inquilino adicionado.",
         values: {
           tenant_id: body.id,
           drive_folder_id: body.drive_folder_id,

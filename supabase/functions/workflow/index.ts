@@ -489,7 +489,7 @@ export function handleWorkflowNext(
             const menu = mainMenuResponse(name);
             wireResult = {
               ...menu,
-              message: `${engResp.message}\n\n${menu.message}`,
+              message: `${engResp.message}\n\nO que mais posso te ajudar?`,
             };
           } else {
             wireResult = toWireResponse(engResp, false);
