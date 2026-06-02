@@ -82,6 +82,17 @@ const MOCK_PLACEHOLDERS_WITH_OPTIONS = [
 
 const MOCK_WITNESSES = [{ name: "Maria Oliveira", whatsapp: "+5511888888888" }];
 
+const MOCK_TENANTS = [
+  {
+    id: "tenant-uuid-1",
+    property_id: "prop-uuid-1",
+    name: "Carlos Souza",
+    cpf: "123.456.789-00",
+    whatsapp: "+5511977777777",
+    drive_folder_id: "drive-folder-123",
+  },
+];
+
 const MOCK_CRON_ERRORS = [
   {
     id: "err-uuid-1",
@@ -185,6 +196,11 @@ function buildMockFetch(opts: {
       return new Response(JSON.stringify(MOCK_WITNESSES), { status: 200 });
     }
 
+    // PostgREST: tenants
+    if (url.includes("/rest/v1/tenants")) {
+      return new Response(JSON.stringify(MOCK_TENANTS), { status: 200 });
+    }
+
     // PostgREST: cron_errors
     if (url.includes("/rest/v1/cron_errors")) {
       return new Response(JSON.stringify(MOCK_CRON_ERRORS), { status: 200 });
@@ -270,6 +286,13 @@ Deno.test("unit: GET /context — 200 returns full landlord context", async () =
     const witnesses = body.witnesses as unknown[];
     assertEquals(witnesses.length, 1);
 
+    // tenants
+    const tenants = body.tenants as Array<Record<string, unknown>>;
+    assertEquals(tenants.length, 1);
+    assertEquals(tenants[0].id, MOCK_TENANTS[0].id);
+    assertEquals(tenants[0].property_id, MOCK_TENANTS[0].property_id);
+    assertEquals(tenants[0].name, MOCK_TENANTS[0].name);
+
     // account_config
     const config = body.account_config as Record<string, unknown>;
     assertEquals(config.payment_reminder_frequency, "weekly");
@@ -337,6 +360,7 @@ Deno.test("unit: GET /context — returns empty arrays when no data exists", asy
     assertEquals((body.templates as unknown[]).length, 0);
     assertEquals((body.placeholders as unknown[]).length, 0);
     assertEquals((body.witnesses as unknown[]).length, 0);
+    assertEquals((body.tenants as unknown[]).length, 0);
     assertEquals((body.cron_errors as unknown[]).length, 0);
   } finally {
     globalThis.fetch = originalFetch;
@@ -621,6 +645,28 @@ Deno.test("unit: GET /context/health/cron — 500 when DB query fails", async ()
     assertEquals(res.status, 500);
     const body = await jsonBody(res);
     assertEquals((body.error as Record<string, string>).code, "DB_ERROR");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// ─── Tenants in context response ─────────────────────────────────────────
+
+Deno.test("unit: GET /context — returns tenants array with expected fields", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({}) as typeof fetch;
+  try {
+    const res = await handleContext(makeRequest("valid.jwt.for.test"));
+    assertEquals(res.status, 200);
+    const body = await jsonBody(res);
+    const tenants = body.tenants as Array<Record<string, unknown>>;
+    assertEquals(tenants.length, 1);
+    assertEquals(tenants[0].id, MOCK_TENANTS[0].id);
+    assertEquals(tenants[0].property_id, MOCK_TENANTS[0].property_id);
+    assertEquals(tenants[0].name, MOCK_TENANTS[0].name);
+    assertEquals(tenants[0].cpf, MOCK_TENANTS[0].cpf);
+    assertEquals(tenants[0].whatsapp, MOCK_TENANTS[0].whatsapp);
+    assertEquals(tenants[0].drive_folder_id, MOCK_TENANTS[0].drive_folder_id);
   } finally {
     globalThis.fetch = originalFetch;
   }
