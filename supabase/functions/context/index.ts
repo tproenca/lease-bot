@@ -197,10 +197,15 @@ export async function handleContext(req: Request): Promise<Response> {
   };
 
   const templates = (
-    (templatesResult.data ?? []) as Array<{ id: string; name: string }>
+    (templatesResult.data ?? []) as Array<{
+      id: string;
+      name: string;
+      use_case: string | null;
+    }>
   ).map((t) => ({
     id: t.id,
     name: t.name,
+    use_case: t.use_case,
     property_types: typesByTemplate.get(t.id) ?? [],
   }));
 

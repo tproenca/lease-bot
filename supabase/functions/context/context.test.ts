@@ -48,7 +48,9 @@ const MOCK_BUILDINGS = [
   { id: "bldg-uuid-1", name: "Edifício Central", address: "Rua A, 1" },
 ];
 
-const MOCK_TEMPLATES = [{ id: "tmpl-uuid-1", name: "Contrato Residencial" }];
+const MOCK_TEMPLATES = [
+  { id: "tmpl-uuid-1", name: "Contrato Residencial", use_case: "initial" },
+];
 
 const MOCK_PTT = [
   { template_id: "tmpl-uuid-1", property_type: "apartment" },
@@ -276,10 +278,11 @@ Deno.test("unit: GET /context — 200 returns full landlord context", async () =
     const buildings = body.buildings as unknown[];
     assertEquals(buildings.length, 1);
 
-    // templates with property_types mapping
+    // templates with property_types mapping and use_case field
     const templates = body.templates as Array<Record<string, unknown>>;
     assertEquals(templates.length, 1);
     assertEquals(templates[0].id, "tmpl-uuid-1");
+    assertEquals(templates[0].use_case, "initial");
     assertEquals(templates[0].property_types, ["apartment"]);
 
     // placeholders
