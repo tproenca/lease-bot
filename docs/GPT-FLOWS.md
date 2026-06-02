@@ -1,22 +1,24 @@
 # GPT Conversation Flows & API Reference
 
-This document maps every ChatGPT conversation flow to the Supabase Edge Function calls it triggers. Use it alongside the [manual test runbook](MANUAL-TEST.md) and the [OpenAPI schema](../gpt/openapi.yaml).
+This document describes the architecture of the Lease Assistant Custom GPT, the stateless round-trip contract with the backend, and the manual test plan.
 
 ---
 
-## System Overview
+## Architecture Overview
+
+The GPT is a **thin conversational relay**. All flow logic, menus, validations, confirmations, and context loading are owned by the backend via `POST /workflow/next`. The GPT does not implement any flow logic from memory — it echoes `intent` and `values` from the previous response each turn, relays `message`/`options`/`links` verbatim to the user, and calls `workflowNext` for every business intent.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                    ChatGPT Custom GPT                           │
-│  (Lease Assistant — shared deployment, per-landlord JWT auth)   │
+│         (thin relay — no flow logic, no menus, no state)        │
 └────────────────────────┬────────────────────────────────────────┘
-                         │ HTTPS · Bearer JWT
+                         │ POST /workflow/next (every turn)
                          ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │              Supabase Edge Functions (Deno/TypeScript)          │
-│  /context  /templates/diff  /documents/generate  /signatures   │
-│  /payments  /tenants  /properties  /buildings  /placeholders    │
+│   /workflow/next  (owns context, menus, flows, validations)     │
+│   Flows defined in: supabase/functions/workflow/intents/        │
 └──────┬─────────────────┬──────────────────────┬────────────────┘
        │                 │                      │
        ▼                 ▼                      ▼
@@ -30,757 +32,69 @@ This document maps every ChatGPT conversation flow to the Supabase Edge Function
 
 **Web onboarding** (`/setup`, `/auth/callback`, `/oauth/*`) runs once in the browser and is not part of the GPT conversation.
 
----
-
-## Authentication
-
-The GPT authenticates to the Edge Functions via **OAuth 2.0 with Google**, proxied through two same-domain Edge Functions so OpenAI can reach them:
-
-```
-GPT (OpenAI) ──GET──► /oauth/authorize ──302──► accounts.google.com/o/oauth2/v2/auth
-                                                         │
-                                               user logs in with Google
-                                                         │
-                       /auth/callback ◄──302─────────────┘
-                              │
-                    (exchange code → Google tokens)
-                    (create Supabase Auth session)
-                              │
-                       /oauth/token ◄── GPT exchanges code for tokens
-                              │
-                    Returns { access_token (Supabase JWT), refresh_token }
-                              │
-          All subsequent GPT actions ──Bearer {access_token}──► Edge Functions
-```
-
-- The `access_token` is a Supabase JWT scoped to the authenticated landlord.
-- Row-Level Security (RLS) enforces landlord isolation on every database query — no request can read another landlord's data.
-- `refresh_token` is exchanged via `/oauth/token` (grant_type=refresh_token) when the JWT expires.
+Individual flow implementations live in `supabase/functions/workflow/intents/`.
 
 ---
 
-## Conversation Conventions
+## Stateless Round-Trip Contract
 
-### Numbered options
+Every GPT turn calls `POST /workflow/next`. No session table is used — state lives in the `intent`/`values` fields echoed back each turn.
 
-Whenever the GPT presents a set of choices, it **always** uses a numbered list — never bullets. The landlord can reply with just a number, a range, or a comma-separated list of numbers.
+### Request (GPT → backend)
 
-```
-GPT: Para quais tipos de imóvel este template se aplica?
-     1. Apartamento
-     2. Casa
-     3. Imóvel comercial
-
-Proprietário: 1 e 2
-```
-
-This applies to every choice prompt in the flows, including:
-- Property type selection (Flows 2, 8, 9)
-- Tenant selection (Flows 3, 5, 6, 7)
-- Building selection — existing vs. new (Flow 9)
-- Overdue tenants to remind (Flow 6)
-- Main menu items (Flow 1)
-
-### Post-flow behavior
-
-After completing any flow that doesn't chain directly into another, the GPT re-shows the menu with a short prompt:
-
-```
-Feito! Posso ajudar com mais alguma coisa?
-
-1. Registrar pagamento
-2. Ver inadimplentes
-3. Gerar documento
-4. Enviar para assinatura
-5. Adicionar inquilino
-6. Adicionar imóvel
-7. Criar template
+```json
+{
+  "intent": "add_tenant",
+  "values": { "property_id": "uuid", "name": "João Silva" },
+  "message": "<user's latest message>"
+}
 ```
 
-**Exception — chained flows:** flows that naturally lead into another do NOT re-show the menu between steps. The menu only appears at the end of the full chain or when the landlord declines to continue:
+| Field | Type | Notes |
+|-------|------|-------|
+| `intent` | `string \| null` | Intent returned by the previous response. `null` on first turn. |
+| `values` | `object \| null` | Collected values returned by the previous response. `null` on first turn. |
+| `message` | `string` | The user's latest reply, relayed verbatim. |
 
-- Add Tenant (Flow 7) → Generate Document (Flow 3) → Send for Signature (Flow 4) → **menu**
-- Generate Document (Flow 3) → Send for Signature (Flow 4) → **menu**
+### Response (backend → GPT)
 
-If the landlord declines a chain step (e.g. "não" to generating a contract after adding a tenant), the GPT re-shows the menu immediately.
+```json
+{
+  "message": "Qual é o CPF do inquilino?",
+  "intent": "add_tenant",
+  "values": { "property_id": "uuid", "name": "João Silva" },
+  "step": "ask_cpf",
+  "options": null,
+  "links": null,
+  "error": null
+}
+```
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `message` | `string` | Relay verbatim to the user. |
+| `intent` | `string \| null` | Echo back on the next turn. |
+| `values` | `object` | Echo back on the next turn. |
+| `step` | `string` | Current workflow step. `confirm` → show summary + "Confirma? (Sim para continuar)". `done` → flow complete. |
+| `options` | `array \| null` | Numbered options to present when not null. |
+| `links` | `array \| null` | Links to relay when not null. |
+| `error` | `object \| null` | Error details; relay `message` in plain language. |
+
+The GPT does **not** echo `step` back — only `intent` and `values`.
 
 ---
 
-### Confirmation protocol
-
-Before any write API call, the GPT shows a summary and waits for explicit confirmation:
-
-```
-GPT: Resumo:
-     - Template: Contrato Residencial
-     - Tipos: apartamento, casa
-
-     Confirma? (Sim para continuar)
-
-Proprietário: Sim
-```
-
-Only "Sim" (or equivalent) triggers the API call. Any other response prompts the GPT to ask what to change.
-
----
-
-## Flow 0 — Onboarding (first conversation, landlord not yet set up)
-
-**Trigger:** GPT calls `getContext` and receives `HTTP 404 LANDLORD_NOT_FOUND`.
-
-```
-GPT                         Edge Functions              Browser (landlord)
- │                                │                           │
- ├──GET /context──────────────────►                           │
- │◄──404 LANDLORD_NOT_FOUND───────┤                           │
- │                                │                           │
- │  [GPT shows setup URL]         │                           │
- │                                │       GET /setup ─────────►
- │                                │◄──── 200 HTML (pre-auth) ─┤
- │                                │    (Entrar com Google btn) │
- │                                │                           │
- │                                │  ── click "Entrar" ───────►
- │                                │◄── GET /oauth/authorize ──┤
- │                                │──302 → accounts.google.com►
- │                                │                     (login)
- │                                │◄── GET /auth/callback ────┤
- │                                │  (exchange code → tokens) │
- │                                │──302 → /setup ────────────►
- │                                │◄── GET /setup ────────────┤
- │                                │──200 HTML (post-auth) ─────►
- │                                │  (Drive Picker + form)    │
- │                                │                           │
- │                                │◄── POST /setup/complete ──┤
- │                                │  (root_folder_id,         │
- │                                │   templates_folder_name,  │
- │                                │   whatsapp,               │
- │                                │   autentique_api_key,     │
- │                                │   autentique_webhook_secret)
- │                                │──201──────────────────────►
- │                                │  (creates landlord row,   │
- │                                │   Drive folders, starter  │
- │                                │   docs)                   │
- │                                │                           │
- │  [landlord returns to GPT chat]│                           │
- │                                │                           │
- ├──GET /context──────────────────►                           │
- │◄──200 (landlord data) ─────────┤                           │
- │  [GPT greets landlord + menu]  │                           │
-```
-
-**API calls:**
-
-| Step | Method | Path | Auth | Notes |
-|------|--------|------|------|-------|
-| Check landlord | GET | `/context` | Bearer JWT | Returns 404 LANDLORD_NOT_FOUND |
-| Start OAuth | GET | `/oauth/authorize` | None | Proxies to Google |
-| OAuth callback | GET | `/auth/callback` | None | Exchanges code, sets session cookie |
-| Get token | POST | `/oauth/token` | None | Returns Supabase JWT |
-| Complete setup | POST | `/setup/complete` | Bearer JWT | Creates landlord row + Drive folders |
-| Load context | GET | `/context` | Bearer JWT | Confirms setup succeeded |
-
----
-
-## Flow 1 — Session Start (every session)
-
-**Trigger:** Any message, including "oi", "menu", "ajuda", or any other first message.
-
-The GPT calls `POST /workflow/next` with `{ intent: null, values: {}, message: "<user text>" }`. The backend owns the startup sequence:
-
-1. Internally calls `GET /context`.
-2. If `LANDLORD_NOT_FOUND` → returns onboarding response (step: `awaiting_setup`).
-3. If `GOOGLE_REAUTH_REQUIRED` → returns reauth response (step: `reauth_required`).
-4. If message is a menu option number (1–6) → routes to the selected workflow.
-5. Otherwise → returns the main menu with `options[].value` carrying the intent string.
-
-```
-GPT ──POST /workflow/next──────────────────────────────────────►
-  { intent: null, values: {}, message: "oi" }
-◄──200─────────────────────────────────────────────────────────
-  { message: "Olá, João! O que você quer fazer?",
-    intent: null, values: {}, step: "menu",
-    options: [
-      { label: "1. Registrar pagamento",   value: "record_payment" },
-      { label: "2. Ver inadimplentes",     value: "view_overdue" },
-      { label: "3. Gerar documento",       value: "generate_document" },
-      { label: "4. Enviar para assinatura",value: "send_signature" },
-      { label: "5. Adicionar inquilino",   value: "add_tenant" },
-      { label: "6. Adicionar imóvel",      value: "add_property" }
-    ] }
-```
-
-The GPT displays the message and options as a numbered list. The landlord replies with a number; the GPT echoes `{ intent: null, values: {}, message: "5" }` back to the backend, which detects the menu selection and routes to the appropriate workflow.
-
-**API calls:**
-
-| Method | Path | Auth | Notes |
-|--------|------|------|-------|
-| POST | `/workflow/next` | Bearer JWT | Backend handles context, diff, and menu internally |
-
----
-
-## Flow 2 — Template Sync (diff non-empty)
-
-**Trigger:** `GET /templates/diff` returns at least one change. Runs before the main menu.
-
-The diff compares the landlord's Google Drive templates folder against the cached DB state. The GPT **lists all detected changes upfront**, then walks through each one interactively before showing the main menu.
-
-**Opening message (example — 3 changes):**
-
-```
-Detectei mudanças nos templates:
-- Novos: Contrato Residencial, Contrato Comercial
-- Removidos: Aditivo Antigo
-
-Vamos configurar cada um. Começando com Contrato Residencial — para quais tipos de imóvel ele se aplica?
-1. Apartamento
-2. Casa
-3. Imóvel comercial
-```
-
-**Re-upload detection:** If the same template name appears in both `added` and `removed`, the GPT treats it as a re-upload (file deleted and re-uploaded to Drive, producing a new Drive file ID). Instead of asking property types from scratch, it asks:
-
-```
-O template "Contrato Residencial" parece ter sido re-enviado para o Drive.
-Deseja manter as configurações anteriores? (tipos: Apartamento, Casa)
-```
-
-If the landlord confirms, the GPT uses the `property_types` from the `removed` entry (returned by the API — see #78) to call `POST /templates` without asking again. If they decline, the GPT asks for property types normally.
-
-> **Note:** Re-upload detection requires `GET /templates/diff` to return `removed.templates` as `Array<{ name, property_types }>` instead of `string[]`. Tracked in [#78](https://github.com/tproenca/lease-bot/issues/78). Until that ships, the GPT will ask for property types even on re-uploads.
-
-**Per-change actions:**
-
-```
-templates.added      → GPT asks: which property types apply? (numbered list)
-                        ──POST /templates──────────────────────►
-                          { drive_file_id, name,
-                            placeholder_names[],
-                            property_types[],
-                            last_modified_at }
-                        ◄──201 { id } ─────────────────────────
-
-placeholders.added   → GPT asks: format, case, derived?, required?, default?
-                          If format = text, GPT also asks:
-                          "Deseja restringir os valores?
-                           (ex: solteiro, casado, viúvo)"
-                          Yes → collect comma-separated list as options[]
-                          No  → omit options
-                        ──POST /placeholders───────────────────►
-                          [{ name, required, format, case,
-                             default_value, derived_from,
-                             derived_formula, options? }]
-                        ◄──201 { ids[] } ───────────────────────
-
-witnesses.added      → GPT asks: WhatsApp number for each
-                        ──POST /witnesses──────────────────────►
-                          { name, whatsapp }
-                        ◄──201 { id } ─────────────────────────
-
-templates.removed    → GPT informs landlord + asks confirmation
-                        ──DELETE /templates/:id────────────────►
-                        ◄──204 ─────────────────────────────────
-
-placeholders.removed → GPT informs landlord (no confirmation required)
-                        ──DELETE /placeholders/:name────────────►
-                        ◄──204 ─────────────────────────────────
-```
-
-**Confirmation protocol:** GPT requires explicit "Sim" before calling any write endpoint. Each change gets a summary + "Confirma? (Sim para continuar)".
-
----
-
-## Flow 3a — Generate Document (new tenant)
-
-**Trigger:** Chained from Flow 7 (Add Tenant) when tenant was just added.
-
-```
-1. GPT identifies property and tenant (just created in Flow 7 — no selection needed)
-2. GPT asks which template to use (shows numbered list filtered by property type)
-3. GPT asks for each required placeholder not marked as derived AND not already
-   known from context. Values available from context (tenant name, CPF, WhatsApp,
-   property address) are filled automatically — the landlord is never asked to
-   repeat information already in the system.
-   If a placeholder has a non-empty options[], GPT presents those as a numbered
-   list instead of asking for free text input.
-4. GPT computes derived values (end date, amount in words, formatted CPF, etc.)
-5. GPT shows complete summary of all placeholder values
-6. GPT asks if want to generate the document
-7. Landlord confirms with "Sim"
-
-──POST /documents/generate───────────────────────────────────────►
-  { tenant_id,
-    values: { placeholder_name: value, ... } }
-◄──200 [{ doc_id, url }] ────────────────────────────────────────
-  (Drive URLs of generated documents)
-
-7. GPT shows Drive links and asks if landlord wants to send for signature → Flow 4
-```
-
----
-
-## Flow 3b — Generate Document (existing tenant)
-
-**Trigger:** Menu item "Gerar documento" when tenant already exists (renewal, addendum, or any other document).
-
-```
-1. GPT asks: which property? (shows numbered list)
-2. GPT identifies the active tenant for that property from context (no need to
-   ask for tenant name — it is already known)
-3. GPT asks which template to use (shows numbered list filtered by property type)
-   e.g.: 1. Contrato Residencial
-         2. Aditivo de Renovação
-4. GPT asks for each required placeholder not marked as derived AND not already
-   known from context. Values available from context (tenant name, CPF, WhatsApp,
-   property address) are filled automatically — the landlord is never asked to
-   repeat information already in the system.
-   If a placeholder has a non-empty options[], GPT presents those as a numbered
-   list instead of asking for free text input.
-5. GPT computes derived values
-6. GPT shows complete summary
-7. GPT asks if want to generate the document
-8. Landlord confirms with "Sim"
-
-──POST /documents/generate───────────────────────────────────────►
-  { tenant_id,
-    values: { placeholder_name: value, ... } }
-◄──200 [{ doc_id, url }] ────────────────────────────────────────
-
-8. GPT shows Drive links and asks if landlord wants to send for signature → Flow 4
-```
-
-**Derived value rules** (from `contract-rules.md`):
-
-| Placeholder | Derived from |
-|-------------|--------------|
-| End date | Start date + duration in months |
-| Amount in words | Numeric rent value → Portuguese text |
-| Formatted CPF | Raw CPF digits → XXX.XXX.XXX-XX |
-| Full date text | Date → "DD de mês de YYYY" |
-
-**API calls:**
-
-| Method | Path | Auth | Key fields |
-|--------|------|------|------------|
-| POST | `/documents/generate` | Bearer JWT | `tenant_id`, `values{}` |
-
----
-
-## Flow 4 — Send for Signature
-
-**Trigger:** Menu item "Enviar para assinatura" or after generating a document.
-
-```
-1. GPT confirms documents exist for the tenant (from context)
-2. GPT lists signers:
-   - Tenant (WhatsApp required — asks if not set)
-   - Landlord (WhatsApp from context)
-   - Witnesses (WhatsApp from context)
-3. GPT shows summary of signers + "Confirma? (Sim para continuar)"
-
-──POST /signatures/send──────────────────────────────────────────►
-  { tenant_id }
-◄──201 { id, autentique_document_id } ───────────────────────────
-
-4. GPT confirms submission and explains that signers receive WhatsApp link
-
---- background (called by Autentique, not GPT) ---
-
-Autentique ──POST /webhooks/autentique/:landlord_id───────────────►
-            (HMAC-SHA256 verified)
-           ◄──200 ───────────────────────────────────────────────
-            [background: download signed PDF, upload to Drive,
-             mark signature_requests as completed]
-```
-
-**Error cases:**
-- `422 SIGNATURE_MARKERS_NOT_FOUND` — template is missing `[[LOCADOR]]`, `[[LOCATARIO]]`, etc. GPT explains and asks the landlord to fix the template.
-- `502 AUTENTIQUE_ERROR` — response includes `drive_urls[]` so landlord can submit manually.
-
-**API calls:**
-
-| Method | Path | Auth | Notes |
-|--------|------|------|-------|
-| POST | `/signatures/send` | Bearer JWT | Exports PDFs, detects markers, submits to Autentique |
-| GET | `/signatures/:id/status` | Bearer JWT | Check signing status later |
-| PATCH | `/signatures/:id/reminder` | Bearer JWT | Update Autentique reminder frequency |
-| POST | `/webhooks/autentique/:landlord_id` | HMAC (not GPT) | Called by Autentique on completion |
-
----
-
-## Flow 5 — Record Payment
-
-**Trigger:** Menu item "Registrar pagamento".
-
-```
-1. GPT asks: which tenant? (from context)
-2. GPT asks: reference month (MM/YYYY) (default: current month)
-3. GPT asks: amount and payment date
-4. GPT shows summary + "Confirma? (Sim para continuar)"
-
-──POST /payments─────────────────────────────────────────────────►
-  { tenant_id, amount, reference_month, paid_at }
-◄──201 { id, on_time } ──────────────────────────────────────────
-  (on_time = true if paid on/before 5th of reference month)
-
-5. GPT confirms payment recorded, notes if it was on time
-```
-
-**API calls:**
-
-| Method | Path | Auth | Key fields |
-|--------|------|------|------------|
-| POST | `/payments` | Bearer JWT | `tenant_id`, `amount`, `reference_month`, `paid_at` |
-
----
-
-## Flow 6 — View Overdue Tenants
-
-**Trigger:** Menu item "Ver inadimplentes".
-
-```
-1. GPT asks: reference month (default: current month)
-
-──GET /payments?month=YYYY-MM────────────────────────────────────►
-◄──200 { paid: [...], overdue: [...] } ──────────────────────────
-
-2. GPT lists overdue tenants with date of last reminder sent
-3. GPT asks: send reminder to a specific tenant, all, or none?
-
-For each tenant to remind:
-4. GPT shows summary + "Confirma? (Sim para continuar)"
-
-──POST /payments/remind───────────────────────────────────────────►
-  { tenant_id, reference_month }
-◄──200 ──────────────────────────────────────────────────────────
-  (or 422 WHATSAPP_SEND_FAILED — GPT informs landlord)
-```
-
-**Note:** Automated reminders are sent by pg_cron (no GPT involvement). Cron job failures are monitored externally via `GET /context/health/cron` and do not interrupt the GPT session.
-
-**API calls:**
-
-| Method | Path | Auth | Key fields |
-|--------|------|------|------------|
-| GET | `/payments` | Bearer JWT | `?month=YYYY-MM` |
-| POST | `/payments/remind` | Bearer JWT | `tenant_id`, `reference_month` |
-
----
-
-## Flow 7 — Add Tenant _(backend-orchestrated — pilot)_
-
-**Trigger:** Menu item "Adicionar inquilino" (option 5).
-
-> **Architecture:** This flow is a **stateless round-trip pilot**. The GPT is a thin relay — all sequencing, validation, confirmation, and error mapping are owned by the backend. No session table is used. State lives in the `intent/values` fields echoed back each turn.
-
-### Stateless round-trip contract
-
-```
-GPT → backend (each turn):
-  { intent: "add_tenant" | null,
-    values: { ... } | null,      ← echoed back from previous response
-    message: "<user text>" }
-
-Backend → GPT (each turn):
-  { message: "...",              ← relay verbatim to user
-    intent: "add_tenant",        ← echo back next turn
-    values: { ... },             ← echo back next turn (canonical state, no _machine_stage, no _properties)
-    step: "ask_property" | "ask_name" | "ask_cpf" | "ask_whatsapp" | "confirm" | "done",
-    options?: [{ label, value }] ← numbered list when present
-    error?: { code, message } }
-```
-
-Step is inferred by the backend from the values present — the GPT does NOT echo `step` back. When `step:"done"`, the flow is complete.
-
-### How the flow starts
-
-The landlord selects option 5 from the main menu. The GPT sends `{ intent: null, values: {}, message: "5" }` to the backend (same as any menu selection). The backend detects the `"5"` → `add_tenant` mapping and immediately returns the property list at `step: "ask_property"` — no separate first-turn handshake needed.
-
-### State machine (backend-owned)
-
-```
-menu selection "5"
-  │ backend maps to add_tenant, loads context
-  ▼
-ask_property  ← returns numbered property list (display_name)
-  │ user picks number or ID
-  ▼
-ask_name      ← asks for full name only
-  │ any non-empty reply
-  ▼
-ask_cpf       ← asks for CPF (XXX.XXX.XXX-XX)
-  │ invalid CPF → re-ask (no advancement, no POST)
-  │ valid CPF
-  ▼
-ask_whatsapp  ← optional; "pular"/empty → null
-  │ invalid format → re-ask
-  │ valid / skipped
-  ▼
-confirm       ← shows **Novo inquilino** summary + "Confirma? (Sim para continuar)"
-  │ anything ≠ "Sim" → "O que deseja alterar?" (stays in confirm)
-  │ "Sim"
-  ▼
-POST /tenants ← backend calls handleTenants internally (same JWT)
-  │ 201
-  ▼
-done          ← "Inquilino adicionado! Vamos gerar o contrato agora?"
-```
-
-### Conversation example
-
-```
-[User selects "5" from the main menu]
-
-GPT ──POST /workflow/next──────────────────────────────────────────►
-  { intent: null, values: {}, message: "5" }
-◄──200─────────────────────────────────────────────────────────────
-  { message: "Para qual imóvel...?\n1. Prédio A - Apto 101",
-    intent: "add_tenant", values: {}, step: "ask_property",
-    options: [{label: "1. ...", value: "prop-id"}] }
-
-GPT relays message + numbered list to user.
-User: "1"
-
-GPT ──POST /workflow/next──────────────────────────────────────────►
-  { intent: "add_tenant", values: {}, message: "1" }
-◄──200─────────────────────────────────────────────────────────────
-  { message: "Qual é o nome completo do inquilino?",
-    intent: "add_tenant", values: { property_id: "prop-id", property_name: "Prédio A - Apto 101" },
-    step: "ask_name" }
-
-... (name → CPF → whatsapp → confirm) ...
-
-User: "Sim"
-
-GPT ──POST /workflow/next──────────────────────────────────────────►
-  { intent: "add_tenant", values: { property_id: "...", name: "...", cpf: "...", whatsapp: null },
-    message: "Sim" }
-◄──200─────────────────────────────────────────────────────────────
-  { message: "Inquilino adicionado! Vamos gerar o contrato agora?",
-    intent: "add_tenant", values: {..., tenant_id: "uuid"},
-    step: "done" }
-```
-
-**Happy path chain:** Add Tenant → Generate Contract (Flow 3) → Send for Signature (Flow 4)
-
-**Error mapping** (backend returns friendly `message` on write failure):
-
-| Error code | User-visible message |
-|------------|---------------------|
-| `GOOGLE_REAUTH_REQUIRED` | Asks landlord to reconnect Google account via ChatGPT settings |
-| `INVALID_CPF` | Explains CPF format and asks again |
-| `PROPERTY_NOT_FOUND` | Asks to select a valid property |
-| `LANDLORD_NOT_FOUND` | Directs to complete setup |
-| _(any other)_ | Generic retry message |
-
-**API calls:**
-
-| Method | Path | Auth | Notes |
-|--------|------|------|-------|
-| POST | `/workflow/next` | Bearer JWT | Stateless turn-by-turn orchestration |
-| _(internal)_ | `/tenants` (POST) | same JWT | Called by backend on "Sim"; not called by GPT directly |
-
----
-
-## Flow 8 — Add Property (House or Commercial)
-
-**Trigger:** Menu item "Adicionar imóvel" → type = house or commercial.
-
-```
-1. GPT asks: property name and address
-2. GPT shows summary + "Confirma? (Sim para continuar)"
-
-──POST /properties────────────────────────────────────────────────►
-  { type: "house" | "commercial", name, address }
-◄──201 { id, drive_folder_id } ──────────────────────────────────
-  (Drive folder created: Root/{PropertyName}/)
-```
-
-**API calls:**
-
-| Method | Path | Auth | Key fields |
-|--------|------|------|------------|
-| POST | `/properties` | Bearer JWT | `type`, `name`, `address` |
-
----
-
-## Flow 9 — Add Property (Apartment)
-
-**Trigger:** Menu item "Adicionar imóvel" → type = apartment.
-
-```
-1. GPT asks: existing building or new building?
-
-If new building:
-   GPT asks: building name and address
-   ──POST /buildings─────────────────────────────────────────────►
-     { name, address }
-   ◄──201 { id, drive_folder_id } ──────────────────────────────
-     (Drive folder created: Root/{BuildingName}/)
-
-2. GPT asks: apartment name (unit identifier, e.g. "Apto 42")
-   — do NOT ask for address; the building already has one
-3. GPT shows summary + "Confirma? (Sim para continuar)"
-
-──POST /properties────────────────────────────────────────────────►
-  { type: "apartment", name, building_id }
-◄──201 { id, drive_folder_id } ──────────────────────────────────
-  (Drive folder created: Root/{Building}/{ApartmentName}/)
-```
-
-**API calls:**
-
-| Method | Path | Auth | Key fields |
-|--------|------|------|------------|
-| POST | `/buildings` | Bearer JWT | `name`, `address` |
-| POST | `/properties` | Bearer JWT | `type: "apartment"`, `name`, `building_id` |
-
----
-
-## Flow 10 — Update Account Config
-
-**Trigger:** Landlord asks to change payment reminder frequency.
-
-```
-1. GPT asks: daily, weekly, or disabled?
-2. GPT shows summary + "Confirma? (Sim para continuar)"
-
-──PATCH /account/config───────────────────────────────────────────►
-  { payment_reminder_frequency: "daily" | "weekly" | "disabled" }
-◄──200 { payment_reminder_frequency } ───────────────────────────
-```
-
-**API calls:**
-
-| Method | Path | Auth | Key fields |
-|--------|------|------|------------|
-| PATCH | `/account/config` | Bearer JWT | `payment_reminder_frequency` |
-
----
-
-## Flow 11 — Create Template _(planned)_
-
-> **Status:** Not yet implemented. Tracked in [#77](https://github.com/tproenca/lease-bot/issues/77).
-
-**Trigger:** Menu item "Criar template" or user intent ("quero criar um novo template", "preciso de um aditivo de renovação").
-
-```
-1. GPT asks: what kind of document? (e.g. contrato residencial, aditivo de renovação,
-   recibo de entrega de chaves, contrato de comodato...)
-
-2. GPT brainstorms with landlord:
-   - What is the purpose of this document?
-   - What clauses are mandatory? (e.g. prazo, valor, reajuste, multa)
-   - What information needs to be captured per tenant?
-     (name, CPF, address, rent amount, start date, duration...)
-   - Are there any special clauses? (pets, guarantor, inventory list...)
-
-3. GPT drafts the document in the chat, using {{placeholder}} tokens for
-   dynamic fields and hardcoded text for fixed clauses.
-
-4. Landlord reviews and iterates:
-   - "adiciona uma cláusula sobre animais de estimação"
-   - "remove a parte do fiador"
-   - "o reajuste deve ser pelo IGPM anual"
-   GPT updates the draft in the chat after each request.
-
-5. GPT asks: which property types does this template apply to?
-   1. Apartamento
-   2. Casa
-   3. Imóvel comercial
-
-6. GPT asks: confirm the template name (shown as the Google Doc filename in Drive)
-
-7. Landlord confirms with "Sim"
-
-──POST /templates/create (new endpoint)──────────────────────────►
-  { name, content (raw text with {{placeholders}}), property_types[] }
-◄──201 { drive_file_id, template_id } ───────────────────────────
-  (Google Doc created in landlord's templates folder)
-
-8. GPT informs: "Template criado no Drive. Na próxima conversa vou detectar
-   os placeholders automaticamente e pedir para configurá-los."
-
---- next session start ---
-
-GET /templates/diff detects the new file → Flow 2 handles placeholder
-configuration automatically (format, required, derived, etc.)
-```
-
-**Disclaimer:** GPT must remind the landlord that AI-generated legal text is a starting point and should be reviewed by a lawyer before use.
-
-**New endpoint required:** `POST /templates/create`
-- Accepts document name, raw text content, and property types
-- Creates a Google Doc in the landlord's templates folder via Drive API
-- Inserts the landlord row in the `templates` table
-- Returns `{ drive_file_id, template_id }`
-
-**What's already built (no changes needed):**
-- `/templates/diff` automatically detects the new file on the next session
-- Flow 2 handles placeholder metadata configuration
-- `/documents/generate` handles substitution once placeholders are configured
-
-**API calls:**
-
-| Method | Path | Auth | Key fields |
-|--------|------|------|------------|
-| POST | `/templates/create` _(new)_ | Bearer JWT | `name`, `content`, `property_types[]` |
-
----
-
-## Google Account Reconnection (`GOOGLE_REAUTH_REQUIRED`)
-
-When any endpoint returns `401 GOOGLE_REAUTH_REQUIRED`, the landlord's Google connection has expired or been revoked. This happens when:
-
-- The landlord revoked the app's Google access from their Google account settings
-- The landlord changed their Google password
-- Google rotated the token and the stored copy became stale
-- The OAuth app is in Testing mode — tokens expire after 7 days
-
-**What the GPT must do:** Inform the landlord that their Google Drive connection expired and ask them to reconnect via the "Connect account" button in ChatGPT (disconnect + reconnect the Google account in ChatGPT's account settings). Do **not** show a raw OAuth URL — the reconnect happens through ChatGPT's account connection UI.
-
-**Example message:**
-
-```
-Sua conexão com o Google Drive expirou. Para continuar, reconecte sua conta Google:
-acesse as configurações do ChatGPT, localize o Lease Assistant em "Apps conectados",
-desconecte e conecte novamente.
-```
-
-**Affected endpoints:** All endpoints that call `refreshGoogleAccessToken` internally — including `/templates/diff`, `/documents/generate`, `/signatures/send`, `/tenants`, `/properties`, `/buildings`.
-
----
-
-## API Quick Reference
-
-| Method | Path | GPT-callable | Auth | Purpose |
-|--------|------|:---:|------|---------|
-| GET | `/context` | ✅ | Bearer JWT | Load all landlord data (called every session) |
-| GET | `/context/health/cron` | ❌ monitor-only | Bearer service-role key | Cron health check — 200 ok / 503 error |
-| GET | `/templates/diff` | ✅ | Bearer JWT | Detect Drive template/placeholder changes |
-| POST | `/templates` | ✅ | Bearer JWT | Register a template + property-type mappings |
-| DELETE | `/templates/:id` | ✅ | Bearer JWT | Remove a template |
-| POST | `/placeholders` | ✅ | Bearer JWT | Add placeholder definitions (bulk) |
-| DELETE | `/placeholders/:name` | ✅ | Bearer JWT | Remove a placeholder |
-| POST | `/witnesses` | ✅ | Bearer JWT | Add a witness with WhatsApp |
-| GET | `/properties` | ✅ | Bearer JWT | List all properties |
-| POST | `/properties` | ✅ | Bearer JWT | Create a property (house/apartment/commercial) |
-| POST | `/buildings` | ✅ | Bearer JWT | Create a building (parent for apartments) |
-| POST | `/tenants` | ✅ | Bearer JWT | Register a tenant |
-| GET | `/tenants/:id` | ✅ | Bearer JWT | Fetch tenant details |
-| PATCH | `/tenants/:id` | ✅ | Bearer JWT | Update tenant WhatsApp |
-| POST | `/documents/generate` | ✅ | Bearer JWT | Generate contracts with placeholder substitution |
-| POST | `/signatures/send` | ✅ | Bearer JWT | Submit documents for e-signature via Autentique |
-| GET | `/signatures/:id/status` | ✅ | Bearer JWT | Check signing status |
-| PATCH | `/signatures/:id/reminder` | ✅ | Bearer JWT | Update Autentique reminder frequency |
-| POST | `/payments` | ✅ | Bearer JWT | Record a payment |
-| GET | `/payments` | ✅ | Bearer JWT | Get paid/overdue tenants for a month |
-| POST | `/payments/remind` | ✅ | Bearer JWT | Send WhatsApp payment reminder |
-| PATCH | `/account/config` | ✅ | Bearer JWT | Update payment reminder frequency |
-| POST | `/workflow/next` | ✅ | Bearer JWT | Stateless workflow orchestrator (pilot: add_tenant) |
-| POST | `/webhooks/autentique/:landlord_id` | ❌ web-only | HMAC | Receive signed document notification from Autentique |
-| GET | `/setup` | ❌ web-only | Session | Render onboarding HTML (3 states) |
-| POST | `/setup/complete` | ❌ web-only | Bearer JWT | Complete landlord onboarding |
-| GET | `/auth/callback` | ❌ web-only | None | Google OAuth redirect handler |
-| GET | `/oauth/authorize` | ❌ web-only | None | OAuth proxy → Google (required by OpenAI) |
-| POST | `/oauth/token` | ❌ web-only | None | Exchange auth code or refresh token |
+## Manual Test Plan
+
+10-step checklist for verifying the GPT relay behaviour end-to-end:
+
+1. **Session start:** Send "oi". Verify GPT calls `workflowNext` with `{intent: null, values: null, message: "oi"}` and displays the menu returned by the backend.
+2. **Menu selection:** Reply "5" (Add Tenant). Verify GPT echoes `{intent: null, values: null, message: "5"}` and displays the property list.
+3. **Property selection:** Reply "1". Verify GPT echoes `{intent: "add_tenant", values: {}, message: "1"}` and asks for tenant name.
+4. **Name entry:** Reply with a name. Verify GPT echoes `{intent: "add_tenant", values: {property_id: "..."}, message: "<name>"}` and asks for CPF.
+5. **Invalid CPF:** Reply with a malformed CPF. Verify backend returns a re-ask message; GPT relays it verbatim without inventing its own error text.
+6. **Valid CPF:** Reply with a valid CPF. Verify GPT echoes values including CPF and backend asks for WhatsApp.
+7. **Skip WhatsApp:** Reply "pular". Verify GPT echoes `{..., message: "pular"}` and backend advances to confirm step.
+8. **Confirm step:** Verify GPT shows the summary returned by backend and asks "Confirma? (Sim para continuar)".
+9. **Rejection at confirm:** Reply "muda o nome". Verify GPT sends `{..., message: "muda o nome"}` to backend and stays in confirm.
+10. **Confirmation:** Reply "Sim". Verify backend returns `step: "done"` and GPT relays the completion message.
