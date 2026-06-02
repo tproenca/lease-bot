@@ -17,6 +17,8 @@ export const ADD_TENANT: FlowDefinition = {
     {
       key: "property_id",
       stepName: "property",
+      label: "Imóvel",
+      confirmDisplayKey: "property_name",
       prompt: (
         _values: Record<string, unknown>,
         ctx: ContextPayload,

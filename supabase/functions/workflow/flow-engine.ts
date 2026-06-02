@@ -27,6 +27,10 @@ export interface FlowStep {
   key: string;
   /** Overrides the step name in responses. Defaults to `ask_{key}`. */
   stepName?: string;
+  /** Displayed label in confirm summary. Defaults to `step.key`. */
+  label?: string;
+  /** Which values key to read for display in confirm summary. Defaults to `step.key`. */
+  confirmDisplayKey?: string;
   prompt:
     | string
     | ((values: Record<string, unknown>, context: ContextPayload) => string);
@@ -118,11 +122,13 @@ function buildConfirmationMessage(
   // Only include data steps (not display-only), in order.
   for (const step of steps) {
     if (isDisplayOnly(step.key)) continue;
-    const val = values[step.key];
+    const displayKey = step.confirmDisplayKey ?? step.key;
+    const label = step.label ?? step.key;
+    const val = values[displayKey];
     const display = val === null || val === undefined
       ? "(não informado)"
       : String(val);
-    lines.push(`- ${step.key}: ${display}`);
+    lines.push(`- ${label}: ${display}`);
   }
   lines.push("");
   lines.push("Confirma? (Sim para continuar)");

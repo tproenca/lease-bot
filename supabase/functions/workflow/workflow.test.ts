@@ -589,6 +589,9 @@ Deno.test("unit: workflow/next — 'pular' sets whatsapp to null and advances to
   // Should show bold heading
   assertStringIncludes(body.message as string, "**Novo inquilino**");
   assertStringIncludes(body.message as string, "Confirma?");
+  // property_name should appear as friendly label, not raw UUID
+  assertStringIncludes(body.message as string, "Imóvel:");
+  assertStringIncludes(body.message as string, "Prédio A - Apto 101");
 });
 
 Deno.test("unit: workflow/next — valid whatsapp advances to confirm", async () => {
