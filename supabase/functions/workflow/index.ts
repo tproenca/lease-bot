@@ -222,8 +222,9 @@ const LABEL_MAP: Record<string, string> = {
 };
 
 function mainMenuResponse(name: string): WorkflowResponse {
-  const greeting = name
-    ? `Olá, ${name}! O que você quer fazer?`
+  const firstName = name.split(/\s+/)[0];
+  const greeting = firstName
+    ? `Olá, ${firstName}! O que você quer fazer?`
     : "O que você quer fazer?";
   return {
     message: greeting,
