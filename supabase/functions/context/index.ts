@@ -67,7 +67,8 @@ export async function handleContext(req: Request): Promise<Response> {
   //    landlord's rows only. No service-role key is needed or used.
   const db = userClient(jwt);
 
-  // 3. Fetch all required tables in parallel.
+  // 3. Fetch all required tables in parallel (tenants depend on properties,
+  //    so they are queried separately after properties resolve).
   const [
     landlordResult,
     propertiesResult,
@@ -76,7 +77,6 @@ export async function handleContext(req: Request): Promise<Response> {
     pttResult,
     placeholdersResult,
     witnessesResult,
-    tenantsResult,
     cronErrorsResult,
   ] = await Promise.all([
     db
@@ -110,10 +110,6 @@ export async function handleContext(req: Request): Promise<Response> {
       .select("name, whatsapp")
       .order("name"),
     db
-      .from("tenants")
-      .select("id, property_id, name, cpf, whatsapp, drive_folder_id")
-      .order("name"),
-    db
       .from("cron_errors")
       .select("id, job_name, error, occurred_at")
       .gte(
@@ -123,7 +119,7 @@ export async function handleContext(req: Request): Promise<Response> {
       .order("occurred_at", { ascending: false }),
   ]);
 
-  // 4. Surface any DB errors.
+  // 4. Surface any DB errors from the parallel queries.
   for (
     const result of [
       landlordResult,
@@ -133,7 +129,6 @@ export async function handleContext(req: Request): Promise<Response> {
       pttResult,
       placeholdersResult,
       witnessesResult,
-      tenantsResult,
       cronErrorsResult,
     ]
   ) {
@@ -144,6 +139,32 @@ export async function handleContext(req: Request): Promise<Response> {
         "Erro ao carregar dados. Tente novamente.",
       );
     }
+  }
+
+  // 4b. Fetch only active tenants — those whose drive_folder_id matches one of
+  //     the properties' current_tenant_folder_id values. This avoids returning
+  //     historical tenants that the GPT doesn't need.
+  const activeFolderIds = (propertiesResult.data ?? [])
+    .map((p: Record<string, unknown>) => p.current_tenant_folder_id)
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
+
+  let tenantsResult: { data: unknown[] | null; error: unknown };
+  if (activeFolderIds.length === 0) {
+    tenantsResult = { data: [], error: null };
+  } else {
+    tenantsResult = await db
+      .from("tenants")
+      .select("id, property_id, name, cpf, whatsapp, drive_folder_id")
+      .in("drive_folder_id", activeFolderIds)
+      .order("name");
+  }
+
+  if (tenantsResult.error) {
+    return errorResponse(
+      500,
+      "DB_ERROR",
+      "Erro ao carregar dados. Tente novamente.",
+    );
   }
 
   // 5. Validate that the landlord row exists (setup may not be complete).
