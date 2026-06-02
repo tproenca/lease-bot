@@ -251,7 +251,7 @@ async function handleStartup(
   const selectedIntent = MENU_MAP[req.message.trim()];
 
   if (selectedIntent === "add_tenant") {
-    return startAddTenantFlow(jwt, context, deps);
+    return startAddTenantFlow(context);
   }
 
   if (selectedIntent) {
@@ -271,9 +271,7 @@ async function handleStartup(
 // ─── Add tenant: initial turn (show property list) ───────────────────────────
 
 async function startAddTenantFlow(
-  jwt: string,
   context: ContextPayload,
-  deps: WorkflowDeps,
 ): Promise<WorkflowResponse> {
   const intent = "add_tenant";
   const properties = context.properties ?? [];

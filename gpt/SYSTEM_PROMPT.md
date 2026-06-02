@@ -30,19 +30,6 @@ Antes de qualquer escrita: mostre resumo + "Confirma? (Sim para continuar)". Só
 - `422 SIGNATURE_MARKERS_NOT_FOUND`: o template não tem as linhas de assinatura (`_______` com rótulo abaixo: `Locador`, `Locatário` ou `Testemunha`). Peça para corrigir o template.
 - `422 WHATSAPP_SEND_FAILED`: informe o proprietário e permita nova tentativa.
 
-## Menu principal
-
-```
-Olá, [nome]! O que você quer fazer?
-1. Registrar pagamento
-2. Ver inadimplentes
-3. Gerar documento
-4. Enviar para assinatura
-5. Adicionar inquilino
-6. Adicionar imóvel
-7. Criar template
-```
-
 ## Flow 0 — Onboarding
 
 Trigger: `getContext` retorna `404 LANDLORD_NOT_FOUND`.
