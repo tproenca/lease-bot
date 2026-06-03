@@ -64,6 +64,18 @@ components:
         current_tenant_folder_id:
           type: string
           nullable: true
+          description: >
+            Drive folder ID of the active tenant. Presentation-only — used to star the
+            folder in Drive. Not the authoritative active-tenant pointer; use
+            current_tenant_id for lookups. (ADR-0019)
+        current_tenant_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: >
+            FK to the currently active tenant for this property. Written atomically with
+            current_tenant_folder_id when a tenant is registered or replaced.
+            Null when the property is vacant.
 
     Building:
       type: object
@@ -97,6 +109,11 @@ components:
           type: string
         required:
           type: boolean
+          description: >
+            When true, this placeholder must be supplied before documents can be
+            generated. Required-validation at POST /documents/generate is scoped to
+            the union of placeholders used by the templates being generated (filtered
+            by property_type + use_case) — not all landlord placeholders globally.
         format:
           type: string
           enum: [text, date, cpf, integer, currency]
@@ -107,12 +124,36 @@ components:
         default:
           type: string
           nullable: true
-        derived_from:
-          type: string
-          nullable: true
+          description: >
+            Default value applied at resolution time when a placeholder remains
+            empty after collection. Defaults are shown in the confirm table and
+            sent in the placeholders map to POST /documents/generate.
         derived_formula:
           type: string
           nullable: true
+          description: >
+            Closed-grammar expression describing how this placeholder's value is
+            derived. Grammar:
+              null             — asked (collected from the landlord)
+              bare token       — identity copy of a context path (e.g. "tenant.name")
+              fn(arg1,arg2,…)  — registry function call
+
+            Context path namespaces: tenant, property, landlord, building.
+            A dotted token with a known namespace prefix is a context path;
+            otherwise it is a sibling placeholder name.
+
+            Registry functions (closed set — new entries require a code change + ADR):
+              identity(path)                 — identity copy
+              cpf_format(digits)             — "XXX.XXX.XXX-XX"
+              amount_in_words(amount)        — PT extenso
+              full_date_text(date)           — "DD de mês de AAAA"
+              end_date(start_date, months)   — ISO date
+
+            Stored expressions are validated against the registry at write time
+            (POST /placeholders). Invalid expressions are rejected with 400.
+
+            Note: derived_from field has been removed (ADR-0017). Use derived_formula
+            for all derivation configuration.
         options:
           type: array
           items:
@@ -120,7 +161,7 @@ components:
           nullable: true
           description: >
             Restricted list of allowed values for text placeholders.
-            When present and non-empty, the GPT presents these as a numbered
+            When present and non-empty, the flow engine presents these as a numbered
             list instead of asking for free text input. Only meaningful for
             format: text; other formats ignore this field.
 
@@ -354,10 +395,18 @@ paths:
   /context:
     get:
       operationId: getContext
-      summary: Returns full landlord context for the GPT
+      summary: Returns menu-essential landlord context for session start
+      description: >
+        Returns only the data needed to render the menu and decide whether to run
+        template sync (Flow 2) before the menu. Does not return properties, buildings,
+        templates, placeholders, tenants, or account_config — those are loaded lazily
+        per-flow via the WorkflowDeps pattern (ADR-0018).
+
+        The cron_errors field is retained so the GPT can alert the landlord about
+        scheduler failures at session start.
       responses:
         '200':
-          description: Landlord context
+          description: Menu-essential landlord context
           content:
             application/json:
               schema:
@@ -365,54 +414,17 @@ paths:
                 properties:
                   landlord:
                     $ref: '#/components/schemas/Landlord'
-                  properties:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Property'
-                  buildings:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Building'
-                  templates:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Template'
-                  placeholders:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Placeholder'
-                  witnesses:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Witness'
-                  tenants:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        id:
-                          type: string
-                          format: uuid
-                        property_id:
-                          type: string
-                          format: uuid
-                        name:
-                          type: string
-                        cpf:
-                          type: string
-                        whatsapp:
-                          type: string
-                          nullable: true
-                        drive_folder_id:
-                          type: string
-                  account_config:
-                    type: object
-                    properties:
-                      payment_reminder_frequency:
-                        type: string
-                        enum: [daily, weekly, disabled]
+                  templates_diff_pending:
+                    type: boolean
+                    description: >
+                      True when GET /templates/diff is non-empty. When true, the GPT
+                      must run the template_sync flow (Flow 2) before rendering the menu.
                   cron_errors:
                     type: array
+                    description: >
+                      Scheduler errors from the last 25 hours. When non-empty, the GPT
+                      alerts the landlord. Same data as GET /context/health/cron but
+                      surfaced here for landlord visibility.
                     items:
                       type: object
                       properties:
@@ -649,6 +661,19 @@ paths:
     post:
       operationId: createPlaceholders
       summary: Add one or more placeholder definitions
+      description: >
+        Creates placeholder definitions for the authenticated landlord.
+        The derived_formula field is validated at write time: it must reference only
+        registry functions from the closed set (identity, cpf_format, amount_in_words,
+        full_date_text, end_date) and resolvable inputs (known context paths or existing
+        sibling placeholder names). Invalid expressions are rejected with 400.
+
+        The derived_from field is not accepted (removed in ADR-0017). Use derived_formula
+        for all derivation configuration.
+
+        Config UX: during template sync (Flow 2), the landlord picks derivation type and
+        inputs from numbered lists — they never type formula expressions directly. This
+        endpoint performs defensive validation regardless.
       requestBody:
         required: true
         content:
@@ -732,6 +757,10 @@ paths:
     get:
       operationId: listProperties
       summary: List all properties for the landlord
+      description: >
+        Returns all properties including current_tenant_id (the active tenant FK)
+        and current_tenant_folder_id (Drive folder for presentation). Flows use
+        current_tenant_id for active-tenant lookup — not Drive folder string-matching.
       responses:
         '200':
           description: Property list
@@ -876,6 +905,21 @@ paths:
     post:
       operationId: generateDocuments
       summary: Copy templates, substitute placeholders, save to Drive
+      description: >
+        Pure substitution endpoint. All placeholder values (asked, derived, context,
+        defaulted) are resolved by the flow engine before this call. The endpoint
+        performs no derivation.
+
+        Required-validation is scoped to the union of placeholders used by the templates
+        selected for generation (filtered by property_type + use_case). Placeholders
+        marked required: true that do not appear in any selected template are not checked.
+
+        The default column is honored: if a placeholder appears in the selected templates
+        and its value is empty in the placeholders map, the stored default is applied
+        before substitution.
+
+        loadPlaceholderUnion is an internal workflow dependency only — there is no public
+        GET /placeholders/union endpoint. The flow engine calls it via invokeHandler.
       requestBody:
         required: true
         content:
@@ -894,10 +938,18 @@ paths:
                   type: string
                   enum: [initial, renewal, termination]
                   default: initial
+                  description: >
+                    Filters which templates are used. "initial" is the default for new
+                    lease generation. Asked explicitly in Flow 3b (menu entry); implicit
+                    "initial" in Flow 3a (chained from add_tenant).
                 placeholders:
                   type: object
                   additionalProperties:
                     type: string
+                  description: >
+                    Fully resolved key-value map. The flow engine sends asked + derived
+                    + context-auto-filled + defaulted values. The endpoint substitutes
+                    tokens and applies the case transform; it does not re-derive.
       responses:
         '200':
           description: Documents generated
@@ -916,13 +968,18 @@ paths:
                         drive_url:
                           type: string
         '400':
-          description: Malformed request or unknown placeholder key
+          description: >
+            Malformed request (INVALID_PLACEHOLDERS), unknown placeholder key
+            (UNKNOWN_PLACEHOLDER), or invalid use_case value (INVALID_USE_CASE).
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '422':
-          description: Missing required placeholder value
+          description: >
+            Missing required placeholder value (MISSING_REQUIRED_PLACEHOLDERS).
+            Required-check is scoped to the union of templates selected by
+            property_type + use_case.
           content:
             application/json:
               schema:
