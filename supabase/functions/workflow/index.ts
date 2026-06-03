@@ -30,8 +30,10 @@ import { extractBearer, getAuthenticatedUser } from "../_shared/supabase.ts";
 import { handleContext } from "../context/index.ts";
 import { handleTemplatesDiff } from "../templates/diff/index.ts";
 import { handleTenants } from "../tenants/index.ts";
+import { handleGenerateDocuments } from "../documents/generate/index.ts";
 import { invokeHandler } from "../_shared/internal.ts";
 import { ADD_TENANT } from "./intents/add-tenant.ts";
+import { GENERATE_DOCUMENT } from "./intents/generate-document.ts";
 import { type FlowDefinition, runFlowEngine } from "./flow-engine.ts";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -122,12 +124,21 @@ export interface WorkflowDeps {
       whatsapp: string | null;
     },
   ) => Promise<{ status: number; body: unknown }>;
+  /** Generate documents for a tenant via POST /documents/generate. */
+  generateDocument: (
+    jwt: string,
+    payload: {
+      property_id: string;
+      tenant_id: string;
+    },
+  ) => Promise<{ status: number; body: unknown }>;
 }
 
 // ─── Flow registry ────────────────────────────────────────────────────────────
 
 const FLOWS: Record<string, FlowDefinition> = {
   add_tenant: ADD_TENANT,
+  generate_document: GENERATE_DOCUMENT,
 };
 
 // ─── Default deps (real internal-invoke wrappers) ────────────────────────────
@@ -154,6 +165,15 @@ function makeDefaultDeps(): WorkflowDeps {
       return await invokeHandler(handleTenants, {
         method: "POST",
         path: "/tenants",
+        jwt,
+        body: payload,
+      });
+    },
+
+    generateDocument: async (jwt, payload) => {
+      return await invokeHandler(handleGenerateDocuments, {
+        method: "POST",
+        path: "/documents/generate",
         jwt,
         body: payload,
       });
