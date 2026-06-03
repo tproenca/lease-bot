@@ -1920,12 +1920,12 @@ Deno.test("unit: workflow/next — add_property GOOGLE_REAUTH_REQUIRED error map
 
 // ─── ADD_PROPERTY confirm summary: address visibility ────────────────────────
 
-Deno.test("unit: ADD_PROPERTY — address step has confirmSkip fn that excludes it for apartment", () => {
+Deno.test("unit: ADD_PROPERTY — address step skip fn also gates confirm summary for apartment", () => {
   const step = ADD_PROPERTY.steps.find((s) => s.key === "address")!;
-  assertEquals(typeof step.confirmSkip, "function");
-  assertEquals(step.confirmSkip!({ type: "apartment" }), true);
-  assertEquals(step.confirmSkip!({ type: "house" }), false);
-  assertEquals(step.confirmSkip!({ type: "office_unit" }), false);
+  assertEquals(typeof step.skip, "function");
+  assertEquals(step.skip!({ type: "apartment" }), true);
+  assertEquals(step.skip!({ type: "house" }), false);
+  assertEquals(step.skip!({ type: "office_unit" }), false);
 });
 
 Deno.test("unit: ADD_PROPERTY — confirm summary for apartment does not include Endereço", async () => {
