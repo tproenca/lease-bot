@@ -104,6 +104,7 @@ function makeStubDeps(opts: {
   contextResult?: { status: number; body: unknown };
   createResult?: { status: number; body: unknown };
   generateResult?: { status: number; body: unknown };
+  createPropertyResult?: { status: number; body: unknown };
   templatesDiffResult?: { status: number; body: unknown };
 }): WorkflowDeps {
   return {
@@ -126,6 +127,13 @@ function makeStubDeps(opts: {
     },
     generateDocument: async (_jwt, _payload) => {
       return opts.generateResult ?? { status: 200, body: {} };
+    },
+    createProperty: async (_jwt, _payload) => {
+      return opts.createPropertyResult ??
+        {
+          status: 201,
+          body: { id: "prop-uuid-new", drive_folder_id: "drive-folder-new" },
+        };
     },
   };
 }
@@ -1136,6 +1144,7 @@ const MOCK_DEPS_ENGINE: WorkflowDeps = {
   loadTemplatesDiff: async (_jwt) => ({ status: 200, body: {} }),
   createTenant: async (_jwt, _payload) => ({ status: 201, body: {} }),
   generateDocument: async (_jwt, _payload) => ({ status: 200, body: {} }),
+  createProperty: async (_jwt, _payload) => ({ status: 201, body: {} }),
 };
 
 const TEST_FLOW: FlowDefinition = {
@@ -1599,4 +1608,348 @@ Deno.test("unit: GENERATE_DOCUMENT — tenant_id options maps tenants to label/v
   assertEquals(opts.length, 2);
   assertEquals(opts[0].value, MOCK_TENANT_1.id);
   assertStringIncludes(opts[0].label, "Maria Silva");
+});
+// ─── ADD_PROPERTY definition assertions ───────────────────────────────────────
+
+import { ADD_PROPERTY } from "./intents/add-property.ts";
+
+Deno.test("unit: ADD_PROPERTY — has 4 steps: type, building_id, address, name", () => {
+  const keys = ADD_PROPERTY.steps.map((s) => s.key);
+  assertEquals(keys, ["type", "building_id", "address", "name"]);
+});
+
+Deno.test("unit: ADD_PROPERTY — building_id step has skip fn that skips for non-apartment", () => {
+  const step = ADD_PROPERTY.steps.find((s) => s.key === "building_id")!;
+  assertEquals(typeof step.skip, "function");
+  assertEquals(step.skip!({ type: "house" }), true);
+  assertEquals(step.skip!({ type: "office_unit" }), true);
+  assertEquals(step.skip!({ type: "apartment" }), false);
+});
+
+Deno.test("unit: ADD_PROPERTY — address step has skip fn that skips for apartment", () => {
+  const step = ADD_PROPERTY.steps.find((s) => s.key === "address")!;
+  assertEquals(typeof step.skip, "function");
+  assertEquals(step.skip!({ type: "apartment" }), true);
+  assertEquals(step.skip!({ type: "house" }), false);
+  assertEquals(step.skip!({ type: "office_unit" }), false);
+});
+
+Deno.test("unit: ADD_PROPERTY — type validate accepts numeric '1'/'2'/'3'", () => {
+  const step = ADD_PROPERTY.steps.find((s) => s.key === "type")!;
+  const ctx: ContextPayload = { properties: [] };
+
+  const r1 = step.validate!("1", {}, ctx);
+  assertEquals(r1.ok, true);
+  if (r1.ok) assertEquals(r1.value, "apartment");
+
+  const r2 = step.validate!("2", {}, ctx);
+  assertEquals(r2.ok, true);
+  if (r2.ok) assertEquals(r2.value, "house");
+
+  const r3 = step.validate!("3", {}, ctx);
+  assertEquals(r3.ok, true);
+  if (r3.ok) assertEquals(r3.value, "office_unit");
+});
+
+Deno.test("unit: ADD_PROPERTY — type validate accepts text labels (case insensitive)", () => {
+  const step = ADD_PROPERTY.steps.find((s) => s.key === "type")!;
+  const ctx: ContextPayload = { properties: [] };
+
+  const ra = step.validate!("Apartamento", {}, ctx);
+  assertEquals(ra.ok, true);
+  if (ra.ok) assertEquals(ra.value, "apartment");
+
+  const rh = step.validate!("casa", {}, ctx);
+  assertEquals(rh.ok, true);
+  if (rh.ok) assertEquals(rh.value, "house");
+});
+
+Deno.test("unit: ADD_PROPERTY — type validate rejects invalid input", () => {
+  const step = ADD_PROPERTY.steps.find((s) => s.key === "type")!;
+  const ctx: ContextPayload = { properties: [] };
+  const r = step.validate!("studio", {}, ctx);
+  assertEquals(r.ok, false);
+  if (!r.ok) assertStringIncludes(r.error, "Tipo inválido");
+});
+
+Deno.test("unit: ADD_PROPERTY — name validate rejects empty string", () => {
+  const step = ADD_PROPERTY.steps.find((s) => s.key === "name")!;
+  const ctx: ContextPayload = { properties: [] };
+  const r = step.validate!("", {}, ctx);
+  assertEquals(r.ok, false);
+});
+
+// ─── ADD_PROPERTY flow: menu routing ─────────────────────────────────────────
+
+Deno.test("unit: workflow/next — menu number '6' routes to add_property ask_type (Enter phase)", async () => {
+  const deps = makeStubDeps({});
+  const handler = handleWorkflowNext(deps);
+
+  const res = await withMockFetch(
+    MOCK_USER,
+    () => handler(makeReq({ message: "6" })),
+  );
+
+  assertEquals(res.status, 200);
+  const body = await json(res) as Record<string, unknown>;
+  assertEquals(body.intent, "add_property");
+  assertEquals(body.step, "ask_type");
+  assertEquals(typeof body.state, "string");
+});
+
+Deno.test("unit: workflow/next — text label 'Adicionar imóvel' routes to add_property (Enter phase)", async () => {
+  const deps = makeStubDeps({});
+  const handler = handleWorkflowNext(deps);
+
+  const res = await withMockFetch(
+    MOCK_USER,
+    () => handler(makeReq({ message: "Adicionar imóvel" })),
+  );
+
+  assertEquals(res.status, 200);
+  const body = await json(res) as Record<string, unknown>;
+  assertEquals(body.intent, "add_property");
+  assertEquals(body.step, "ask_type");
+});
+
+// ─── ADD_PROPERTY flow: house/office unit path (with address) ────────────────
+
+Deno.test("unit: workflow/next — add_property house path: type→address→name→confirm", async () => {
+  const deps = makeStubDeps({});
+  const handler = handleWorkflowNext(deps);
+
+  // Step 1: type = "2" (house) → should skip building_id, go to ask_address
+  const state1 = btoa(JSON.stringify({}));
+  const res1 = await withMockFetch(
+    MOCK_USER,
+    () =>
+      handler(makeReq({ intent: "add_property", state: state1, message: "2" })),
+  );
+  const body1 = await json(res1) as Record<string, unknown>;
+  assertEquals(body1.step, "ask_address");
+  const vals1 = decodeState(body1);
+  assertEquals(vals1.type, "house");
+
+  // Step 2: address → should go to ask_name
+  const state2 = body1.state as string;
+  const res2 = await withMockFetch(MOCK_USER, () =>
+    handler(
+      makeReq({
+        intent: "add_property",
+        state: state2,
+        message: "Rua das Flores, 123",
+      }),
+    ));
+  const body2 = await json(res2) as Record<string, unknown>;
+  assertEquals(body2.step, "ask_name");
+  const vals2 = decodeState(body2);
+  assertEquals(vals2.address, "Rua das Flores, 123");
+
+  // Step 3: name → should go to confirm
+  const state3 = body2.state as string;
+  const res3 = await withMockFetch(MOCK_USER, () =>
+    handler(
+      makeReq({
+        intent: "add_property",
+        state: state3,
+        message: "Casa dos fundos",
+      }),
+    ));
+  const body3 = await json(res3) as Record<string, unknown>;
+  assertEquals(body3.step, "confirm");
+  assertStringIncludes(body3.message as string, "**Novo imóvel**");
+  assertStringIncludes(body3.message as string, "Confirma?");
+  assertStringIncludes(body3.message as string, "Casa dos fundos");
+});
+
+Deno.test("unit: workflow/next — add_property office unit path: type→address (skips building_id)", async () => {
+  const deps = makeStubDeps({});
+  const handler = handleWorkflowNext(deps);
+
+  // type = "3" (office_unit) → skip building_id, go to ask_address
+  const state1 = btoa(JSON.stringify({}));
+  const res1 = await withMockFetch(
+    MOCK_USER,
+    () =>
+      handler(makeReq({ intent: "add_property", state: state1, message: "3" })),
+  );
+  const body1 = await json(res1) as Record<string, unknown>;
+  assertEquals(body1.step, "ask_address");
+  const vals1 = decodeState(body1);
+  assertEquals(vals1.type, "office_unit");
+});
+
+// ─── ADD_PROPERTY flow: apartment path (with building selection) ──────────────
+
+Deno.test("unit: workflow/next — add_property apartment path: type→building→name→confirm", async () => {
+  const contextWithBuildings: ContextPayload = {
+    ...MOCK_CONTEXT,
+    buildings: [
+      {
+        id: "bld-uuid-1",
+        name: "Edifício Aurora",
+        address: "Av. Paulista, 100",
+      },
+    ],
+  };
+  const deps = makeStubDeps({
+    contextResult: { status: 200, body: contextWithBuildings },
+  });
+  const handler = handleWorkflowNext(deps);
+
+  // Step 1: type = "1" (apartment) → should go to ask_building (skip address)
+  const state1 = btoa(JSON.stringify({}));
+  const res1 = await withMockFetch(
+    MOCK_USER,
+    () =>
+      handler(makeReq({ intent: "add_property", state: state1, message: "1" })),
+  );
+  const body1 = await json(res1) as Record<string, unknown>;
+  assertEquals(body1.step, "ask_building");
+  const opts1 = body1.options as Array<{ label: string; value: string }>;
+  assertEquals(Array.isArray(opts1), true);
+  assertStringIncludes(opts1[0].label, "Edifício Aurora");
+
+  // Step 2: building selection by number "1" → should go to ask_name (skipping address)
+  const state2 = body1.state as string;
+  const res2 = await withMockFetch(
+    MOCK_USER,
+    () =>
+      handler(makeReq({ intent: "add_property", state: state2, message: "1" })),
+  );
+  const body2 = await json(res2) as Record<string, unknown>;
+  assertEquals(body2.step, "ask_name");
+  const vals2 = decodeState(body2);
+  assertEquals(vals2.building_id, "bld-uuid-1");
+
+  // Step 3: name → confirm
+  const state3 = body2.state as string;
+  const res3 = await withMockFetch(MOCK_USER, () =>
+    handler(
+      makeReq({ intent: "add_property", state: state3, message: "Apto 101" }),
+    ));
+  const body3 = await json(res3) as Record<string, unknown>;
+  assertEquals(body3.step, "confirm");
+  assertStringIncludes(body3.message as string, "**Novo imóvel**");
+  assertStringIncludes(body3.message as string, "Apto 101");
+});
+
+// ─── ADD_PROPERTY flow: confirmation and execute ──────────────────────────────
+
+Deno.test("unit: workflow/next — add_property 'Sim' creates property and transitions to menu", async () => {
+  const deps = makeStubDeps({
+    createPropertyResult: {
+      status: 201,
+      body: { id: "prop-uuid-new", drive_folder_id: "drive-folder-new" },
+    },
+  });
+  const handler = handleWorkflowNext(deps);
+
+  // House path with all values set — skip building_id (not in values), address present
+  const state = btoa(JSON.stringify({
+    type: "house",
+    address: "Rua das Flores, 123",
+    name: "Casa dos fundos",
+  }));
+  const res = await withMockFetch(
+    MOCK_USER,
+    () => handler(makeReq({ intent: "add_property", state, message: "Sim" })),
+  );
+
+  assertEquals(res.status, 200);
+  const body = await json(res) as Record<string, unknown>;
+  assertEquals(body.step, "menu");
+  assertEquals(body.state, null);
+  assertStringIncludes(body.message as string, "Imóvel adicionado.");
+  assertStringIncludes(body.message as string, "O que mais posso te ajudar?");
+});
+
+Deno.test("unit: workflow/next — add_property createProperty DB_ERROR returns friendly message at confirm", async () => {
+  const deps = makeStubDeps({
+    createPropertyResult: {
+      status: 500,
+      body: { error: { code: "DB_ERROR", message: "DB error" } },
+    },
+  });
+  const handler = handleWorkflowNext(deps);
+
+  const state = btoa(JSON.stringify({
+    type: "house",
+    address: "Rua das Flores, 123",
+    name: "Casa dos fundos",
+  }));
+  const res = await withMockFetch(
+    MOCK_USER,
+    () => handler(makeReq({ intent: "add_property", state, message: "Sim" })),
+  );
+
+  assertEquals(res.status, 200);
+  const body = await json(res) as Record<string, unknown>;
+  assertEquals(body.step, "confirm");
+  assertStringIncludes(body.message as string, "salvar");
+});
+
+Deno.test("unit: workflow/next — add_property GOOGLE_REAUTH_REQUIRED error maps to friendly message", async () => {
+  const deps = makeStubDeps({
+    createPropertyResult: {
+      status: 401,
+      body: { error: { code: "GOOGLE_REAUTH_REQUIRED", message: "Reauth" } },
+    },
+  });
+  const handler = handleWorkflowNext(deps);
+
+  const state = btoa(JSON.stringify({
+    type: "house",
+    address: "Rua das Flores, 123",
+    name: "Casa dos fundos",
+  }));
+  const res = await withMockFetch(
+    MOCK_USER,
+    () => handler(makeReq({ intent: "add_property", state, message: "Sim" })),
+  );
+
+  assertEquals(res.status, 200);
+  const body = await json(res) as Record<string, unknown>;
+  assertEquals(body.step, "confirm");
+  assertStringIncludes(body.message as string, "Google Drive expirou");
+});
+
+// ─── Engine: skip? feature ────────────────────────────────────────────────────
+
+Deno.test("unit: engine — skip? step is excluded from pending steps", async () => {
+  const skipFlow: FlowDefinition = {
+    intent: "skip_test",
+    confirmationTitle: "Skip Test",
+    steps: [
+      {
+        key: "a",
+        prompt: "Step A?",
+        validate: (input) => ({ ok: true, value: input.trim() }),
+      },
+      {
+        key: "b",
+        prompt: "Step B (always skipped)?",
+        skip: () => true,
+        validate: (input) => ({ ok: true, value: input.trim() }),
+      },
+      {
+        key: "c",
+        prompt: "Step C?",
+        validate: (input) => ({ ok: true, value: input.trim() }),
+      },
+    ],
+    execute: async () => ({ ok: true, message: "done" }),
+  };
+
+  // After collecting "a", engine should skip "b" and ask for "c"
+  const res = await runFlowEngine(
+    skipFlow,
+    { intent: "skip_test", values: {}, message: "value_a" },
+    EMPTY_CONTEXT,
+    MOCK_DEPS_ENGINE,
+    "jwt",
+  );
+  assertEquals(res.step, "ask_c");
+  assertEquals((res.values as Record<string, unknown>).a, "value_a");
+  assertEquals("b" in (res.values as Record<string, unknown>), false);
 });

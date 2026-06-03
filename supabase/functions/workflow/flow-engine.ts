@@ -40,6 +40,8 @@ export interface FlowStep {
     context: ContextPayload,
   ) => { ok: true; value: unknown } | { ok: false; error: string };
   optional?: boolean; // "pular"/"skip" → null
+  /** When this returns true the step is skipped automatically (value stays absent in values). */
+  skip?: (values: Record<string, unknown>) => boolean;
   options?: (
     values: Record<string, unknown>,
     context: ContextPayload,
@@ -78,12 +80,12 @@ function stripInternalKeys(
   );
 }
 
-/** Find the first step whose key is not yet present in values. */
+/** Find the first step whose key is not yet present in values and is not skipped. */
 function findPendingStep(
   steps: FlowStep[],
   values: Record<string, unknown>,
 ): FlowStep | undefined {
-  return steps.find((s) => !(s.key in values));
+  return steps.find((s) => !(s.key in values) && !s.skip?.(values));
 }
 
 /** Build the step string for a given step. */
