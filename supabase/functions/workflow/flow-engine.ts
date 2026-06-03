@@ -42,6 +42,8 @@ export interface FlowStep {
   optional?: boolean; // "pular"/"skip" → null
   /** When this returns true the step is skipped automatically (value stays absent in values). */
   skip?: (values: Record<string, unknown>) => boolean;
+  /** When this returns true the step is excluded from the confirm summary. */
+  confirmSkip?: (values: Record<string, unknown>) => boolean;
   options?: (
     values: Record<string, unknown>,
     context: ContextPayload,
@@ -121,9 +123,10 @@ function buildConfirmationMessage(
 ): string {
   const lines: string[] = [`**${def.confirmationTitle}**`];
 
-  // Only include data steps (not display-only), in order.
+  // Only include data steps (not display-only and not confirm-skipped), in order.
   for (const step of steps) {
     if (isDisplayOnly(step.key)) continue;
+    if (step.confirmSkip?.(values)) continue;
     const displayKey = step.confirmDisplayKey ?? step.key;
     const label = step.label ?? step.key;
     const val = values[displayKey];

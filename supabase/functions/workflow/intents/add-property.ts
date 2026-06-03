@@ -133,6 +133,9 @@ export const ADD_PROPERTY: FlowDefinition = {
       skip: (values: Record<string, unknown>): boolean => {
         return values.type === "apartment";
       },
+      confirmSkip: (values: Record<string, unknown>): boolean => {
+        return values.type === "apartment";
+      },
       validate: (input: string) => {
         const trimmed = input.trim();
         return trimmed.length > 0

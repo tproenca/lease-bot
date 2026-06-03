@@ -1918,6 +1918,93 @@ Deno.test("unit: workflow/next — add_property GOOGLE_REAUTH_REQUIRED error map
   assertStringIncludes(body.message as string, "Google Drive expirou");
 });
 
+// ─── ADD_PROPERTY confirm summary: address visibility ────────────────────────
+
+Deno.test("unit: ADD_PROPERTY — address step has confirmSkip fn that excludes it for apartment", () => {
+  const step = ADD_PROPERTY.steps.find((s) => s.key === "address")!;
+  assertEquals(typeof step.confirmSkip, "function");
+  assertEquals(step.confirmSkip!({ type: "apartment" }), true);
+  assertEquals(step.confirmSkip!({ type: "house" }), false);
+  assertEquals(step.confirmSkip!({ type: "office_unit" }), false);
+});
+
+Deno.test("unit: ADD_PROPERTY — confirm summary for apartment does not include Endereço", async () => {
+  const contextWithBuildings: ContextPayload = {
+    ...MOCK_CONTEXT,
+    buildings: [
+      {
+        id: "bld-uuid-1",
+        name: "Edifício Aurora",
+        address: "Av. Paulista, 100",
+      },
+    ],
+  };
+  const deps = makeStubDeps({
+    contextResult: { status: 200, body: contextWithBuildings },
+  });
+  const handler = handleWorkflowNext(deps);
+
+  // Provide building + type, then submit name to reach confirm step
+  const state2 = btoa(JSON.stringify({
+    type: "apartment",
+    building_id: "bld-uuid-1",
+    _building_name: "Edifício Aurora",
+  }));
+  const res2 = await withMockFetch(MOCK_USER, () =>
+    handler(
+      makeReq({ intent: "add_property", state: state2, message: "Apto 202" }),
+    ));
+
+  const body2 = await json(res2) as Record<string, unknown>;
+  assertEquals(body2.step, "confirm");
+  assertStringIncludes(body2.message as string, "**Novo imóvel**");
+  assertStringIncludes(body2.message as string, "Confirma?");
+  // address line must NOT appear in apartment confirm
+  assertEquals((body2.message as string).includes("Endereço"), false);
+  // building name should appear instead
+  assertStringIncludes(body2.message as string, "Edifício Aurora");
+});
+
+Deno.test("unit: ADD_PROPERTY — confirm summary for house includes Endereço", async () => {
+  const deps = makeStubDeps({});
+  const handler = handleWorkflowNext(deps);
+
+  // house: type + address done, provide name input to reach confirm
+  const state = btoa(JSON.stringify({
+    type: "house",
+    address: "Rua das Flores, 123",
+  }));
+  const res = await withMockFetch(MOCK_USER, () =>
+    handler(
+      makeReq({ intent: "add_property", state, message: "Casa dos fundos" }),
+    ));
+
+  const body = await json(res) as Record<string, unknown>;
+  assertEquals(body.step, "confirm");
+  assertStringIncludes(body.message as string, "Endereço");
+  assertStringIncludes(body.message as string, "Rua das Flores, 123");
+});
+
+Deno.test("unit: ADD_PROPERTY — confirm summary for office_unit includes Endereço", async () => {
+  const deps = makeStubDeps({});
+  const handler = handleWorkflowNext(deps);
+
+  // office_unit: type + address done, provide name input to reach confirm
+  const state = btoa(JSON.stringify({
+    type: "office_unit",
+    address: "Av. Brigadeiro, 500",
+  }));
+  const res = await withMockFetch(MOCK_USER, () =>
+    handler(
+      makeReq({ intent: "add_property", state, message: "Sala 12" }),
+    ));
+
+  const body = await json(res) as Record<string, unknown>;
+  assertEquals(body.step, "confirm");
+  assertStringIncludes(body.message as string, "Endereço");
+  assertStringIncludes(body.message as string, "Av. Brigadeiro, 500");
+});
+
 // ─── Engine: skip? feature ────────────────────────────────────────────────────
 
 Deno.test("unit: engine — skip? step is excluded from pending steps", async () => {
