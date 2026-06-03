@@ -184,6 +184,8 @@ Deno.test(
           Promise.resolve({ status: 200, body: {} }),
         createProperty: (_j, _payload) =>
           Promise.resolve({ status: 201, body: {} }),
+        sendSignature: (_j, _payload) =>
+          Promise.resolve({ status: 201, body: {} }),
       };
       const handler = handleWorkflowNext(deps);
 

@@ -32,10 +32,12 @@ import { handleTemplatesDiff } from "../templates/diff/index.ts";
 import { handleTenants } from "../tenants/index.ts";
 import { handleGenerateDocuments } from "../documents/generate/index.ts";
 import { handleProperties } from "../properties/index.ts";
+import { handleSend } from "../signatures/send/index.ts";
 import { invokeHandler } from "../_shared/internal.ts";
 import { ADD_TENANT } from "./intents/add-tenant.ts";
 import { ADD_PROPERTY } from "./intents/add-property.ts";
 import { GENERATE_DOCUMENT } from "./intents/generate-document.ts";
+import { SEND_SIGNATURE } from "./intents/send-signature.ts";
 import { type FlowDefinition, runFlowEngine } from "./flow-engine.ts";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -144,6 +146,13 @@ export interface WorkflowDeps {
       address: string | null;
     },
   ) => Promise<{ status: number; body: unknown }>;
+  /** Send a tenant's contract for e-signature via POST /signatures/send. */
+  sendSignature: (
+    jwt: string,
+    payload: {
+      tenant_id: string;
+    },
+  ) => Promise<{ status: number; body: unknown }>;
 }
 
 // ─── Flow registry ────────────────────────────────────────────────────────────
@@ -152,6 +161,7 @@ const FLOWS: Record<string, FlowDefinition> = {
   add_tenant: ADD_TENANT,
   generate_document: GENERATE_DOCUMENT,
   add_property: ADD_PROPERTY,
+  send_signature: SEND_SIGNATURE,
 };
 
 // ─── Default deps (real internal-invoke wrappers) ────────────────────────────
@@ -196,6 +206,15 @@ function makeDefaultDeps(): WorkflowDeps {
       return await invokeHandler(handleProperties, {
         method: "POST",
         path: "/properties",
+        jwt,
+        body: payload,
+      });
+    },
+
+    sendSignature: async (jwt, payload) => {
+      return await invokeHandler(handleSend, {
+        method: "POST",
+        path: "/signatures/send",
         jwt,
         body: payload,
       });

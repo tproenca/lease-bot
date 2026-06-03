@@ -135,6 +135,9 @@ function makeStubDeps(opts: {
           body: { id: "prop-uuid-new", drive_folder_id: "drive-folder-new" },
         };
     },
+    sendSignature: async (_jwt, _payload) => {
+      return { status: 201, body: {} };
+    },
   };
 }
 
@@ -1145,6 +1148,7 @@ const MOCK_DEPS_ENGINE: WorkflowDeps = {
   createTenant: async (_jwt, _payload) => ({ status: 201, body: {} }),
   generateDocument: async (_jwt, _payload) => ({ status: 200, body: {} }),
   createProperty: async (_jwt, _payload) => ({ status: 201, body: {} }),
+  sendSignature: async (_jwt, _payload) => ({ status: 201, body: {} }),
 };
 
 const TEST_FLOW: FlowDefinition = {
@@ -1952,4 +1956,275 @@ Deno.test("unit: engine — skip? step is excluded from pending steps", async ()
   assertEquals(res.step, "ask_c");
   assertEquals((res.values as Record<string, unknown>).a, "value_a");
   assertEquals("b" in (res.values as Record<string, unknown>), false);
+});
+
+// ─── send_signature flow tests ─────────────────────────────────────────────────
+
+import { SEND_SIGNATURE } from "./intents/send-signature.ts";
+
+function makeStubDepsWithSignature(opts: {
+  contextResult?: { status: number; body: unknown };
+  sendSignatureResult?: { status: number; body: unknown };
+}): WorkflowDeps {
+  return {
+    ...makeStubDeps({}),
+    loadContext: async (_jwt) => {
+      return opts.contextResult ??
+        { status: 200, body: MOCK_CONTEXT_WITH_TENANTS };
+    },
+    sendSignature: async (_jwt, _payload) => {
+      return opts.sendSignatureResult ??
+        {
+          status: 201,
+          body: { id: "sig-uuid-1", autentique_document_id: "aut-doc-1" },
+        };
+    },
+  };
+}
+
+Deno.test("unit: send_signature — menu number '4' routes to ask_tenant (Enter phase)", async () => {
+  const deps = makeStubDepsWithSignature({});
+  const handler = handleWorkflowNext(deps);
+
+  const res = await withMockFetch(
+    MOCK_USER,
+    () => handler(makeReq({ message: "4" })),
+  );
+
+  assertEquals(res.status, 200);
+  const body = await json(res) as Record<string, unknown>;
+  assertEquals(body.intent, "send_signature");
+  assertEquals(body.step, "ask_tenant");
+  assertStringIncludes(body.message as string, "inquilino");
+  assertEquals(typeof body.state, "string");
+});
+
+Deno.test("unit: send_signature — text label 'enviar para assinatura' routes to flow (Enter phase)", async () => {
+  const deps = makeStubDepsWithSignature({});
+  const handler = handleWorkflowNext(deps);
+
+  const res = await withMockFetch(
+    MOCK_USER,
+    () => handler(makeReq({ message: "enviar para assinatura" })),
+  );
+
+  assertEquals(res.status, 200);
+  const body = await json(res) as Record<string, unknown>;
+  assertEquals(body.intent, "send_signature");
+  assertEquals(body.step, "ask_tenant");
+});
+
+Deno.test("unit: send_signature — tenant options list active tenants from ctx.tenants", async () => {
+  const deps = makeStubDepsWithSignature({});
+  const handler = handleWorkflowNext(deps);
+
+  const res = await withMockFetch(
+    MOCK_USER,
+    () => handler(makeReq({ message: "4" })),
+  );
+
+  const body = await json(res) as Record<string, unknown>;
+  assertEquals(body.step, "ask_tenant");
+  const options = body.options as Array<{ label: string; value: string }>;
+  assertEquals(Array.isArray(options), true);
+  assertEquals(options.length, 2);
+  assertStringIncludes(options[0].label, "Maria Silva");
+  assertStringIncludes(options[1].label, "João Santos");
+  assertEquals(options[0].value, MOCK_TENANT_1.id);
+});
+
+Deno.test("unit: send_signature — no tenants guard: prompt returns early-exit message", async () => {
+  const deps = makeStubDepsWithSignature({
+    contextResult: {
+      status: 200,
+      body: { ...MOCK_CONTEXT, tenants: [] },
+    },
+  });
+  const handler = handleWorkflowNext(deps);
+
+  const res = await withMockFetch(
+    MOCK_USER,
+    () => handler(makeReq({ message: "4" })),
+  );
+
+  assertEquals(res.status, 200);
+  const body = await json(res) as Record<string, unknown>;
+  assertEquals(body.intent, "send_signature");
+  assertEquals(body.step, "ask_tenant");
+  assertStringIncludes(
+    body.message as string,
+    "Nenhum inquilino ativo encontrado.",
+  );
+});
+
+Deno.test("unit: send_signature — no tenants guard: validation rejects any reply", async () => {
+  const deps = makeStubDepsWithSignature({
+    contextResult: {
+      status: 200,
+      body: { ...MOCK_CONTEXT, tenants: [] },
+    },
+  });
+  const handler = handleWorkflowNext(deps);
+
+  const state = btoa(JSON.stringify({}));
+  const res = await withMockFetch(
+    MOCK_USER,
+    () =>
+      handler(
+        makeReq({ intent: "send_signature", state, message: "1" }),
+      ),
+  );
+
+  assertEquals(res.status, 200);
+  const body = await json(res) as Record<string, unknown>;
+  assertEquals(body.step, "ask_tenant");
+  assertStringIncludes(
+    body.message as string,
+    "Nenhum inquilino ativo encontrado.",
+  );
+});
+
+Deno.test("unit: send_signature — tenant selection advances to confirm", async () => {
+  const deps = makeStubDepsWithSignature({});
+  const handler = handleWorkflowNext(deps);
+
+  const state = btoa(JSON.stringify({}));
+  const res = await withMockFetch(
+    MOCK_USER,
+    () =>
+      handler(
+        makeReq({ intent: "send_signature", state, message: "1" }),
+      ),
+  );
+
+  assertEquals(res.status, 200);
+  const body = await json(res) as Record<string, unknown>;
+  assertEquals(body.step, "confirm");
+  const values = decodeState(body);
+  assertEquals(values.tenant_id, MOCK_TENANT_1.id);
+  assertStringIncludes(body.message as string, "Enviar para assinatura");
+  assertStringIncludes(body.message as string, "Maria Silva");
+});
+
+Deno.test("unit: send_signature — happy path: 'Sim' triggers sendSignature and returns to menu", async () => {
+  const deps = makeStubDepsWithSignature({
+    sendSignatureResult: {
+      status: 201,
+      body: { id: "sig-uuid-1", autentique_document_id: "aut-doc-1" },
+    },
+  });
+  const handler = handleWorkflowNext(deps);
+
+  const state = btoa(JSON.stringify({
+    tenant_id: MOCK_TENANT_1.id,
+    tenant_name: MOCK_TENANT_1.name,
+  }));
+  const res = await withMockFetch(
+    MOCK_USER,
+    () =>
+      handler(
+        makeReq({ intent: "send_signature", state, message: "Sim" }),
+      ),
+  );
+
+  assertEquals(res.status, 200);
+  const body = await json(res) as Record<string, unknown>;
+  assertEquals(body.step, "menu");
+  assertEquals(body.state, null);
+  assertEquals(body.intent, null);
+  assertStringIncludes(
+    body.message as string,
+    "Contrato enviado para assinatura.",
+  );
+  assertStringIncludes(body.message as string, "O que mais posso te ajudar?");
+});
+
+Deno.test("unit: send_signature — MISSING_WHATSAPP error maps to friendly message", async () => {
+  const deps = makeStubDepsWithSignature({
+    sendSignatureResult: {
+      status: 422,
+      body: { error: { code: "MISSING_WHATSAPP", message: "No whatsapp" } },
+    },
+  });
+  const handler = handleWorkflowNext(deps);
+
+  const state = btoa(JSON.stringify({
+    tenant_id: MOCK_TENANT_1.id,
+    tenant_name: MOCK_TENANT_1.name,
+  }));
+  const res = await withMockFetch(
+    MOCK_USER,
+    () =>
+      handler(
+        makeReq({ intent: "send_signature", state, message: "Sim" }),
+      ),
+  );
+
+  assertEquals(res.status, 200);
+  const body = await json(res) as Record<string, unknown>;
+  assertEquals(body.step, "confirm");
+  assertStringIncludes(body.message as string, "WhatsApp");
+});
+
+Deno.test("unit: send_signature — AUTENTIQUE_SUBMISSION_FAILED error maps to friendly message", async () => {
+  const deps = makeStubDepsWithSignature({
+    sendSignatureResult: {
+      status: 502,
+      body: {
+        error: {
+          code: "AUTENTIQUE_SUBMISSION_FAILED",
+          message: "Autentique failed",
+        },
+      },
+    },
+  });
+  const handler = handleWorkflowNext(deps);
+
+  const state = btoa(JSON.stringify({
+    tenant_id: MOCK_TENANT_1.id,
+    tenant_name: MOCK_TENANT_1.name,
+  }));
+  const res = await withMockFetch(
+    MOCK_USER,
+    () =>
+      handler(
+        makeReq({ intent: "send_signature", state, message: "Sim" }),
+      ),
+  );
+
+  assertEquals(res.status, 200);
+  const body = await json(res) as Record<string, unknown>;
+  assertEquals(body.step, "confirm");
+  assertStringIncludes(body.message as string, "Autentique");
+});
+
+// ─── SEND_SIGNATURE definition assertions ─────────────────────────────────────
+
+Deno.test("unit: SEND_SIGNATURE — has 1 step: tenant_id", () => {
+  const keys = SEND_SIGNATURE.steps.map((s) => s.key);
+  assertEquals(keys, ["tenant_id"]);
+});
+
+Deno.test("unit: SEND_SIGNATURE — tenant_id step has options builder", () => {
+  const step = SEND_SIGNATURE.steps.find((s) => s.key === "tenant_id");
+  assertEquals(typeof step?.options, "function");
+});
+
+Deno.test("unit: SEND_SIGNATURE — tenant_id options returns empty array when no tenants", () => {
+  const step = SEND_SIGNATURE.steps.find((s) => s.key === "tenant_id")!;
+  const ctx: ContextPayload = { properties: [], tenants: [] };
+  const opts = step.options!({}, ctx);
+  assertEquals(opts, []);
+});
+
+Deno.test("unit: SEND_SIGNATURE — tenant_id options maps tenants to label/value pairs", () => {
+  const step = SEND_SIGNATURE.steps.find((s) => s.key === "tenant_id")!;
+  const ctx: ContextPayload = {
+    properties: [],
+    tenants: [MOCK_TENANT_1, MOCK_TENANT_2],
+  };
+  const opts = step.options!({}, ctx);
+  assertEquals(opts.length, 2);
+  assertEquals(opts[0].value, MOCK_TENANT_1.id);
+  assertStringIncludes(opts[0].label, "Maria Silva");
 });

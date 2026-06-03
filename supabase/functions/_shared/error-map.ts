@@ -21,6 +21,10 @@ export const ERROR_MAP: Record<string, string> = {
     "Falha ao destacar pasta do inquilino no Google Drive. Tente novamente.",
   DB_ERROR: "Erro ao salvar o inquilino. Tente novamente.",
   TENANT_NOT_FOUND: "Inquilino não encontrado. Tente novamente.",
+  MISSING_WHATSAPP:
+    "O inquilino não possui número de WhatsApp cadastrado. Atualize o cadastro antes de enviar para assinatura.",
+  AUTENTIQUE_SUBMISSION_FAILED:
+    "Falha ao enviar para o Autentique. Tente novamente ou acesse os documentos diretamente.",
   NO_TEMPLATES_FOUND:
     "Nenhum template encontrado para este imóvel. Verifique os templates cadastrados.",
   DRIVE_COPY_FAILED:
