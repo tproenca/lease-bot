@@ -180,6 +180,10 @@ Deno.test(
               drive_folder_id: "integration-drive-folder",
             },
           }),
+        generateDocument: (_j, _payload) =>
+          Promise.resolve({ status: 200, body: {} }),
+        createProperty: (_j, _payload) =>
+          Promise.resolve({ status: 201, body: {} }),
       };
       const handler = handleWorkflowNext(deps);
 
