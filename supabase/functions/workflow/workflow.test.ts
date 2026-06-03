@@ -1622,7 +1622,7 @@ Deno.test("unit: ADD_PROPERTY — building_id step has skip fn that skips for no
   const step = ADD_PROPERTY.steps.find((s) => s.key === "building_id")!;
   assertEquals(typeof step.skip, "function");
   assertEquals(step.skip!({ type: "house" }), true);
-  assertEquals(step.skip!({ type: "commercial" }), true);
+  assertEquals(step.skip!({ type: "office_unit" }), true);
   assertEquals(step.skip!({ type: "apartment" }), false);
 });
 
@@ -1631,7 +1631,7 @@ Deno.test("unit: ADD_PROPERTY — address step has skip fn that skips for apartm
   assertEquals(typeof step.skip, "function");
   assertEquals(step.skip!({ type: "apartment" }), true);
   assertEquals(step.skip!({ type: "house" }), false);
-  assertEquals(step.skip!({ type: "commercial" }), false);
+  assertEquals(step.skip!({ type: "office_unit" }), false);
 });
 
 Deno.test("unit: ADD_PROPERTY — type validate accepts numeric '1'/'2'/'3'", () => {
@@ -1648,7 +1648,7 @@ Deno.test("unit: ADD_PROPERTY — type validate accepts numeric '1'/'2'/'3'", ()
 
   const r3 = step.validate!("3", {}, ctx);
   assertEquals(r3.ok, true);
-  if (r3.ok) assertEquals(r3.value, "commercial");
+  if (r3.ok) assertEquals(r3.value, "office_unit");
 });
 
 Deno.test("unit: ADD_PROPERTY — type validate accepts text labels (case insensitive)", () => {
@@ -1712,7 +1712,7 @@ Deno.test("unit: workflow/next — text label 'Adicionar imóvel' routes to add_
   assertEquals(body.step, "ask_type");
 });
 
-// ─── ADD_PROPERTY flow: house/commercial path (with address) ─────────────────
+// ─── ADD_PROPERTY flow: house/office unit path (with address) ────────────────
 
 Deno.test("unit: workflow/next — add_property house path: type→address→name→confirm", async () => {
   const deps = makeStubDeps({});
@@ -1762,11 +1762,11 @@ Deno.test("unit: workflow/next — add_property house path: type→address→nam
   assertStringIncludes(body3.message as string, "Casa dos fundos");
 });
 
-Deno.test("unit: workflow/next — add_property commercial path: type→address (skips building_id)", async () => {
+Deno.test("unit: workflow/next — add_property office unit path: type→address (skips building_id)", async () => {
   const deps = makeStubDeps({});
   const handler = handleWorkflowNext(deps);
 
-  // type = "3" (commercial) → skip building_id, go to ask_address
+  // type = "3" (office_unit) → skip building_id, go to ask_address
   const state1 = btoa(JSON.stringify({}));
   const res1 = await withMockFetch(
     MOCK_USER,
@@ -1776,7 +1776,7 @@ Deno.test("unit: workflow/next — add_property commercial path: type→address 
   const body1 = await json(res1) as Record<string, unknown>;
   assertEquals(body1.step, "ask_address");
   const vals1 = decodeState(body1);
-  assertEquals(vals1.type, "commercial");
+  assertEquals(vals1.type, "office_unit");
 });
 
 // ─── ADD_PROPERTY flow: apartment path (with building selection) ──────────────

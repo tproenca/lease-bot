@@ -1,9 +1,9 @@
 // ADD_PROPERTY FlowDefinition — collects property type, building or address, and name, then creates a property.
 //
 // Flow steps:
-//   ask_type      → select: Apartamento / Casa / Comercial
+//   ask_type      → select: Apartamento / Casa / Sala comercial
 //   ask_building  → (apartment only) select from ctx.buildings
-//   ask_address   → (house/commercial only) free text
+//   ask_address   → (house/office unit only) free text
 //   ask_name      → free text (property name / identifier)
 //   confirm       → summary + "Sim para confirmar"
 //   done          → "Imóvel adicionado." → menu
@@ -34,36 +34,39 @@ export const ADD_PROPERTY: FlowDefinition = {
       options: (): WorkflowOption[] => [
         { label: "1. Apartamento", value: "apartment" },
         { label: "2. Casa", value: "house" },
-        { label: "3. Comercial", value: "commercial" },
+        { label: "3. Sala comercial", value: "office_unit" },
       ],
       validate: (input: string) => {
         const trimmed = input.trim().toLowerCase();
         const byValue: Record<string, string> = {
           apartment: "apartment",
           house: "house",
-          commercial: "commercial",
+          office_unit: "office_unit",
+          "office unit": "office_unit",
           apartamento: "apartment",
           casa: "house",
-          comercial: "commercial",
+          comercial: "office_unit",
+          "sala comercial": "office_unit",
         };
         // Accept numeric selection
         const byNumber: Record<string, string> = {
           "1": "apartment",
           "2": "house",
-          "3": "commercial",
+          "3": "office_unit",
         };
         const resolved = byNumber[trimmed] ?? byValue[trimmed];
         if (!resolved) {
           return {
             ok: false,
-            error: "Tipo inválido. Escolha 1 (Apartamento), 2 (Casa) ou 3 (Comercial):",
+            error:
+              "Tipo inválido. Escolha 1 (Apartamento), 2 (Casa) ou 3 (Sala comercial):",
           };
         }
         return { ok: true, value: resolved };
       },
     },
 
-    // Step 2: Building selection (apartment only — skipped for house/commercial)
+    // Step 2: Building selection (apartment only — skipped for house/office unit)
     {
       key: "building_id",
       stepName: "building",
@@ -122,7 +125,7 @@ export const ADD_PROPERTY: FlowDefinition = {
       },
     },
 
-    // Step 3: Address (house/commercial only — skipped for apartment)
+    // Step 3: Address (house/office unit only — skipped for apartment)
     {
       key: "address",
       label: "Endereço",
@@ -142,7 +145,8 @@ export const ADD_PROPERTY: FlowDefinition = {
     {
       key: "name",
       label: "Nome / identificador",
-      prompt: "Qual é o nome ou identificador do imóvel? (ex: Apto 101, Casa dos fundos)",
+      prompt:
+        "Qual é o nome ou identificador do imóvel? (ex: Apto 101, Casa dos fundos)",
       validate: (input: string) => {
         const trimmed = input.trim();
         return trimmed.length > 0
@@ -166,7 +170,8 @@ export const ADD_PROPERTY: FlowDefinition = {
         message: "Imóvel adicionado.",
         values: {
           property_id: (result.body as Record<string, unknown>).id,
-          drive_folder_id: (result.body as Record<string, unknown>).drive_folder_id,
+          drive_folder_id:
+            (result.body as Record<string, unknown>).drive_folder_id,
         },
       };
     }
