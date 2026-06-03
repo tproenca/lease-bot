@@ -103,6 +103,7 @@ const MOCK_CREATE_UNKNOWN_ERROR = {
 function makeStubDeps(opts: {
   contextResult?: { status: number; body: unknown };
   createResult?: { status: number; body: unknown };
+  generateResult?: { status: number; body: unknown };
   templatesDiffResult?: { status: number; body: unknown };
 }): WorkflowDeps {
   return {
@@ -122,6 +123,9 @@ function makeStubDeps(opts: {
     },
     createTenant: async (_jwt, _payload) => {
       return opts.createResult ?? MOCK_CREATE_OK;
+    },
+    generateDocument: async (_jwt, _payload) => {
+      return opts.generateResult ?? { status: 200, body: {} };
     },
   };
 }
@@ -1131,6 +1135,7 @@ const MOCK_DEPS_ENGINE: WorkflowDeps = {
   loadContext: async (_jwt) => ({ status: 200, body: EMPTY_CONTEXT }),
   loadTemplatesDiff: async (_jwt) => ({ status: 200, body: {} }),
   createTenant: async (_jwt, _payload) => ({ status: 201, body: {} }),
+  generateDocument: async (_jwt, _payload) => ({ status: 200, body: {} }),
 };
 
 const TEST_FLOW: FlowDefinition = {
@@ -1265,4 +1270,333 @@ Deno.test("unit: engine — execute failure returns error message at given step"
   );
   assertEquals(res.step, "confirm");
   assertStringIncludes(res.message, "Write failed");
+});
+
+// ─── generate_document flow tests ─────────────────────────────────────────────
+
+import { GENERATE_DOCUMENT } from "./intents/generate-document.ts";
+
+const MOCK_TENANT_1 = {
+  id: "tenant-uuid-1",
+  property_id: "prop-uuid-1",
+  name: "Maria Silva",
+};
+
+const MOCK_TENANT_2 = {
+  id: "tenant-uuid-2",
+  property_id: "prop-uuid-2",
+  name: "João Santos",
+};
+
+const MOCK_CONTEXT_WITH_TENANTS: ContextPayload = {
+  ...MOCK_CONTEXT,
+  tenants: [MOCK_TENANT_1, MOCK_TENANT_2],
+};
+
+Deno.test("unit: generate_document — menu number '3' routes to ask_tenant (Enter phase)", async () => {
+  const deps = makeStubDeps({
+    contextResult: { status: 200, body: MOCK_CONTEXT_WITH_TENANTS },
+  });
+  const handler = handleWorkflowNext(deps);
+
+  const res = await withMockFetch(
+    MOCK_USER,
+    () => handler(makeReq({ message: "3" })),
+  );
+
+  assertEquals(res.status, 200);
+  const body = await json(res) as Record<string, unknown>;
+  assertEquals(body.intent, "generate_document");
+  assertEquals(body.step, "ask_tenant");
+  assertStringIncludes(body.message as string, "inquilino");
+  assertEquals(typeof body.state, "string");
+});
+
+Deno.test("unit: generate_document — text label 'gerar documento' routes to flow (Enter phase)", async () => {
+  const deps = makeStubDeps({
+    contextResult: { status: 200, body: MOCK_CONTEXT_WITH_TENANTS },
+  });
+  const handler = handleWorkflowNext(deps);
+
+  const res = await withMockFetch(
+    MOCK_USER,
+    () => handler(makeReq({ message: "gerar documento" })),
+  );
+
+  assertEquals(res.status, 200);
+  const body = await json(res) as Record<string, unknown>;
+  assertEquals(body.intent, "generate_document");
+  assertEquals(body.step, "ask_tenant");
+});
+
+Deno.test("unit: generate_document — tenant options list active tenants from ctx.tenants", async () => {
+  const deps = makeStubDeps({
+    contextResult: { status: 200, body: MOCK_CONTEXT_WITH_TENANTS },
+  });
+  const handler = handleWorkflowNext(deps);
+
+  const res = await withMockFetch(
+    MOCK_USER,
+    () => handler(makeReq({ message: "3" })),
+  );
+
+  const body = await json(res) as Record<string, unknown>;
+  assertEquals(body.step, "ask_tenant");
+  const options = body.options as Array<{ label: string; value: string }>;
+  assertEquals(Array.isArray(options), true);
+  assertEquals(options.length, 2);
+  assertStringIncludes(options[0].label, "Maria Silva");
+  assertStringIncludes(options[1].label, "João Santos");
+  assertEquals(options[0].value, MOCK_TENANT_1.id);
+});
+
+Deno.test("unit: generate_document — no tenants guard: prompt returns early-exit message", async () => {
+  const deps = makeStubDeps({
+    contextResult: {
+      status: 200,
+      body: { ...MOCK_CONTEXT, tenants: [] },
+    },
+  });
+  const handler = handleWorkflowNext(deps);
+
+  const res = await withMockFetch(
+    MOCK_USER,
+    () => handler(makeReq({ message: "3" })),
+  );
+
+  assertEquals(res.status, 200);
+  const body = await json(res) as Record<string, unknown>;
+  assertEquals(body.intent, "generate_document");
+  assertEquals(body.step, "ask_tenant");
+  assertStringIncludes(
+    body.message as string,
+    "Nenhum inquilino ativo encontrado.",
+  );
+});
+
+Deno.test("unit: generate_document — no tenants guard: validation rejects any reply", async () => {
+  const deps = makeStubDeps({
+    contextResult: {
+      status: 200,
+      body: { ...MOCK_CONTEXT, tenants: [] },
+    },
+  });
+  const handler = handleWorkflowNext(deps);
+
+  const state = btoa(JSON.stringify({}));
+  const res = await withMockFetch(
+    MOCK_USER,
+    () =>
+      handler(
+        makeReq({ intent: "generate_document", state, message: "1" }),
+      ),
+  );
+
+  assertEquals(res.status, 200);
+  const body = await json(res) as Record<string, unknown>;
+  assertEquals(body.step, "ask_tenant");
+  assertStringIncludes(
+    body.message as string,
+    "Nenhum inquilino ativo encontrado.",
+  );
+});
+
+Deno.test("unit: generate_document — tenant selection by number advances to confirm", async () => {
+  const deps = makeStubDeps({
+    contextResult: { status: 200, body: MOCK_CONTEXT_WITH_TENANTS },
+  });
+  const handler = handleWorkflowNext(deps);
+
+  const state = btoa(JSON.stringify({}));
+  const res = await withMockFetch(
+    MOCK_USER,
+    () =>
+      handler(
+        makeReq({ intent: "generate_document", state, message: "1" }),
+      ),
+  );
+
+  assertEquals(res.status, 200);
+  const body = await json(res) as Record<string, unknown>;
+  assertEquals(body.step, "confirm");
+  const values = decodeState(body);
+  assertEquals(values.tenant_id, MOCK_TENANT_1.id);
+  assertEquals(values.property_id, MOCK_TENANT_1.property_id);
+  assertStringIncludes(body.message as string, "Gerar documento");
+  assertStringIncludes(body.message as string, "Maria Silva");
+});
+
+Deno.test("unit: generate_document — invalid tenant number re-asks", async () => {
+  const deps = makeStubDeps({
+    contextResult: { status: 200, body: MOCK_CONTEXT_WITH_TENANTS },
+  });
+  const handler = handleWorkflowNext(deps);
+
+  const state = btoa(JSON.stringify({}));
+  const res = await withMockFetch(
+    MOCK_USER,
+    () =>
+      handler(
+        makeReq({ intent: "generate_document", state, message: "99" }),
+      ),
+  );
+
+  assertEquals(res.status, 200);
+  const body = await json(res) as Record<string, unknown>;
+  assertEquals(body.step, "ask_tenant");
+  assertStringIncludes(body.message as string, "Não entendi");
+});
+
+Deno.test("unit: generate_document — happy path: 'Sim' triggers generateDocument and returns to menu", async () => {
+  const deps = makeStubDeps({
+    contextResult: { status: 200, body: MOCK_CONTEXT_WITH_TENANTS },
+    generateResult: { status: 200, body: {} },
+  });
+  const handler = handleWorkflowNext(deps);
+
+  const state = btoa(JSON.stringify({
+    tenant_id: MOCK_TENANT_1.id,
+    tenant_name: MOCK_TENANT_1.name,
+    property_id: MOCK_TENANT_1.property_id,
+    property_name: "Prédio A - Apto 101",
+  }));
+  const res = await withMockFetch(
+    MOCK_USER,
+    () =>
+      handler(
+        makeReq({ intent: "generate_document", state, message: "Sim" }),
+      ),
+  );
+
+  assertEquals(res.status, 200);
+  const body = await json(res) as Record<string, unknown>;
+  assertEquals(body.step, "menu");
+  assertEquals(body.state, null);
+  assertEquals(body.intent, null);
+  assertStringIncludes(body.message as string, "Documentos gerados.");
+  assertStringIncludes(body.message as string, "O que mais posso te ajudar?");
+});
+
+Deno.test("unit: generate_document — execute failure maps GOOGLE_REAUTH_REQUIRED", async () => {
+  const deps = makeStubDeps({
+    contextResult: { status: 200, body: MOCK_CONTEXT_WITH_TENANTS },
+    generateResult: {
+      status: 401,
+      body: { error: { code: "GOOGLE_REAUTH_REQUIRED", message: "Reauth" } },
+    },
+  });
+  const handler = handleWorkflowNext(deps);
+
+  const state = btoa(JSON.stringify({
+    tenant_id: MOCK_TENANT_1.id,
+    tenant_name: MOCK_TENANT_1.name,
+    property_id: MOCK_TENANT_1.property_id,
+    property_name: "Prédio A - Apto 101",
+  }));
+  const res = await withMockFetch(
+    MOCK_USER,
+    () =>
+      handler(
+        makeReq({ intent: "generate_document", state, message: "Sim" }),
+      ),
+  );
+
+  assertEquals(res.status, 200);
+  const body = await json(res) as Record<string, unknown>;
+  assertEquals(body.step, "confirm");
+  assertStringIncludes(body.message as string, "Google Drive expirou");
+});
+
+Deno.test("unit: generate_document — execute failure maps NO_TEMPLATES_FOUND", async () => {
+  const deps = makeStubDeps({
+    contextResult: { status: 200, body: MOCK_CONTEXT_WITH_TENANTS },
+    generateResult: {
+      status: 404,
+      body: { error: { code: "NO_TEMPLATES_FOUND", message: "No templates" } },
+    },
+  });
+  const handler = handleWorkflowNext(deps);
+
+  const state = btoa(JSON.stringify({
+    tenant_id: MOCK_TENANT_1.id,
+    tenant_name: MOCK_TENANT_1.name,
+    property_id: MOCK_TENANT_1.property_id,
+    property_name: "Prédio A - Apto 101",
+  }));
+  const res = await withMockFetch(
+    MOCK_USER,
+    () =>
+      handler(
+        makeReq({ intent: "generate_document", state, message: "Sim" }),
+      ),
+  );
+
+  assertEquals(res.status, 200);
+  const body = await json(res) as Record<string, unknown>;
+  assertEquals(body.step, "confirm");
+  assertStringIncludes(body.message as string, "template");
+});
+
+Deno.test("unit: generate_document — execute failure with unknown code falls back to generic message", async () => {
+  const deps = makeStubDeps({
+    contextResult: { status: 200, body: MOCK_CONTEXT_WITH_TENANTS },
+    generateResult: {
+      status: 500,
+      body: { error: { code: "SOME_UNKNOWN_CODE", message: "Unknown" } },
+    },
+  });
+  const handler = handleWorkflowNext(deps);
+
+  const state = btoa(JSON.stringify({
+    tenant_id: MOCK_TENANT_1.id,
+    tenant_name: MOCK_TENANT_1.name,
+    property_id: MOCK_TENANT_1.property_id,
+    property_name: "Prédio A - Apto 101",
+  }));
+  const res = await withMockFetch(
+    MOCK_USER,
+    () =>
+      handler(
+        makeReq({ intent: "generate_document", state, message: "Sim" }),
+      ),
+  );
+
+  assertEquals(res.status, 200);
+  const body = await json(res) as Record<string, unknown>;
+  assertEquals(body.step, "confirm");
+  assertStringIncludes(body.message as string, "Erro ao gerar documentos");
+});
+
+// ─── GENERATE_DOCUMENT definition assertions ──────────────────────────────────
+
+Deno.test("unit: GENERATE_DOCUMENT — has 1 step: tenant_id", () => {
+  const keys = GENERATE_DOCUMENT.steps.map((s) => s.key);
+  assertEquals(keys, ["tenant_id"]);
+});
+
+Deno.test("unit: GENERATE_DOCUMENT — tenant_id step has options builder", () => {
+  const step = GENERATE_DOCUMENT.steps.find((s) => s.key === "tenant_id");
+  assertEquals(typeof step?.options, "function");
+});
+
+Deno.test("unit: GENERATE_DOCUMENT — tenant_id options returns empty array when no tenants", () => {
+  const step = GENERATE_DOCUMENT.steps.find((s) => s.key === "tenant_id")!;
+  const ctx: ContextPayload = { properties: [], tenants: [] };
+  const opts = step.options!(
+    {},
+    ctx,
+  );
+  assertEquals(opts, []);
+});
+
+Deno.test("unit: GENERATE_DOCUMENT — tenant_id options maps tenants to label/value pairs", () => {
+  const step = GENERATE_DOCUMENT.steps.find((s) => s.key === "tenant_id")!;
+  const ctx: ContextPayload = {
+    properties: [],
+    tenants: [MOCK_TENANT_1, MOCK_TENANT_2],
+  };
+  const opts = step.options!({}, ctx);
+  assertEquals(opts.length, 2);
+  assertEquals(opts[0].value, MOCK_TENANT_1.id);
+  assertStringIncludes(opts[0].label, "Maria Silva");
 });
