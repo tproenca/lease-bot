@@ -32,7 +32,8 @@ properties
   name                      text not null
   address                   text not null
   drive_folder_id           text not null
-  current_tenant_folder_id  text nullable           -- Drive folder ID of active tenant
+  current_tenant_folder_id  text nullable           -- Drive folder ID of active tenant (presentation only — star in Drive)
+  current_tenant_id         uuid nullable references tenants  -- FK to active tenant; written atomically with current_tenant_folder_id
   created_at                timestamptz default now()
 
 tenants
@@ -62,9 +63,10 @@ placeholders
   format           text not null                   -- text | date | cpf | integer | currency
   case             text nullable                   -- maiúsculas | minúsculas | título | frase
   default          text nullable
-  derived_from     text nullable                   -- name of source placeholder
-  derived_formula  text nullable                   -- human-readable formula for GPT
+  derived_formula  text nullable                   -- closed-grammar expression; see §Derived Formula Model
+  options          text[] nullable                 -- restricted value list for format=text; rendered as numbered list
   unique (landlord_id, name)
+  -- NOTE: derived_from column dropped in migration (ADR-0017)
 
 property_type_templates
   landlord_id    uuid references landlords
@@ -114,6 +116,51 @@ cron_errors
 
 ---
 
+## Derived Formula Model
+
+A placeholder's value source is fully expressed by a single `derived_formula` column using a closed-grammar expression. This replaces the retired `derived_from` column (ADR-0017).
+
+### Value-source categories
+
+| Category | `derived_formula` | Meaning |
+|---|---|---|
+| **Asked** | `null` | Collect from landlord; numbered list if `options[]` is set |
+| **Context auto-fill** | `tenant.name` | Identity copy from loaded entity data |
+| **Context + transform** | `cpf_format(tenant.cpf)` | Pull context value, apply registry function |
+| **Derived from sibling** | `amount_in_words(valor_aluguel)` | Transform another placeholder's value |
+| **Multi-input derived** | `end_date(data_inicio, duracao_meses)` | Formula over several inputs |
+
+### Grammar (closed)
+
+- A **bare token** is an identity copy of that source.
+- `fn(arg1, arg2, …)` applies registry function `fn` to the resolved args.
+- Each **arg** is either a **context path** — namespace ∈ `{tenant, property, landlord, building}` (e.g. `tenant.cpf`, `property.address`) — or a **sibling placeholder name**. Disambiguation: a dotted token with a known namespace prefix is a context path; otherwise it is a sibling placeholder name.
+- `null` = asked.
+
+### Formula registry (closed set)
+
+| Function | Inputs | Output |
+|---|---|---|
+| `identity` | any context path | Identity copy |
+| `cpf_format` | CPF digits string | `XXX.XXX.XXX-XX` |
+| `amount_in_words` | numeric amount | PT extenso (e.g. "mil e quinhentos reais") |
+| `full_date_text` | date | "DD de mês de AAAA" |
+| `end_date` | start date, duration in months | ISO date string |
+
+Adding a new formula requires a code change and a new ADR. Config-time validation at `POST /placeholders` rejects any `derived_formula` referencing an unknown function or an unresolvable input.
+
+### Config UX (Option B — menu-driven)
+
+During template sync (Flow 2), the landlord picks a derivation type from a numbered list of the registry functions and picks input fields from existing placeholders or context fields. They never type a formula expression. An unsupported derivation → field is treated as *asked*. Because config is menu-driven, invalid expressions are unconstructable by the landlord; the endpoint still validates defensively.
+
+### Required-validation scoping
+
+`POST /documents/generate` validates `required` placeholders scoped to the **union of placeholders used by the templates being generated** (filtered by `property_type` + `use_case`), not all global placeholders for the landlord. A placeholder marked `required: true` that does not appear in any of the selected templates is not checked.
+
+The `default` column is honored: if a placeholder has a non-null `default`, it is applied at resolution time for any value that remains empty after collection. The resolved default is included in the confirm table.
+
+---
+
 ## API Contracts
 
 All endpoints are Supabase Edge Functions. All requests require `Authorization: Bearer <jwt>` except the setup flow. All error responses follow: `{ "error": { "code": "string", "message": "string" } }`.
@@ -135,12 +182,10 @@ POST /setup/complete
 GET  /context
   → 200 {
       landlord: { name, whatsapp },
-      properties: [{ id, type, name, address, building_id, current_tenant_folder_id }],
-      buildings: [{ id, name, address }],
-      templates: [{ id, name, property_types: [] }],
-      placeholders: [{ name, required, format, case, default, derived_from, derived_formula }],
-      witnesses: [{ name, whatsapp }],
-      account_config: { payment_reminder_frequency }
+      templates_diff_pending: boolean   -- true if GET /templates/diff is non-empty (triggers Flow 2)
+      -- NOTE: full snapshot fields (properties, buildings, templates, placeholders, witnesses,
+      -- account_config) are loaded lazily per-flow via WorkflowDeps. GET /context returns
+      -- only the menu essentials needed at session start (ADR-0018).
     }
 ```
 
@@ -162,7 +207,9 @@ DELETE /templates/:id
   → 204
 
 POST /placeholders
-  Body: { placeholders: [{ name, required, format, case?, default?, derived_from?, derived_formula? }] }
+  Body: { placeholders: [{ name, required, format, case?, default?, derived_formula?, options? }] }
+  -- derived_from field dropped (ADR-0017)
+  -- derived_formula validated against the closed registry at write time
   → 201 { ids }
 
 DELETE /placeholders/:name
@@ -181,7 +228,7 @@ POST /properties
   → 201 { id, drive_folder_id }
 
 GET  /properties
-  → 200 [{ id, type, name, address, building_id, current_tenant_folder_id }]
+  → 200 [{ id, type, name, address, building_id, current_tenant_folder_id, current_tenant_id }]
 ```
 
 ### Tenants
@@ -191,7 +238,8 @@ POST /tenants
   Body: { property_id, name, cpf, whatsapp? }
   → 201 { id, drive_folder_id }
   Side effects: creates Drive folder, stars it, unstars previous tenant folder,
-                updates properties.current_tenant_folder_id
+                updates properties.current_tenant_folder_id AND properties.current_tenant_id
+                (both written in the same DB statement — ADR-0019)
 
 GET  /tenants/:id
   → 200 { id, name, cpf, whatsapp, property_id, drive_folder_id, created_at }
@@ -208,10 +256,16 @@ POST /documents/generate
   Body: {
     property_id,
     tenant_id,
-    placeholders: { [name]: value }
+    use_case: "initial" | "renewal" | "termination",  -- default: "initial"
+    placeholders: { [name]: value }   -- fully resolved (asked + derived + defaulted)
   }
   → 200 { documents: [{ template_name, drive_url }] }
   Side effects: copies templates, substitutes {{placeholders}}, saves to Drive
+  -- Pure substitution: no derivation performed here (derivation is done by the flow engine)
+  -- Required-check scoped to union of placeholders in templates matching (property_type, use_case)
+  -- default column honored: empty values filled from placeholder.default before substitution
+  -- Error codes: INVALID_PLACEHOLDERS, UNKNOWN_PLACEHOLDER, MISSING_REQUIRED_PLACEHOLDERS,
+  --              INVALID_USE_CASE
 ```
 
 ### Signatures
@@ -269,18 +323,145 @@ POST /witnesses
 
 ## User Flows and State Machines
 
-### Document Generation Flow
+### Flow 2 — Template Sync
+
+Triggered at session start when `GET /context` returns a non-empty diff flag. The `template_sync` intent runs before the menu is rendered.
 
 ```
-GPT calls GET /context
-  → GPT calls GET /templates/diff
-      → [empty diff] continue
-      → [non-empty diff] GPT resolves changes with landlord first
-  → GPT collects placeholder values from landlord
-  → GPT shows summary → landlord confirms ("Sim")
-  → GPT calls POST /documents/generate
-      → returns Drive URLs
-  → GPT asks "Quer enviar para assinatura?"
+State: detecting_changes
+  GET /templates/diff → diff result
+  If empty → skip to menu
+  If non-empty → State: presenting_changes
+    List all changes upfront (added templates, added placeholders, removed templates,
+    removed placeholders, added witnesses)
+    For each added template:
+      State: ask_property_types → landlord picks (numbered list)
+      State: ask_use_case → landlord picks initial | renewal | termination (numbered)
+      State: confirm_template → landlord confirms ("Sim")
+      Action: POST /templates
+    For each added placeholder:
+      State: ask_format → numbered list
+      State: ask_case → numbered list or skip
+      State: ask_derived? → numbered list from formula registry (Option B) or "not derived"
+        If derived: State: ask_inputs → pick from existing placeholders/context fields (numbered)
+      State: ask_required → sim/não
+      State: ask_default → or skip
+      State: ask_options? → (format=text only) restrict to list or free text
+      State: confirm_placeholder → "Confirma?" → landlord confirms
+      Action: POST /placeholders
+    For each added witness:
+      State: ask_whatsapp → or skip
+      Action: POST /witnesses
+    For each removed template:
+      State: inform_removed → "Confirma remoção?"
+      Action: DELETE /templates/:id
+    For each removed placeholder:
+      State: inform_removed (no confirm)
+      Action: DELETE /placeholders/:name
+  → done → render menu
+```
+
+### Flow 3a — Generate Document (chained from add_tenant)
+
+Entry point: chained from `add_tenant` after tenant is created. Tenant already known; `use_case` implicit `initial`.
+
+```
+State: load_placeholders
+  loadPlaceholderUnion(property_type, use_case="initial")
+  Auto-fill context placeholders (tenant.*, property.*, landlord.*, building.*)
+  Run derivation engine: compute derived values
+  Apply defaults for empty values
+
+State: ask_placeholders (asked, one per step)
+  For each placeholder with derived_formula=null and no auto-fill and no default:
+    Prompt with name; if options[] present → numbered list
+    Validate input; store in values
+
+State: confirm_table
+  Show all resolved values (asked + derived + context + defaulted)
+  Landlord replies "Sim" → generate
+  Landlord replies field number or label → State: edit_field
+    Clear that value and all derived dependents
+    Re-ask only the edited step
+    Re-derive affected placeholders
+    Return to confirm_table
+
+State: generate
+  Action: POST /documents/generate { property_id, tenant_id, use_case, placeholders }
+  → done → chain to Flow 4 ("Quer enviar para assinatura?")
+```
+
+### Flow 3b — Generate Document (menu entry)
+
+Entry point: landlord selects "Gerar documento" from menu.
+
+```
+State: ask_property
+  List properties (numbered); landlord picks
+  Resolve active tenant via properties.current_tenant_id (no ask)
+
+State: ask_use_case
+  List: initial | renewal | termination (numbered)
+
+[then follows the same load_placeholders → ask_placeholders → confirm_table → generate
+ sequence as Flow 3a, with the selected property_type and use_case]
+```
+
+### Flow 5 — Record Payment
+
+```
+State: ask_tenant
+  List active tenants (numbered); landlord picks
+
+State: ask_reference_month
+  Default: current month (MM/YYYY); landlord can override
+
+State: ask_amount_and_date
+  Ask amount; ask paid_at date
+
+State: confirm
+  Show summary (tenant, month, amount, date)
+  Landlord confirms ("Sim")
+  Action: POST /payments { tenant_id, amount, reference_month, paid_at }
+  Report whether payment was on time
+
+→ done → menu
+```
+
+### Flow 6 — View Overdue
+
+```
+State: ask_reference_month
+  Default: current month; landlord can override
+
+State: show_overdue
+  GET /payments?month=YYYY-MM → overdue list with last_reminder_sent_at
+  Display list
+
+State: ask_remind
+  Options: "Lembrar todos", "Lembrar um", "Nenhum"
+  If "Lembrar um" → ask which tenant (numbered)
+  If "Lembrar todos" or single selected:
+    State: confirm_reminder
+      Show summary; landlord confirms ("Sim")
+      Action: POST /payments/remind for each selected tenant
+
+→ done → menu
+```
+
+### Flow 10 — Update Account Config
+
+Triggered by NL request (not a menu item), e.g. "quero receber lembretes diários".
+
+```
+State: ask_frequency
+  Options: daily | weekly | disabled (numbered list)
+
+State: confirm
+  Show summary; landlord confirms ("Sim")
+  Action: PATCH /account/config { payment_reminder_frequency }
+
+→ done → menu
 ```
 
 ### Signing State Machine
@@ -297,17 +478,25 @@ Landlord can update frequency via PATCH /signatures/:id/reminder.
 
 ### Tenant State per Property
 
+Active tenant is tracked via `properties.current_tenant_id` (FK to `tenants`). Drive "star" is a presentation-only signal derived from this FK — it is not the source of truth. See ADR-0019.
+
 ```
 States: vacant | active
 
-POST /tenants (new property)       → vacant → active
-POST /tenants (replacing tenant)   → active → (archive old) → active
+POST /tenants (vacant property)    → vacant → active
+POST /tenants (replacing tenant)   → active → (archive old, warn landlord) → active
 
-On activation:
+On activation (single DB statement):
   - Create Drive folder at Root/{property}/{tenant}/
   - Star new folder (Drive API)
-  - Unstar previous folder if exists
-  - Update properties.current_tenant_folder_id
+  - Unstar previous tenant folder if current_tenant_id was set
+  - UPDATE properties SET current_tenant_id = <new_id>,
+                          current_tenant_folder_id = <new_folder>
+    WHERE id = <property_id>   -- atomic write
+
+Active-tenant lookup in flows:
+  SELECT current_tenant_id FROM properties WHERE id = ?
+  -- no Drive folder string-matching
 ```
 
 ### Payment State
@@ -330,6 +519,19 @@ All Edge Functions return structured errors:
 ```json
 { "error": { "code": "TEMPLATE_NOT_FOUND", "message": "..." } }
 ```
+
+### GPT error surfacing order
+
+When the backend returns an error, the GPT applies this fallback chain:
+1. **`ERROR_MAP` lookup** — if `error.code` is a known key in `ERROR_MAP` (client-side PT-friendly message map), display the mapped message.
+2. **`error.message` passthrough** — if `error.code` is not in `ERROR_MAP` but `error.message` is present, display it.
+3. **Generic fallback** — "Ocorreu um erro inesperado. Tente novamente."
+
+A contract test asserts that every error code that any endpoint can emit exists as a key in `ERROR_MAP`. This prevents silent generic fallbacks for known errors.
+
+Known codes that must be in `ERROR_MAP`: `INVALID_PLACEHOLDERS`, `UNKNOWN_PLACEHOLDER`, `MISSING_REQUIRED_PLACEHOLDERS`, `INVALID_USE_CASE`, `LANDLORD_NOT_FOUND`, `GOOGLE_REAUTH_REQUIRED`, and any other code emitted by `POST /workflow/next` or `POST /documents/generate`.
+
+### Integration error strategies
 
 | Integration | Strategy |
 |------------|----------|

@@ -29,18 +29,19 @@ Once submitted, their account is active. All subsequent interaction happens thro
 
 ### 2. Custom GPT Interface
 
-A ChatGPT Custom GPT is the primary interface for all landlord interactions — document generation, payment tracking, and reminders. The GPT:
+A ChatGPT Custom GPT is the primary interface for all landlord interactions — document generation, payment tracking, and reminders. The GPT is a thin conversational shell: it parses free-text input, routes intents, and renders messages returned by the backend. It does not compute values.
 
-- Knows the landlord's properties, templates, and placeholder definitions
-- Asks only for values the templates actually need
-- Computes all derived values (date arithmetic, amounts in full, totals) before generating documents
-- Shows a complete summary and requires one explicit confirmation before calling the API
+All flow logic, collection, validation, derivation, and assembly run server-side through `POST /workflow/next`. The GPT relays user messages and displays what the backend returns.
 
 ### 3. Document Generation
 
-The backend receives pre-computed values from the GPT and substitutes them into all templates in the landlord's Templates folder. Generated documents are saved to the landlord's Drive, organized by property and tenant. Regeneration overwrites the existing file.
+The backend assembles all placeholder values — collecting asked inputs, auto-filling context values (tenant name, CPF, etc.), computing derived values (end date, amount in words, formatted CPF, full date text) via a deterministic server-side formula registry, and applying defaults. The landlord reviews a complete confirm table before generation is triggered.
 
-Templates are Google Docs managed directly by the landlord in Drive. Placeholders follow a simple `{{nome do campo}}` syntax; definitions and metadata are stored in the database. When a template changes, the GPT detects it and asks the landlord to confirm any added or removed placeholders before proceeding.
+The generation endpoint receives the fully-resolved placeholder map and substitutes tokens into all templates matching the property type and use case. Generated documents are saved to the landlord's Drive, organized by property and tenant. Regeneration overwrites the existing file.
+
+Templates are Google Docs managed directly by the landlord in Drive. Placeholders follow a `{{nome do campo}}` syntax; definitions and metadata are stored in the database. When templates change, the system detects the diff at session start and walks the landlord through configuration interactively (Flow 2 — Template Sync) before rendering the menu.
+
+The system supports three use cases per template: `initial` (new lease), `renewal`, and `termination`.
 
 ### 4. E-Signature Flow
 
@@ -60,10 +61,14 @@ The landlord reports payments conversationally ("João pagou o aluguel de maio")
 
 - **Tenant portal** — tenants never log into the system
 - **In-app template editing** — landlords manage templates directly in Google Drive
-- **Pix webhook integration** — deferred to Phase 2; payments are recorded manually
+- **Pix webhook integration** — deferred to Phase 4 (milestone M7); payments are recorded manually
 - **Mobile app** — interaction is through the Custom GPT only; setup is a web page
 - **Multi-language support** — Portuguese (Brazil) only
 - **Template creation from scratch** — landlords bring their own Google Docs templates
+- **Per-template `required` overrides** — `required` is global per placeholder; a `template_placeholders` join table is deferred unless a real template needs per-document requiredness
+- **Arbitrary derivation expressions** — only the closed formula registry is supported; new formulas require a code change and an ADR; anything unsupported is an asked field
+- **GPT in the value pipeline** — GPT stays at the conversational boundary; it never computes values that land in the database or a legal document
+- **Tenant lease-start/status field** — "active" is expressed solely by `properties.current_tenant_id`; no `tenants.is_active` flag
 
 ---
 
@@ -81,8 +86,8 @@ The landlord reports payments conversationally ("João pagou o aluguel de maio")
 - All document storage is in the landlord's own Google Drive — no proprietary storage
 - Google OAuth is the sole identity mechanism — no username/password login
 - One Custom GPT deployed by the developer, shared across all landlords via a single link; landlords authenticate via OAuth built into the GPT action
-- Landlord-specific context (properties, templates, placeholders) is fetched dynamically from the API at conversation start — the GPT system prompt is static
-- The backend API is a pure substitution engine — all field computation is the GPT's responsibility
+- At conversation start, the GPT calls `GET /context` for menu essentials (landlord name, template-diff flag); all other data is loaded lazily per-flow by the server-side engine — the GPT system prompt is static
+- The backend is a server-driven flow engine: all collection, validation, derivation, and assembly run server-side. `POST /documents/generate` is a pure substitution endpoint; derivation runs in the workflow layer before the generation call
 - The landlord interacts with the system exclusively through the GPT after initial setup
 - Witnesses are discovered from templates (hardcoded names below signature lines); their WhatsApp numbers are collected once by the GPT when a new witness name is first detected
 - Scale: ~10 landlords, ~10 properties each — no high-availability or horizontal scaling required in Phase 1
@@ -91,28 +96,29 @@ The landlord reports payments conversationally ("João pagou o aluguel de maio")
 
 ## Milestones and Phasing
 
-### Phase 1 — Core Product
-1. Onboarding (Google OAuth, Drive folder selection, notification config)
-2. Placeholder management (sync with Drive templates, definitions in DB)
-3. Template → property type mapping (conversational setup via GPT)
-4. Document generation (substitution engine + Drive filing, folder structure per property type)
-5. Manual payment tracking (record payments, query status)
+### M1 — Auth: signup / sign-in / re-auth
+Verify auth boundaries end-to-end through `/workflow/next`: unregistered → onboarding, expired Google → reauth, invalid JWT → 401. Error surfacing reorder + ERROR_MAP contract test. Remove legacy direct `/setup` flow.
 
-### Phase 2 — E-Signature
-1. PDF export and merge (pdf-lib)
-2. Signature position detection (scan PDF for line pattern + signer label)
-3. Autentique integration (document submission, signer notification via WhatsApp)
-4. Signed PDF webhook (save signed bundle back to Drive)
+### M1.5 — CI/CD Pipeline
+Lint + test + deploy on merge. Enables continuous delivery from M2 onward.
 
-### Phase 3 — WhatsApp Reminders
-1. Meta WhatsApp Business Cloud API integration
-2. Automatic payment reminders via pg_cron (configurable frequency per landlord)
-3. Ad-hoc reminder from GPT
-4. "Ver inadimplentes" with last reminder date
+### M2 — Templates, Placeholders, and Derived Fields *(blocks M3)*
+Landlords can configure templates with property types and use cases, define derived placeholder formulas via a guided numbered menu, and see all detected template/placeholder changes synced interactively at session start before the main menu appears.
 
-### Phase 4 — Pix Integration
-1. Pix webhook integration (automatic payment detection via API Pix + PSP integration)
-2. QR code generation per tenant/month for unambiguous payment matching
+### M3 — Add Tenant / Add Property / Generate Contract *(depends on M2)*
+Full end-to-end contract generation: the assistant resolves placeholder values automatically (context auto-fill + derived formulas), shows a confirmation table, and allows the landlord to edit any individual field before submitting. Adding a tenant flows directly into generating the contract and sending for signature.
+
+### M4 — Production Deployment and Monitoring
+Deploy workflow finalized. BetterStack `/health/cron` monitor.
+
+### M5 — Signing
+Expand `send_signature`: signer listing (tenant/landlord/witnesses), ask missing WhatsApp, chain from generate.
+
+### M6 — WhatsApp and Payment Reminders
+`record_payment` flow (Flow 5). `view_overdue` flow (Flow 6) with reminder confirmation. `update_account_config` flow (Flow 10, NL-triggered).
+
+### M7 — Pix Integration
+Pix QR code generation. Pix webhook integration.
 
 ---
 
@@ -122,7 +128,7 @@ The landlord reports payments conversationally ("João pagou o aluguel de maio")
 |------|-----------|
 | Autentique API changes or downtime | Wrap in an adapter so the provider can be swapped; add retries |
 | Signature position markers not found in PDF | Fall back to manual position specification; log failures for review |
-| GPT sends incorrect values to the generation API | API validates all required placeholders are present before substituting |
+| Derivation engine produces wrong values (e.g. wrong end date) | Deterministic formula registry with unit tests per formula; landlord reviews confirm table before generation; no GPT in the value pipeline |
 | Landlord's Drive folder structure changes | Store folder IDs (not paths) — stable even if folders are renamed or moved |
 
 ---

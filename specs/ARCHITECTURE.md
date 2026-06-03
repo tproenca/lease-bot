@@ -109,24 +109,26 @@ Custom GPT native OAuth support — when a landlord first triggers an action, th
 
 ---
 
-## Custom GPT Architecture
+## Server-Driven Flow Engine
 
-**One GPT deployed by the developer** — single link shared with all landlords. Landlords do not configure their own GPT.
+All landlord interaction flows run through `POST /workflow/next` via a server-side engine (`runFlowEngine`). The GPT is a thin conversational shell: it parses free-text input, routes intents, and renders the messages the backend returns. It never computes values that land in the database or a legal document.
 
-**Context loading:** at conversation start, the GPT calls `GET /context` which returns the landlord's full world:
-```json
-{
-  "landlord": { "name": "...", "whatsapp": "..." },
-  "properties": [...],
-  "buildings": [...],
-  "templates": [...],
-  "placeholders": [...],
-  "witnesses": [...],
-  "account_config": { "payment_reminder_frequency": "weekly" }
-}
-```
+**The dividing line:**
+- GPT: understand messy human input ("o aluguel é mil e quinhentos" → `1500`), intent routing, natural-language rendering, numbered option lists.
+- Backend: all collection, validation, derivation, assembly, and substitution. See ADR-0016, ADR-0017.
 
-**System prompt:** static, same for all landlords — behavior rules, Portuguese language, confirmation protocol, intent surface, derived field computation rules, API usage instructions.
+**Flow engine features:**
+- Steps are resolved dynamically from collected `values` — `FlowDefinition.steps` is a function, not a static array.
+- An optional async `load` hook on each step fires after `validate` to lazily fetch data needed for subsequent steps (e.g., loading the placeholder union for the target property type and use case).
+- **Reply-to-edit path:** at the confirm table, if the landlord replies with a field number or label instead of "Sim", the engine clears that value and any derived values that depend on it, re-asks only that step, re-derives, and returns to the confirm table.
+- **Cross-flow chaining:** a flow can declare a `nextIntent` to hand off to another flow after `done` (e.g., `add_tenant` → `generate_document` → `send_signature`).
+
+**Custom GPT architecture:**
+One GPT deployed by the developer — single link shared with all landlords. Landlords do not configure their own GPT.
+
+**Session start:** at conversation start, the GPT calls `GET /context` for the menu essentials: landlord name and the template-diff flag. If the diff is non-empty, `template_sync` runs before the menu is rendered. `GET /context` is **not** called again during flow execution — flows load their own data lazily.
+
+**System prompt:** static, same for all landlords — behavior rules, Portuguese language, confirmation protocol, intent surface, `POST /workflow/next` usage instructions.
 
 **Repo artifacts:**
 - `gpt/SYSTEM_PROMPT.md` — source of truth for GPT instructions
@@ -134,6 +136,52 @@ Custom GPT native OAuth support — when a landlord first triggers an action, th
 - `specs/openapi.yaml` — OpenAPI action schema uploaded to the GPT
 
 ---
+
+## Lazy Per-Flow Data Loading
+
+The eager `GET /context` full-snapshot pattern — fetching ~10 tables on every workflow turn — is retired for flow execution. See ADR-0018.
+
+**Scope of `/context`:** menu essentials only — landlord name, and the template-diff flag (whether `GET /templates/diff` is non-empty). No properties list, no placeholder list, no tenant data.
+
+**Per-flow targeted dependencies (`WorkflowDeps` pattern):** each flow declares the data it needs and loads it via targeted `invokeHandler` calls at the step where it is first needed:
+
+| Flow | Lazy deps loaded |
+|---|---|
+| `generate_document` | `loadPlaceholderUnion(property_type, use_case)` at confirm step; active tenant via `properties.current_tenant_id` FK |
+| `add_tenant` | Property list at first step |
+| `template_sync` | Full diff result at session start (replaces current discard-and-ignore behavior) |
+| `record_payment`, `view_overdue` | Tenant + payment data at first step |
+
+**`loadPlaceholderUnion` (internal dep only):** resolves the set of placeholders used by templates matching `(property_type, use_case)`. This is an internal workflow dependency — not a public endpoint. The flow engine calls it via `invokeHandler`; there is no `GET /placeholders/union` route.
+
+**No per-step `/context` snapshot.** Any flow step that previously called `loadContext` is refactored to use a targeted dep or carry data forward in `values`.
+
+## Deterministic Derivation Engine
+
+Derived placeholder values are computed by a deterministic server-side formula registry in the workflow layer. GPT is not involved in value computation. See ADR-0016, ADR-0017.
+
+**Placement:** the derivation engine runs inside the `generate_document` flow, between collection and the confirm table. `POST /documents/generate` remains a pure substitution endpoint — it receives a fully-resolved `placeholders` map and substitutes tokens only.
+
+**Formula registry (closed set):**
+
+| Function | Inputs | Output |
+|---|---|---|
+| `identity` | any context path | Identity copy |
+| `cpf_format` | CPF digits string | `XXX.XXX.XXX-XX` |
+| `amount_in_words` | numeric amount | PT extenso (e.g. "mil e quinhentos reais") |
+| `full_date_text` | date | "DD de mês de AAAA" |
+| `end_date` | start date, duration in months | ISO date |
+
+Adding a formula requires a code change and a new ADR. The registry is versioned; config-time validation at `POST /placeholders` rejects formulas referencing unknown registry functions.
+
+**Resolution order (at flow time):**
+1. Build the placeholder union for `(property_type, use_case)`.
+2. Topologically sort by sibling dependencies.
+3. Resolve asked values from collected input.
+4. Resolve context paths from lazily loaded entity data.
+5. Call registry functions for derived placeholders.
+6. Apply `default` for anything still empty.
+7. Show all resolved values in the confirm table.
 
 ## Scalability and Performance
 

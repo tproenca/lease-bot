@@ -6,11 +6,17 @@
 **When:** run before every merge via CI (`scripts/check.sh`, `scripts/test-unit.sh`, `scripts/test-integration.sh`, `scripts/test-smoke.sh`). Must pass before merge.
 
 **Scope:**
-- Unit tests for the substitution engine (placeholder replacement, case transformations, derived field handling)
+- Unit tests for the substitution engine (placeholder replacement, case transformations)
+- Unit tests for the **derivation engine**: each registry formula (`identity`, `cpf_format`, `amount_in_words`, `full_date_text`, `end_date`), topological resolution order, sibling dependency chaining, error cases (unknown function, circular dependency, unresolvable input)
+- Unit tests for **flow engine features**: dynamic-step resolution, async `load` hook, reply-to-edit field clearing (including transitive derived dependents), cross-flow chaining hand-off
+- Unit tests for **`generate_document` flow**: Flow 3a (chained from add_tenant, implicit `initial` use_case), Flow 3b (menu entry, explicit use_case), confirm table assembly, assembled placeholders map sent to endpoint
 - Unit tests for signature position detection (PDF scanning logic, signer label classification)
 - Unit tests for `GET /templates/diff` (fast path / slow path logic, diff computation)
 - Unit tests for HMAC webhook signature verification
 - Integration tests for every Edge Function endpoint against a local Supabase instance (real DB, real auth — no mocks)
+- Integration test: **scoped required-check** — `POST /documents/generate` only rejects missing placeholders that appear in the selected templates (not global); asserts placeholders absent from selected templates are not required
+- Integration test: **`default` column honored** — placeholder with `default` value and empty input in `placeholders` map uses the default, not `""`
+- Contract test: **`ERROR_MAP` completeness** — asserts every error code that any endpoint can emit exists as a key in `ERROR_MAP`; fails CI if a new code is added without updating the map
 
 **Framework:** Deno built-in test runner (`deno test`)
 
@@ -72,6 +78,8 @@ scripts/test-nightly.sh
 | Area | Expected coverage |
 |------|-----------------|
 | Substitution engine | 95% |
+| Derivation engine (formula registry + resolution) | 95% |
+| Flow engine (dynamic steps, load hook, edit path, chaining) | 90% |
 | Signature position detection | 90% |
 | Template diff logic | 90% |
 | Edge Function handlers | 80% |
@@ -125,19 +133,25 @@ Which flows are covered at which tier, and what has no automated test yet.
 | Core landlord happy path (building → property → tenant → generate docs → payment) | 2 | E2E smoke | Google/Drive mocked; real Supabase |
 | Buildings CRUD | 1 | Integration | Auth, validation, Drive failures, folder reuse |
 | Properties CRUD | 1 | Integration | House / commercial / apartment; building scoping |
-| Tenants CRUD (create, get, patch) | 1 | Integration | Folder creation, Drive star/unstar, replacement, rollback |
-| Context load | 1 | Integration | Full landlord context, account config, template mapping |
-| Document generation | 1 | Integration + unit | Placeholder substitution, case transforms, RLS block |
+| Tenants CRUD (create, get, patch) | 1 | Integration | Folder creation, Drive star/unstar, replacement, rollback; current_tenant_id FK written atomically |
+| Context load | 1 | Integration | Menu-essential context (landlord name, templates_diff_pending, cron_errors); asserts full snapshot fields absent |
+| Document generation | 1 | Integration + unit | Placeholder substitution, case transforms, RLS block; scoped required-check; default column honored |
 | Document export / PDF merge | 1 | Integration + unit | Multi-doc merge, stop-on-first-failure, token auth |
 | Template diff (fast + slow path) | 1 | Integration + unit | Placeholder detection, witness detection |
 | Templates CRUD | 1 | Integration | Create, delete |
 | Payments (record + query) | 1 | Integration | on_time boundary logic, paid/overdue split |
 | Ad-hoc payment reminder | 1 | Integration | WhatsApp send, `payment_reminders` record, non-500 on failure |
 | Account config (reminder frequency) | 1 | Integration | All valid values + invalid inputs |
-| Placeholders CRUD | 1 | Integration | Create, delete (idempotent, URL-encoded) |
+| Placeholders CRUD | 1 | Integration | Create (derived_formula validated; derived_from rejected), delete (idempotent, URL-encoded) |
 | Witnesses CRUD | 1 | Integration | Create, uniqueness |
 | Setup / onboarding complete | 1 | Integration | Folder ID, WhatsApp, Autentique key validation |
 | Substitution engine | 1 | Unit | applyCase, substituteTokens |
+| Derivation engine — formula registry | 1 | Unit | Each registry function; topological resolution; sibling dependencies; circular dep error; unknown function error |
+| Derivation engine — flow integration | 1 | Unit | generate_document Flow 3a (chained, implicit initial); Flow 3b (menu, explicit use_case); confirm table; assembled placeholders map |
+| Flow engine — dynamic steps + load hook | 1 | Unit | Dynamic step resolution; async load hook fires after validate; hook result carried in values |
+| Flow engine — reply-to-edit | 1 | Unit | Field cleared on edit; transitive derived dependents cleared; confirm table re-shown |
+| Flow engine — cross-flow chaining | 1 | Unit | nextIntent hand-off; state carry from add_tenant to generate_document |
+| ERROR_MAP contract | 1 | Unit | Every error code emitted by any endpoint exists in ERROR_MAP |
 | PDF merge logic | 1 | Unit | Page count, header check |
 | Input validation utilities | 1 | Unit | WhatsApp, Drive ID, folder name, API key, cookies, OAuth URL |
 
@@ -156,5 +170,9 @@ Which flows are covered at which tier, and what has no automated test yet.
 | Signing flow end-to-end | Autentique webhook requires a live external call |
 | pg_cron reminder execution | Requires live Supabase deployment with pg_cron enabled |
 | Webhook idempotency | Duplicate Autentique webhook processed only once |
+| template_sync flow (Flow 2) — full interactive round-trip | Blocked on flow implementation (G12) |
+| record_payment flow (Flow 5) | Blocked on flow implementation (G13) |
+| view_overdue flow (Flow 6) | Blocked on flow implementation (G14) |
+| update_account_config flow (Flow 10) | Blocked on flow implementation (G15) |
 
 For manual coverage of these flows, see [docs/MANUAL-TEST.md](../docs/MANUAL-TEST.md).
