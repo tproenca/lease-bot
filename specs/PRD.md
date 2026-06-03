@@ -103,10 +103,10 @@ Verify auth boundaries end-to-end through `/workflow/next`: unregistered → onb
 Lint + test + deploy on merge. Enables continuous delivery from M2 onward.
 
 ### M2 — Templates, Placeholders, and Derived Fields *(blocks M3)*
-Drop `derived_from`; add `derived_formula` closed-grammar validation. Derivation engine + formula registry (including deterministic `amount_in_words`). Engine dynamic steps + async `load` hook. Template Sync flow (Flow 2) with Option B derived-config menus. Wire diff at session start.
+Landlords can configure templates with property types and use cases, define derived placeholder formulas via a guided numbered menu, and see all detected template/placeholder changes synced interactively at session start before the main menu appears.
 
 ### M3 — Add Tenant / Add Property / Generate Contract *(depends on M2)*
-`loadPlaceholderUnion` internal dep. Endpoint required-scoping + `default` column honored. Rewrite `generate_document` (Flows 3a/3b: dynamic steps, auto-fill, confirm table, reply-to-edit). `properties.current_tenant_id` FK migration. Cross-flow chaining (add_tenant → generate → send). Lazy loading (replace per-step `loadContext`).
+Full end-to-end contract generation: the assistant resolves placeholder values automatically (context auto-fill + derived formulas), shows a confirmation table, and allows the landlord to edit any individual field before submitting. Adding a tenant flows directly into generating the contract and sending for signature.
 
 ### M4 — Production Deployment and Monitoring
 Deploy workflow finalized. BetterStack `/health/cron` monitor.
