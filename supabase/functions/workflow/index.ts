@@ -31,8 +31,10 @@ import { handleContext } from "../context/index.ts";
 import { handleTemplatesDiff } from "../templates/diff/index.ts";
 import { handleTenants } from "../tenants/index.ts";
 import { handleGenerateDocuments } from "../documents/generate/index.ts";
+import { handleProperties } from "../properties/index.ts";
 import { invokeHandler } from "../_shared/internal.ts";
 import { ADD_TENANT } from "./intents/add-tenant.ts";
+import { ADD_PROPERTY } from "./intents/add-property.ts";
 import { GENERATE_DOCUMENT } from "./intents/generate-document.ts";
 import { type FlowDefinition, runFlowEngine } from "./flow-engine.ts";
 
@@ -132,6 +134,16 @@ export interface WorkflowDeps {
       tenant_id: string;
     },
   ) => Promise<{ status: number; body: unknown }>;
+  /** Create a new property via POST /properties. */
+  createProperty: (
+    jwt: string,
+    payload: {
+      type: string;
+      name: string;
+      building_id: string | null;
+      address: string | null;
+    },
+  ) => Promise<{ status: number; body: unknown }>;
 }
 
 // ─── Flow registry ────────────────────────────────────────────────────────────
@@ -139,6 +151,7 @@ export interface WorkflowDeps {
 const FLOWS: Record<string, FlowDefinition> = {
   add_tenant: ADD_TENANT,
   generate_document: GENERATE_DOCUMENT,
+  add_property: ADD_PROPERTY,
 };
 
 // ─── Default deps (real internal-invoke wrappers) ────────────────────────────
@@ -174,6 +187,15 @@ function makeDefaultDeps(): WorkflowDeps {
       return await invokeHandler(handleGenerateDocuments, {
         method: "POST",
         path: "/documents/generate",
+        jwt,
+        body: payload,
+      });
+    },
+
+    createProperty: async (jwt, payload) => {
+      return await invokeHandler(handleProperties, {
+        method: "POST",
+        path: "/properties",
         jwt,
         body: payload,
       });
