@@ -20,4 +20,11 @@ export const ERROR_MAP: Record<string, string> = {
   DRIVE_STAR_FAILED:
     "Falha ao destacar pasta do inquilino no Google Drive. Tente novamente.",
   DB_ERROR: "Erro ao salvar o inquilino. Tente novamente.",
+  TENANT_NOT_FOUND: "Inquilino não encontrado. Tente novamente.",
+  NO_TEMPLATES_FOUND:
+    "Nenhum template encontrado para este imóvel. Verifique os templates cadastrados.",
+  DRIVE_COPY_FAILED:
+    "Falha ao copiar template no Google Drive. Tente novamente.",
+  DRIVE_UPDATE_FAILED:
+    "Falha ao gravar documento no Google Drive. Tente novamente.",
 };

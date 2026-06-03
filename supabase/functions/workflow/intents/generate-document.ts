@@ -1,6 +1,7 @@
 // GENERATE_DOCUMENT FlowDefinition — selects an active tenant and regenerates
 // their contract documents via POST /documents/generate.
 
+import { ERROR_MAP } from "../../_shared/error-map.ts";
 import type { ContextPayload, WorkflowOption } from "../index.ts";
 import type { ExecuteResult, FlowDefinition } from "../flow-engine.ts";
 
@@ -118,22 +119,7 @@ export const GENERATE_DOCUMENT: FlowDefinition = {
       | undefined;
     const code = errorBody?.error?.code ?? "";
 
-    const GENERATE_ERROR_MAP: Record<string, string> = {
-      GOOGLE_REAUTH_REQUIRED:
-        "Sua conexão com o Google Drive expirou. Reconecte sua conta Google nas configurações do ChatGPT → Apps conectados → Lease Assistant → desconectar e reconectar.",
-      GOOGLE_AUTH_FAILED:
-        "Falha ao autenticar com o Google Drive. Tente novamente.",
-      NO_TEMPLATES_FOUND:
-        "Nenhum template encontrado para este imóvel. Verifique os templates cadastrados.",
-      TENANT_NOT_FOUND: "Inquilino não encontrado. Tente novamente.",
-      PROPERTY_NOT_FOUND: "Imóvel não encontrado. Tente novamente.",
-      DRIVE_COPY_FAILED:
-        "Falha ao copiar template no Google Drive. Tente novamente.",
-      DRIVE_UPDATE_FAILED:
-        "Falha ao gravar documento no Google Drive. Tente novamente.",
-    };
-
-    const friendlyMessage = GENERATE_ERROR_MAP[code];
+    const friendlyMessage = ERROR_MAP[code];
     if (!friendlyMessage) {
       console.error(
         `[generate-document] generateDocument failed with unmapped error code: ${
