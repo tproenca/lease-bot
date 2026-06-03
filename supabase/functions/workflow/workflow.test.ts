@@ -1944,22 +1944,7 @@ Deno.test("unit: ADD_PROPERTY — confirm summary for apartment does not include
   });
   const handler = handleWorkflowNext(deps);
 
-  // Provide state with apartment type, building selected, and name — all steps done
-  const state = btoa(JSON.stringify({
-    type: "apartment",
-    building_id: "bld-uuid-1",
-    _building_name: "Edifício Aurora",
-    name: "Apto 202",
-  }));
-  const res = await withMockFetch(
-    MOCK_USER,
-    () =>
-      handler(makeReq({ intent: "add_property", state, message: "Apto 202" })),
-  );
-
-  // The engine is at confirm already — non-"Sim" → re-asks "O que deseja alterar?"
-  // So seed state as all-steps-done and use a fresh Enter approach via buildConfirmationMessage.
-  // Instead, use the engine directly to hit confirm via next step after name.
+  // Provide building + type, then submit name to reach confirm step
   const state2 = btoa(JSON.stringify({
     type: "apartment",
     building_id: "bld-uuid-1",
