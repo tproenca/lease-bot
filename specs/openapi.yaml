@@ -318,7 +318,7 @@ paths:
       security: []
       responses:
         '200':
-          description: HTML page (pre-auth or post-auth state)
+          description: HTML page (post-auth onboarding form / success; pre-auth path removed)
 
   /auth/callback:
     get:
@@ -329,9 +329,8 @@ paths:
         creates a Supabase session, and redirects based on context.
         Integrated setup flow (issue #89): if a chatgpt_redirect cookie is present
         and the landlord already exists, issues a one-time code and redirects to
-        ChatGPT directly. If the landlord does not exist, redirects to /setup?via=oauth
-        so the setup form appears in the same OAuth window. Without the cookie,
-        falls back to the original behaviour (redirect to /setup).
+        ChatGPT directly. If the landlord does not exist, redirects to /setup so
+        the setup form appears in the same OAuth window.
       security: []
       parameters:
         - name: code

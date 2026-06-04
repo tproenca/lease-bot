@@ -169,7 +169,7 @@ All endpoints are Supabase Edge Functions. All requests require `Authorization: 
 
 ```
 GET  /setup
-  → 200 HTML (onboarding page — pre-auth or post-auth state)
+  → 200 HTML (onboarding page — post-auth state only; pre-auth path removed in #91)
 
 GET  /auth/callback?code=&state=
   → 302 redirect to /setup (session established)
