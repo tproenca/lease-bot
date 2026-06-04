@@ -1,7 +1,7 @@
 -- Payments and payment reminders
 
 create table payments (
-  id              uuid primary key default uuid_generate_v4(),
+  id              uuid primary key default gen_random_uuid(),
   landlord_id     uuid not null references landlords on delete cascade,
   tenant_id       uuid not null references tenants on delete cascade,
   amount          numeric not null check (amount > 0),
@@ -19,7 +19,7 @@ create policy "payments: own rows only"
   using (landlord_id = auth.uid());
 
 create table payment_reminders (
-  id              uuid primary key default uuid_generate_v4(),
+  id              uuid primary key default gen_random_uuid(),
   landlord_id     uuid not null references landlords on delete cascade,
   tenant_id       uuid not null references tenants on delete cascade,
   reference_month date not null,

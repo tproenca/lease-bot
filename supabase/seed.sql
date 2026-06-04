@@ -4,5 +4,5 @@
 -- Do NOT commit production values here.
 --
 -- GUC settings for pg_cron (app.service_role_key, app.functions_base_url)
--- are handled in migration 010_local_dev_guc.sql, not here, because
+-- are handled in migration 20260531003531_local_dev_guc.sql, not here, because
 -- ALTER DATABASE requires superuser rights which the seed step lacks in CI.
