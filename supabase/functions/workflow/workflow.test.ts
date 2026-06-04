@@ -959,7 +959,9 @@ Deno.test("unit: workflow/next — DB_ERROR maps to friendly message", async () 
   assertStringIncludes(body.message as string, "salvar");
 });
 
-Deno.test("unit: workflow/next — unknown error code falls back to generic message", async () => {
+Deno.test("unit: workflow/next — unknown error code with backend message uses tier-2 passthrough", async () => {
+  // MOCK_CREATE_UNKNOWN_ERROR has { code: "SOME_UNKNOWN_CODE", message: "Unknown" }.
+  // Tier 1 (ERROR_MAP) misses, tier 2 passes through the backend message.
   const deps = makeStubDeps({ createResult: MOCK_CREATE_UNKNOWN_ERROR });
   const handler = handleWorkflowNext(deps);
   const state = btoa(JSON.stringify({
@@ -976,7 +978,33 @@ Deno.test("unit: workflow/next — unknown error code falls back to generic mess
   assertEquals(res.status, 200);
   const body = await json(res) as Record<string, unknown>;
   assertEquals(body.step, "confirm");
-  assertStringIncludes(body.message as string, "Erro ao criar inquilino");
+  // Tier 2: backend message is passed through.
+  assertStringIncludes(body.message as string, "Unknown");
+});
+
+Deno.test("unit: workflow/next — unknown error code with no backend message uses tier-3 generic fallback", async () => {
+  const noMessageError = {
+    status: 500,
+    body: { error: { code: "SOME_UNKNOWN_CODE" } },
+  };
+  const deps = makeStubDeps({ createResult: noMessageError });
+  const handler = handleWorkflowNext(deps);
+  const state = btoa(JSON.stringify({
+    property_id: "prop-uuid-1",
+    property_name: "Prédio A - Apto 101",
+    name: "Maria Silva",
+    cpf: "123.456.789-09",
+    whatsapp: null,
+  }));
+  const res = await withMockFetch(
+    MOCK_USER,
+    () => handler(makeReq({ intent: "add_tenant", state, message: "Sim" })),
+  );
+  assertEquals(res.status, 200);
+  const body = await json(res) as Record<string, unknown>;
+  assertEquals(body.step, "confirm");
+  // Tier 3: generic fallback.
+  assertStringIncludes(body.message as string, "Ocorreu um erro inesperado");
 });
 
 // ─── No-active-tenant path ─────────────────────────────────────────────────────
@@ -1555,7 +1583,7 @@ Deno.test("unit: generate_document — execute failure with unknown code falls b
     contextResult: { status: 200, body: MOCK_CONTEXT_WITH_TENANTS },
     generateResult: {
       status: 500,
-      body: { error: { code: "SOME_UNKNOWN_CODE", message: "Unknown" } },
+      body: { error: { code: "SOME_UNKNOWN_CODE" } },
     },
   });
   const handler = handleWorkflowNext(deps);
@@ -1577,7 +1605,7 @@ Deno.test("unit: generate_document — execute failure with unknown code falls b
   assertEquals(res.status, 200);
   const body = await json(res) as Record<string, unknown>;
   assertEquals(body.step, "confirm");
-  assertStringIncludes(body.message as string, "Erro ao gerar documentos");
+  assertStringIncludes(body.message as string, "Ocorreu um erro inesperado");
 });
 
 // ─── GENERATE_DOCUMENT definition assertions ──────────────────────────────────

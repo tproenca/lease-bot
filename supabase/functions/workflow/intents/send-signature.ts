@@ -1,7 +1,7 @@
 // SEND_SIGNATURE FlowDefinition — selects an active tenant and sends their
 // contract for e-signature via Autentique.
 
-import { ERROR_MAP } from "../../_shared/error-map.ts";
+import { resolveErrorMessage } from "../../_shared/error-map.ts";
 import type { ContextPayload, WorkflowOption } from "../index.ts";
 import type { ExecuteResult, FlowDefinition } from "../flow-engine.ts";
 
@@ -98,27 +98,18 @@ export const SEND_SIGNATURE: FlowDefinition = {
       };
     }
 
-    // Map error codes to friendly messages.
+    // Three-tier error message resolution: ERROR_MAP → backend message → generic.
     const errorBody = result.body as
-      | { error?: { code?: string } }
+      | { error?: { code?: string; message?: string } }
       | null
       | undefined;
     const code = errorBody?.error?.code ?? "";
-
-    const friendlyMessage = ERROR_MAP[code];
-    if (!friendlyMessage) {
-      console.error(
-        `[send-signature] sendSignature failed with unmapped error code: ${
-          JSON.stringify(code)
-        } (status ${result.status})`,
-      );
-    }
+    const backendMessage = errorBody?.error?.message;
 
     return {
       ok: false,
       step: "confirm",
-      message: friendlyMessage ??
-        "Erro ao enviar contrato para assinatura. Por favor, tente novamente.",
+      message: resolveErrorMessage(code, backendMessage),
     };
   },
 };
