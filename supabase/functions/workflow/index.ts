@@ -336,6 +336,14 @@ async function loadContext(
   const ctxResult = await deps.loadContext(jwt);
 
   // Handle GOOGLE_REAUTH_REQUIRED.
+  //
+  // Known edge: only the landlord's Google OAuth token (refresh token) has
+  // expired — the Supabase JWT used to authenticate this request is still
+  // valid. Because ChatGPT's OAuth flow is tied to the Supabase credential,
+  // not the Google credential, ChatGPT cannot automatically re-trigger the
+  // Google OAuth consent screen. The user must manually disconnect and
+  // reconnect the Lease Assistant action in ChatGPT Settings → Connected
+  // apps. This is intentional behaviour, not a bug.
   if (
     ctxResult.status === 401 &&
     (ctxResult.body as { error?: { code?: string } } | null)?.error?.code ===
