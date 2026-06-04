@@ -514,14 +514,18 @@ export function buildPlaceholderListContent(
 ): string {
   const sorted = [...placeholders].sort((a, b) => a.name.localeCompare(b.name));
   const rows = sorted.map((p) => {
-    const req = p.required ? "sim" : "não";
-    const caseVal = p.case ?? "—";
-    const base = formatFormulaForDisplay(p.derived_formula);
+    const transf = p.case ?? "—";
     const def = p.default ?? "—";
-    return `| {{${p.name}}} | ${p.format} | ${req} | ${caseVal} | ${base} | ${def} |`;
+    const notes = formatFormulaForDisplay(p.derived_formula);
+    const req = p.required ? "sim" : "não";
+    return `| {{${p.name}}} | ${p.format} | ${transf} | ${def} | ${notes} | ${req} |`;
   });
+  // PLACEHOLDER_LIST_TEMPLATE already ends with "\n" so no extra separator is
+  // needed. Adding one would create a blank line that breaks parseMarkdown's
+  // consecutive-pipe detection, causing the first data row to be parsed as a
+  // separate table with its own header styling (the header bug).
   return rows.length > 0
-    ? `${PLACEHOLDER_LIST_TEMPLATE}\n${rows.join("\n")}`
+    ? `${PLACEHOLDER_LIST_TEMPLATE}${rows.join("\n")}`
     : PLACEHOLDER_LIST_TEMPLATE;
 }
 

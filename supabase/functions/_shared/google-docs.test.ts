@@ -82,6 +82,68 @@ Deno.test("unit: buildPlaceholderListContent — provided optional fields are in
   assertStringIncludes(md, "end_date(data_inicio, duracao_meses)");
 });
 
+Deno.test("unit: buildPlaceholderListContent — column order is Nome|Formato|Transformação|Padrão|Notas|Obrigatório", () => {
+  const md = buildPlaceholderListContent([{
+    name: "data_fim",
+    required: true,
+    format: "date",
+    case: "minúsculas",
+    default: "hoje",
+    derived_formula: "data_inicio + prazo_meses",
+  }]);
+  // Find the data row and verify column order
+  const dataRow = md.split("\n").find((l) => l.includes("{{data_fim}}"))!;
+  const cols = dataRow.split("|").map((c) => c.trim()).filter(Boolean);
+  // Expected: {{data_fim}} | date | minúsculas | hoje | data_inicio + prazo_meses | sim
+  assertEquals(cols[0], "{{data_fim}}");
+  assertEquals(cols[1], "date");
+  assertEquals(cols[2], "minúsculas");
+  assertEquals(cols[3], "hoje");
+  assertEquals(cols[4], "data_inicio + prazo_meses");
+  assertEquals(cols[5], "sim");
+});
+
+Deno.test("unit: buildPlaceholderListContent — derived_formula shown in Notas; em-dash when absent", () => {
+  const md = buildPlaceholderListContent([
+    {
+      name: "aluguel",
+      required: true,
+      format: "currency",
+      derived_formula: null,
+    },
+    {
+      name: "data_fim",
+      required: false,
+      format: "date",
+      derived_formula: "data_inicio + prazo_meses",
+    },
+  ]);
+  // aluguel row: Notas should be —
+  const aluguelRow = md.split("\n").find((l) => l.includes("{{aluguel}}"))!;
+  assertStringIncludes(aluguelRow, "—");
+  // data_fim row: Notas should show the formula
+  const dataFimRow = md.split("\n").find((l) => l.includes("{{data_fim}}"))!;
+  assertStringIncludes(dataFimRow, "data_inicio + prazo_meses");
+});
+
+Deno.test("unit: buildPlaceholderListContent — no blank line between header and data rows (header bug fix)", () => {
+  const md = buildPlaceholderListContent([
+    { name: "aluguel", required: true, format: "currency" },
+    { name: "cpf", required: true, format: "cpf" },
+  ]);
+  const lines = md.split("\n");
+  // Find the separator row (|---...)
+  const sepIdx = lines.findIndex((l) => l.startsWith("|---"));
+  // The line immediately after the separator must be a data row, not blank
+  assertEquals(sepIdx >= 0, true, "separator row must exist");
+  const lineAfterSep = lines[sepIdx + 1];
+  assertEquals(
+    lineAfterSep.startsWith("|"),
+    true,
+    "line after separator must be a data row, not blank",
+  );
+});
+
 // ═══════════════════════════════════════════════════════════════════════════
 // formatFormulaForDisplay — pure unit tests
 // ═══════════════════════════════════════════════════════════════════════════
