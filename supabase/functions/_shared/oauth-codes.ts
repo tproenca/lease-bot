@@ -12,7 +12,7 @@
 //   - Tokens stored here are Supabase JWTs, never Google tokens.
 //   - All DB operations use the service-role client (service-role bypasses RLS).
 //
-// See migration 007_oauth_codes.sql and issue #89.
+// See migration 20260525033453_oauth_codes.sql and issue #89.
 
 import { serviceClient } from "./supabase.ts";
 

@@ -1,12 +1,10 @@
 -- Core schema: landlords, buildings, properties, tenants, templates,
 -- placeholders, property_type_templates, witnesses
 
-create extension if not exists "uuid-ossp";
-
 -- ── landlords ──────────────────────────────────────────────────────────────
 
 create table landlords (
-  id                         uuid primary key default uuid_generate_v4(),
+  id                         uuid primary key default gen_random_uuid(),
   email                      text unique not null,
   name                       text not null,
   whatsapp                   text not null,
@@ -29,7 +27,7 @@ create policy "landlords: own row only"
 -- ── buildings ──────────────────────────────────────────────────────────────
 
 create table buildings (
-  id              uuid primary key default uuid_generate_v4(),
+  id              uuid primary key default gen_random_uuid(),
   landlord_id     uuid not null references landlords on delete cascade,
   name            text not null,
   address         text not null,
@@ -47,7 +45,7 @@ create policy "buildings: own rows only"
 -- ── properties ─────────────────────────────────────────────────────────────
 
 create table properties (
-  id                       uuid primary key default uuid_generate_v4(),
+  id                       uuid primary key default gen_random_uuid(),
   landlord_id              uuid not null references landlords on delete cascade,
   type                     text not null check (type in ('apartment', 'house', 'commercial')),
   building_id              uuid references buildings on delete set null,
@@ -68,7 +66,7 @@ create policy "properties: own rows only"
 -- ── tenants ────────────────────────────────────────────────────────────────
 
 create table tenants (
-  id              uuid primary key default uuid_generate_v4(),
+  id              uuid primary key default gen_random_uuid(),
   landlord_id     uuid not null references landlords on delete cascade,
   property_id     uuid not null references properties on delete cascade,
   name            text not null,
@@ -88,7 +86,7 @@ create policy "tenants: own rows only"
 -- ── templates ──────────────────────────────────────────────────────────────
 
 create table templates (
-  id                     uuid primary key default uuid_generate_v4(),
+  id                     uuid primary key default gen_random_uuid(),
   landlord_id            uuid not null references landlords on delete cascade,
   drive_file_id          text not null,
   name                   text not null,
@@ -107,7 +105,7 @@ create policy "templates: own rows only"
 -- ── placeholders ───────────────────────────────────────────────────────────
 
 create table placeholders (
-  id              uuid primary key default uuid_generate_v4(),
+  id              uuid primary key default gen_random_uuid(),
   landlord_id     uuid not null references landlords on delete cascade,
   name            text not null,
   required        boolean not null default true,
@@ -145,7 +143,7 @@ create policy "property_type_templates: own rows only"
 -- ── witnesses ──────────────────────────────────────────────────────────────
 
 create table witnesses (
-  id          uuid primary key default uuid_generate_v4(),
+  id          uuid primary key default gen_random_uuid(),
   landlord_id uuid not null references landlords on delete cascade,
   name        text not null,
   whatsapp    text not null,

@@ -1,7 +1,7 @@
 -- Signature requests and cron error tracking
 
 create table signature_requests (
-  id                     uuid primary key default uuid_generate_v4(),
+  id                     uuid primary key default gen_random_uuid(),
   landlord_id            uuid not null references landlords on delete cascade,
   tenant_id              uuid not null references tenants on delete cascade,
   autentique_document_id text not null unique,
@@ -19,7 +19,7 @@ create policy "signature_requests: own rows only"
   using (landlord_id = auth.uid());
 
 create table cron_errors (
-  id          uuid primary key default uuid_generate_v4(),
+  id          uuid primary key default gen_random_uuid(),
   job_name    text not null,
   error       text not null,
   occurred_at timestamptz not null default now()
