@@ -38,6 +38,38 @@ supabase functions deploy --project-ref <project-ref>
 
 Production API base URL: `https://<project-ref>.supabase.co/functions/v1`
 
+### Seed pg_cron config (`app_config` table)
+
+The payment-reminder cron job (`payment_reminder_daily`, daily at 12:00 UTC) runs
+`send_payment_reminders()` inside Postgres, which triggers the `/payments/remind` Edge
+Function via `pg_net`. To do that it reads two values from the `app_config` table:
+
+- `service_role_key` — the cron has no user session, so it authenticates to the
+  protected endpoint with the service-role key (and uses it to bypass RLS across all
+  landlords)
+- `functions_base_url` — `pg_net` needs an absolute URL to POST to; Postgres has no
+  built-in knowledge of the project's public function URL
+
+`supabase db push` **creates** `app_config` but seeds it with **local-dev placeholders**
+(the demo JWT and the internal `http://kong:8000/functions/v1` URL). The seed uses
+`on conflict (key) do nothing`, so migrations will **never** overwrite them — you must set
+the production values **once, by hand**, after the first deploy. If you skip this, every
+cron run fails (invalid key / unreachable URL) and writes a daily `cron_errors` row.
+
+These are **not** Edge Function secrets — the cron function reads them from the DB table,
+not from `supabase secrets`. Run this once in the production SQL editor (Supabase
+dashboard), after the first deploy has applied migrations:
+
+```sql
+insert into app_config (key, value) values
+  ('service_role_key',   '<prod service-role key>'),
+  ('functions_base_url', 'https://<project-ref>.supabase.co/functions/v1')
+on conflict (key) do update set value = excluded.value;
+```
+
+The production service-role key is at **Project Settings → API → `service_role` secret**.
+Verify success by confirming no new `cron_errors` rows appear after the next scheduled run.
+
 ---
 
 ## 2. Google Cloud Console — production settings
