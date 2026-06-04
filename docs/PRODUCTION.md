@@ -14,7 +14,8 @@ additional steps and differences when deploying to production.
 ### Push the database schema
 
 ```sh
-supabase db push --project-ref <project-ref>
+supabase link --project-ref <project-ref>
+supabase db push --linked
 ```
 
 ### Set Edge Function secrets
@@ -137,7 +138,7 @@ Add these in **Settings → Secrets and variables → Actions** of your reposito
 
 ### What the workflow does
 
-1. Runs `supabase db push --project-ref <ref>` — applies any pending database migrations.
+1. Links the project (`supabase link --project-ref <ref>`), then runs `supabase db push --linked` — applies any pending database migrations.
 2. Runs `supabase functions deploy --project-ref <ref>` — deploys all Edge Functions.
 
 Migrations run first so the schema is up to date before new function code goes live.
