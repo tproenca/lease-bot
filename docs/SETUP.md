@@ -170,14 +170,18 @@ Custom GPT action. The policy is served as a static file from Supabase Storage.
 
 ### Upload the document
 
-After `supabase start` (local) or on production:
+**Production uploads are automated.** The deploy workflow (`.github/workflows/deploy.yml`)
+uploads `docs/privacy-policy.html` to the `legal` storage bucket automatically on every
+deploy, after the database migrations run (which create the bucket).
+
+For **local development** or as a manual fallback:
 
 ```sh
 # Local
-supabase storage cp docs/privacy-policy.html ss://legal/privacy-policy.html
+supabase storage cp docs/privacy-policy.html ss:///legal/privacy-policy.html --local
 
-# Production
-supabase storage cp docs/privacy-policy.html ss://legal/privacy-policy.html \
+# Production (manual fallback — normally handled by the deploy workflow)
+supabase storage cp docs/privacy-policy.html ss:///legal/privacy-policy.html \
   --project-ref <project-ref>
 ```
 
@@ -191,7 +195,9 @@ See `gpt/GPT_CONFIG.md` for the full action configuration.
 
 ### Updating the document
 
-Re-run the `supabase storage cp` command above — the URL stays the same.
+Push a commit with the updated `docs/privacy-policy.html` — the deploy workflow will
+upload the new version automatically. To update manually, re-run the
+`supabase storage cp` command above — the URL stays the same.
 
 ---
 
