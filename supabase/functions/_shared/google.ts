@@ -463,6 +463,7 @@ export async function upsertPlaceholderList(params: {
     case?: string | null;
     default?: string | null;
     derived_formula?: string | null;
+    options?: string[] | null;
   }>;
 }): Promise<string> {
   const { accessToken, templatesFolderId, placeholders } = params;
@@ -510,22 +511,21 @@ export function buildPlaceholderListContent(
     case?: string | null;
     default?: string | null;
     derived_formula?: string | null;
+    options?: string[] | null;
   }>,
 ): string {
   const sorted = [...placeholders].sort((a, b) => a.name.localeCompare(b.name));
-  const rows = sorted.map((p) => {
-    const transf = p.case ?? "—";
-    const def = p.default ?? "—";
-    const notes = formatFormulaForDisplay(p.derived_formula);
-    const req = p.required ? "sim" : "não";
-    return `| {{${p.name}}} | ${p.format} | ${transf} | ${def} | ${notes} | ${req} |`;
+  const entries = sorted.map((p) => {
+    const attrs: string[] = [p.format];
+    if (p.case) attrs.push(`Transformação: ${p.case}`);
+    if (p.default) attrs.push(`Padrão: ${p.default}`);
+    if (p.derived_formula) attrs.push(`Derivado: ${p.derived_formula}`);
+    if (p.options?.length) attrs.push(`Opções: ${p.options.join(", ")}`);
+    if (p.required) attrs.push("Obrigatório");
+    return `### {{${p.name}}}\n${attrs.join(" · ")}`;
   });
-  // PLACEHOLDER_LIST_TEMPLATE already ends with "\n" so no extra separator is
-  // needed. Adding one would create a blank line that breaks parseMarkdown's
-  // consecutive-pipe detection, causing the first data row to be parsed as a
-  // separate table with its own header styling (the header bug).
-  return rows.length > 0
-    ? `${PLACEHOLDER_LIST_TEMPLATE}${rows.join("\n")}`
+  return entries.length > 0
+    ? `${PLACEHOLDER_LIST_TEMPLATE}${entries.join("\n\n")}\n`
     : PLACEHOLDER_LIST_TEMPLATE;
 }
 
