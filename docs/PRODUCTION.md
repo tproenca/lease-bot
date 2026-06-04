@@ -101,9 +101,16 @@ sandbox recipients. For production:
 
 ## 5. Privacy policy — upload to production bucket
 
+**This step is automated by the deploy workflow.** Every deploy run uploads
+`docs/privacy-policy.html` to the `legal` storage bucket automatically, after the
+database migrations run (which create the bucket). No manual action is needed on a
+normal deploy.
+
+Manual fallback (e.g. to upload without triggering a full deploy):
+
 ```sh
 supabase storage cp docs/privacy-policy.html ss:///legal/privacy-policy.html \
-  --project-ref <project-ref> --experimental --content-type "text/html"
+  --project-ref <project-ref>
 ```
 
 The public URL is:
@@ -139,7 +146,8 @@ Add these in **Settings → Secrets and variables → Actions** of your reposito
 ### What the workflow does
 
 1. Links the project (`supabase link --project-ref <ref>`), then runs `supabase db push --linked` — applies any pending database migrations.
-2. Runs `supabase functions deploy --project-ref <ref>` — deploys all Edge Functions.
+2. Uploads `docs/privacy-policy.html` to the `legal` storage bucket (`ss:///legal/privacy-policy.html`) — runs after DB push so the bucket created by migration `20260519230145_legal_storage_bucket.sql` already exists. The upload is idempotent; re-running overwrites the object.
+3. Runs `supabase functions deploy --project-ref <ref>` — deploys all Edge Functions.
 
 Migrations run first so the schema is up to date before new function code goes live.
 
