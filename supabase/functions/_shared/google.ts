@@ -462,7 +462,6 @@ export async function upsertPlaceholderList(params: {
     format: string;
     case?: string | null;
     default?: string | null;
-    derived_from?: string | null;
     derived_formula?: string | null;
   }>;
 }): Promise<string> {
@@ -482,6 +481,26 @@ export async function upsertPlaceholderList(params: {
   return docId;
 }
 
+/**
+ * Parse a derived_formula expression into a human-readable display string
+ * for the "Campo base" column of the Lista de Placeholders doc (ADR-0017).
+ *
+ * Rendering rules:
+ *   - null                → "Perguntado"
+ *   - bare token          → the token itself (context path or sibling name)
+ *   - fn(arg1, arg2, …)  → "fn(arg1, arg2, …)" (friendly passthrough)
+ */
+export function formatFormulaForDisplay(
+  formula: string | null | undefined,
+): string {
+  if (formula === null || formula === undefined) return "Perguntado";
+  const trimmed = formula.trim();
+  if (trimmed === "") return "Perguntado";
+  // Both bare tokens and function calls are displayed as-is — they are already
+  // human-readable since the grammar is a closed, menu-constructed set.
+  return trimmed;
+}
+
 /** Build the markdown content for the Lista de Placeholders document. */
 export function buildPlaceholderListContent(
   placeholders: Array<{
@@ -490,14 +509,14 @@ export function buildPlaceholderListContent(
     format: string;
     case?: string | null;
     default?: string | null;
-    derived_from?: string | null;
+    derived_formula?: string | null;
   }>,
 ): string {
   const sorted = [...placeholders].sort((a, b) => a.name.localeCompare(b.name));
   const rows = sorted.map((p) => {
     const req = p.required ? "sim" : "não";
     const caseVal = p.case ?? "—";
-    const base = p.derived_from ?? "—";
+    const base = formatFormulaForDisplay(p.derived_formula);
     const def = p.default ?? "—";
     return `| {{${p.name}}} | ${p.format} | ${req} | ${caseVal} | ${base} | ${def} |`;
   });

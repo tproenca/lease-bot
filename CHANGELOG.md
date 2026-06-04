@@ -3,6 +3,9 @@
 ## Unreleased
 
 ### Changed
+- `placeholders.derived_from` column dropped via migration `20260604213556_drop-derived-from.sql` (ADR-0017). Backfill: rows where `derived_from` was set and `derived_formula` was null have `derived_formula` populated with the bare-token identity value before the column is dropped. `POST /placeholders` now rejects payloads containing `derived_from` with `400 LEGACY_FIELD`. `derived_formula` is validated at write time against the closed grammar: bare context paths (e.g. `tenant.cpf`), sibling placeholder names, and function calls from the registry (`identity`, `cpf_format`, `amount_in_words`, `full_date_text`, `end_date`); invalid expressions return `400 INVALID_FORMULA`. `buildPlaceholderListContent` in `google.ts` now derives the "Campo base" display column from `derived_formula` via `formatFormulaForDisplay` (null → "Perguntado"; bare tokens and function calls rendered as-is). `specs/openapi.yaml` already documents `derived_from` as removed. (issue 197)
+
+### Changed
 - `POST /workflow/next`: cleaned up `WorkflowRequest`/`WorkflowResponse` contracts. Request: `collected` → `values`, `stage` removed. Response: `assistant_message` → `message`, `collected` → `values`, `stage`/`status` removed, `step` added (inferred from values present). `_machine_stage` and `_properties` no longer stored in values. Both `gpt/openapi.yaml` and `specs/openapi.yaml` updated. `gpt/SYSTEM_PROMPT.md` Flow 7 and `docs/GPT-FLOWS.md` updated to match. (issue 144)
 
 ### Fixed

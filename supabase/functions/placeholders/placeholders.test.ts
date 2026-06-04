@@ -382,7 +382,7 @@ Deno.test("unit: POST /placeholders — 201 accepts wrapped placeholders array",
 
 // ─── 201 — with optional fields ──────────────────────────────────────────
 
-Deno.test("unit: POST /placeholders — 201 accepts optional fields", async () => {
+Deno.test("unit: POST /placeholders — 201 accepts optional fields including derived_formula", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = buildMockFetch({}) as typeof fetch;
   try {
@@ -392,8 +392,122 @@ Deno.test("unit: POST /placeholders — 201 accepts optional fields", async () =
           ...VALID_BODY,
           case: "maiúsculas",
           default: "valor padrão",
+          derived_formula: "tenant.name",
+        },
+        "valid.jwt",
+      ),
+    );
+    assertEquals(res.status, 201);
+    const body = await jsonBody(res) as Record<string, unknown>;
+    assertEquals(Array.isArray(body.ids), true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// ─── 400 — derived_from rejected ─────────────────────────────────────────
+
+Deno.test("unit: POST /placeholders — 400 when derived_from is provided", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({}) as typeof fetch;
+  try {
+    const res = await handlePlaceholders(
+      makePostRequest(
+        {
+          ...VALID_BODY,
           derived_from: "outro placeholder",
-          derived_formula: "fórmula de derivação",
+        },
+        "valid.jwt",
+      ),
+    );
+    assertEquals(res.status, 400);
+    const body = await jsonBody(res) as Record<string, unknown>;
+    assertEquals((body.error as Record<string, string>).code, "LEGACY_FIELD");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// ─── 400 — invalid derived_formula ───────────────────────────────────────
+
+Deno.test("unit: POST /placeholders — 400 when derived_formula has unknown function", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({}) as typeof fetch;
+  try {
+    const res = await handlePlaceholders(
+      makePostRequest(
+        {
+          ...VALID_BODY,
+          derived_formula: "unknown_fn(tenant.cpf)",
+        },
+        "valid.jwt",
+      ),
+    );
+    assertEquals(res.status, 400);
+    const body = await jsonBody(res) as Record<string, unknown>;
+    assertEquals(
+      (body.error as Record<string, string>).code,
+      "INVALID_FORMULA",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("unit: POST /placeholders — 400 when derived_formula has invalid namespace", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({}) as typeof fetch;
+  try {
+    const res = await handlePlaceholders(
+      makePostRequest(
+        {
+          ...VALID_BODY,
+          derived_formula: "unknown_ns.field",
+        },
+        "valid.jwt",
+      ),
+    );
+    assertEquals(res.status, 400);
+    const body = await jsonBody(res) as Record<string, unknown>;
+    assertEquals(
+      (body.error as Record<string, string>).code,
+      "INVALID_FORMULA",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("unit: POST /placeholders — 201 with valid derived_formula function call", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({}) as typeof fetch;
+  try {
+    const res = await handlePlaceholders(
+      makePostRequest(
+        {
+          ...VALID_BODY,
+          derived_formula: "cpf_format(tenant.cpf)",
+        },
+        "valid.jwt",
+      ),
+    );
+    assertEquals(res.status, 201);
+    const body = await jsonBody(res) as Record<string, unknown>;
+    assertEquals(Array.isArray(body.ids), true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("unit: POST /placeholders — 201 with valid context path formula", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = buildMockFetch({}) as typeof fetch;
+  try {
+    const res = await handlePlaceholders(
+      makePostRequest(
+        {
+          ...VALID_BODY,
+          derived_formula: "tenant.name",
         },
         "valid.jwt",
       ),
