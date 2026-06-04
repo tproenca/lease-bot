@@ -137,8 +137,10 @@ Add these in **Settings → Secrets and variables → Actions** of your reposito
 
 ### What the workflow does
 
-1. Runs `supabase functions deploy --project-ref <ref>` — deploys all Edge Functions.
-2. Runs `supabase db push --project-ref <ref>` — applies any pending database migrations.
+1. Runs `supabase db push --project-ref <ref>` — applies any pending database migrations.
+2. Runs `supabase functions deploy --project-ref <ref>` — deploys all Edge Functions.
+
+Migrations run first so the schema is up to date before new function code goes live.
 
 ---
 
