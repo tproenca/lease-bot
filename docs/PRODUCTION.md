@@ -114,7 +114,35 @@ Set this URL in the Custom GPT → **Actions → Authentication → Privacy Poli
 
 ---
 
-## 6. Custom GPT — switch to production
+## 6. CI/CD — automated deploy workflow
+
+Deployments to production are automated via `.github/workflows/deploy.yml`.
+
+### Triggers
+
+- **Automatic** — runs when the `CI` workflow completes successfully on `main`. The job
+  is guarded by `github.event.workflow_run.conclusion == 'success'`, so a failed CI run
+  never triggers a deploy.
+- **Manual** — can be triggered at any time from **Actions → Deploy → Run workflow** in
+  the GitHub UI (useful for hotfixes or re-deploys without a new commit).
+
+### Required GitHub secrets
+
+Add these in **Settings → Secrets and variables → Actions** of your repository:
+
+| Secret | Value |
+|---|---|
+| `SUPABASE_PROJECT_REF` | Your Supabase project ref (e.g. `abcdefghijklmnop`) |
+| `SUPABASE_ACCESS_TOKEN` | A Supabase personal access token (generate at supabase.com/dashboard/account/tokens) |
+
+### What the workflow does
+
+1. Runs `supabase functions deploy --project-ref <ref>` — deploys all Edge Functions.
+2. Runs `supabase db push --project-ref <ref>` — applies any pending database migrations.
+
+---
+
+## 7. Custom GPT — switch to production
 
 1. In the Custom GPT → **Actions**, update the server URL to:
    `https://<project-ref>.supabase.co/functions/v1`
