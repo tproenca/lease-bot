@@ -33,8 +33,6 @@ jobs:
         run: supabase db push --linked
 
       - name: Upload legal documents
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: supabase storage cp docs/privacy-policy.html ss:///legal/privacy-policy.html --linked
 
       - name: Deploy Edge Functions
