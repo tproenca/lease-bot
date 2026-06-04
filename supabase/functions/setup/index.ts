@@ -1,27 +1,24 @@
 // Setup function — serves the onboarding HTML page and routes /setup/complete.
 //
 // This Edge Function is mounted at /functions/v1/setup. Two routes:
-//   GET  /functions/v1/setup            → HTML (3 states)
+//   GET  /functions/v1/setup            → HTML (2 states)
 //   POST /functions/v1/setup/complete   → JSON, delegated to ./complete/index.ts
 //
-// The three onboarding states are:
-//   1. Pre-auth (no session cookie): "Entrar com Google" button + CSRF state.
-//   2. Post-auth (session, no landlord row): Drive Picker + form.
-//   3. Post-setup (landlord row exists): success page with GPT link.
+// The two onboarding states are:
+//   1. Post-auth (session, no landlord row): Drive Picker + form.
+//   2. Post-setup (landlord row exists): success page with GPT link.
+//
+// The pre-auth state (no session cookie / "Entrar com Google" button) has been
+// removed. OAuth is always initiated through the ChatGPT OAuth window (?via=oauth).
 
 import { corsHeaders } from "../_shared/cors.ts";
 import { errorResponse } from "../_shared/errors.ts";
 import { publicFunctionsBaseUrl } from "../_shared/env.ts";
-import { buildGoogleAuthUrl, googleRedirectUri } from "../_shared/google.ts";
 import { getAuthenticatedUser, serviceClient } from "../_shared/supabase.ts";
 import {
   clearCookie,
-  COOKIE_OAUTH_STATE,
   COOKIE_SESSION,
-  isHttpsRequest,
-  OAUTH_STATE_TTL_SECONDS,
   parseCookies,
-  serializeCookie,
 } from "../_shared/cookies.ts";
 import { handleSetupComplete } from "./complete/index.ts";
 
@@ -53,15 +50,16 @@ async function handleSetupPage(req: Request): Promise<Response> {
   const cookies = parseCookies(req.headers.get("cookie"));
   const sessionJwt = cookies[COOKIE_SESSION];
 
-  // Pre-auth: render "Entrar com Google" and set a fresh CSRF state nonce.
+  // No session cookie: return 401. The OAuth flow is always initiated from the
+  // ChatGPT OAuth window — there is no standalone "Entrar com Google" page.
   if (!sessionJwt) {
-    return renderPreAuthPage(req);
+    return errorResponse(401, "UNAUTHORIZED", "Sessão não encontrada.");
   }
 
-  // Validate session JWT. If invalid, drop the cookie and render pre-auth.
+  // Validate session JWT. If invalid, drop the cookie and return 401.
   const user = await getAuthenticatedUser(sessionJwt);
   if (!user) {
-    const res = await renderPreAuthPage(req);
+    const res = errorResponse(401, "UNAUTHORIZED", "Sessão inválida.");
     res.headers.append("Set-Cookie", clearCookie(COOKIE_SESSION));
     return res;
   }
@@ -83,11 +81,8 @@ async function handleSetupPage(req: Request): Promise<Response> {
     return htmlResponse(renderPostSetupHtml(guiaDocId));
   }
 
-  // Detect integrated OAuth flow: ?via=oauth means the page is open inside
-  // the ChatGPT OAuth window. The JS form handler will redirect to ChatGPT
-  // when /setup/complete returns a redirect_to URL.
-  const viaOAuth = new URL(req.url).searchParams.get("via") === "oauth";
-
+  // OAuth is always integrated (?via=oauth is now always assumed). The JS form
+  // handler will redirect to ChatGPT when /setup/complete returns a redirect_to URL.
   return htmlResponse(
     renderPostAuthHtml({
       email: user.email,
@@ -95,44 +90,11 @@ async function handleSetupPage(req: Request): Promise<Response> {
       // webhook configuration. Includes the landlord_id path segment so
       // the webhook handler can find their per-landlord Endpoint Secret.
       webhookUrl: `${publicFunctionsBaseUrl()}/webhooks/autentique/${user.id}`,
-      viaOAuth,
     }),
   );
 }
 
 // ─── HTML rendering ────────────────────────────────────────────────────────
-
-function renderPreAuthPage(req: Request): Response {
-  const baseUrl = publicFunctionsBaseUrl();
-  const redirectUri = googleRedirectUri(baseUrl);
-
-  // Reuse the existing state nonce if the cookie is still present (i.e. the
-  // Max-Age has not expired on the client side). This prevents a second tab
-  // from invalidating the first tab's in-flight OAuth round-trip.
-  // We cannot verify the TTL server-side (we don't know when it was set), so
-  // we trust that the browser will have discarded an expired cookie already.
-  const cookies = parseCookies(req.headers.get("cookie"));
-  const existingState = cookies[COOKIE_OAUTH_STATE];
-  const state = existingState || crypto.randomUUID();
-
-  const authUrl = buildGoogleAuthUrl({ redirectUri, state });
-
-  const headers = new Headers({ "Content-Type": "text/html; charset=utf-8" });
-  // Only emit a Set-Cookie when we generated a fresh nonce; avoid resetting
-  // the Max-Age clock on reloads where the old nonce is still valid.
-  if (!existingState) {
-    headers.append(
-      "Set-Cookie",
-      serializeCookie(COOKIE_OAUTH_STATE, state, {
-        maxAge: OAUTH_STATE_TTL_SECONDS,
-        httpOnly: true,
-        secure: isHttpsRequest(req),
-        sameSite: "Lax",
-      }),
-    );
-  }
-  return new Response(renderPreAuthHtml(authUrl), { headers });
-}
 
 function htmlResponse(html: string): Response {
   return new Response(html, {
@@ -182,29 +144,8 @@ const BASE_STYLES = `
   .btn-spinner.visible { display: inline-block; }
 `;
 
-function renderPreAuthHtml(authUrl: string): string {
-  return `<!doctype html>
-<html lang="pt-BR">
-<head>
-<meta charset="utf-8" />
-<title>Configuração inicial — Lease Assistant</title>
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<style>${BASE_STYLES}</style>
-</head>
-<body>
-  <h1>Bem-vindo ao Lease Assistant</h1>
-  <p>Para começar, entre com sua conta Google. Vamos usá-la para acessar seus modelos
-     de contrato no Google Drive e para identificar você no GPT.</p>
-  <p><a class="btn" href="${escapeHtml(authUrl)}">Entrar com Google</a></p>
-  <hr />
-  <p class="helper">Você precisará autorizar o acesso ao seu Google Drive para que o
-     assistente possa gerar contratos a partir dos seus modelos.</p>
-</body>
-</html>`;
-}
-
 function renderPostAuthHtml(
-  params: { email: string; webhookUrl: string; viaOAuth?: boolean },
+  params: { email: string; webhookUrl: string },
 ): string {
   // The Google Drive Picker needs the developer API key + OAuth client ID.
   // We surface them as data attributes for the inline script to pick up. If
@@ -288,7 +229,6 @@ function renderPostAuthHtml(
 
   <script>
     (function() {
-      var viaOAuth = ${params.viaOAuth ? "true" : "false"};
       var form = document.getElementById('setupForm');
       var errorEl = document.getElementById('formError');
       var submitBtn = document.getElementById('submitBtn');
@@ -404,7 +344,7 @@ function renderPostAuthHtml(
             return;
           }
           // Keep spinner visible — page will navigate away on success.
-          if (viaOAuth && json.redirect_to) {
+          if (json.redirect_to) {
             // Integrated OAuth flow: close the ChatGPT auth window by
             // navigating to the ChatGPT callback URL with the one-time code.
             window.location.href = json.redirect_to;
