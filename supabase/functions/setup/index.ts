@@ -423,16 +423,9 @@ function renderPostAuthHtml(
 </html>`;
 }
 
-function renderPostSetupHtml(guiaDocId?: string): string {
-  const guiaUrl = guiaDocId
-    ? `https://docs.google.com/document/d/${escapeHtml(guiaDocId)}/edit`
-    : null;
-  const guiaLink = guiaUrl
-    ? `<br/><a href="${guiaUrl}" target="_blank" rel="noopener">Abrir Guia de Placeholders</a>`
-    : "";
+function renderPostSetupHtml(_guiaDocId?: string): string {
   const guiaSection =
-    `<p>Um modelo de contrato e o <strong>Guia de Placeholders</strong> foram criados
-       na sua pasta de modelos no Google Drive.${guiaLink}</p>`;
+    `<p>Um modelo de contrato e um guia de placeholders foram criados na sua pasta de modelos no Google Drive.</p>`;
 
   return `<!doctype html>
 <html lang="pt-BR">
