@@ -27,6 +27,80 @@ const corsHeaders: Record<string, string> = {
 
 const VALID_FORMATS = new Set(["text", "date", "cpf", "integer", "currency"]);
 
+// Closed registry of allowed formula functions (ADR-0017).
+const VALID_FORMULA_FUNCTIONS = new Set([
+  "identity",
+  "cpf_format",
+  "amount_in_words",
+  "full_date_text",
+  "end_date",
+]);
+
+// Known context namespaces for bare-token path disambiguation.
+const CONTEXT_NAMESPACES = new Set([
+  "tenant",
+  "property",
+  "landlord",
+  "building",
+]);
+
+/**
+ * Validate a derived_formula expression against the closed grammar (ADR-0017).
+ *
+ * Valid forms:
+ *   - null                      → asked
+ *   - bare token (no parens)    → identity copy of a context path or sibling
+ *   - fn(arg1, arg2, …)         → registry function call
+ *
+ * Returns null on success, or an error message string on failure.
+ */
+function validateDerivedFormula(formula: string): string | null {
+  const trimmed = formula.trim();
+
+  // Function call: fn(args)
+  const fnMatch = trimmed.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\((.+)\)$/);
+  if (fnMatch) {
+    const fnName = fnMatch[1];
+    if (!VALID_FORMULA_FUNCTIONS.has(fnName)) {
+      return `Função desconhecida em derived_formula: '${fnName}'. Funções permitidas: ${
+        [...VALID_FORMULA_FUNCTIONS].join(", ")
+      }.`;
+    }
+    // Validate each argument is a valid token (context path or identifier).
+    const args = fnMatch[2].split(",").map((a) => a.trim());
+    for (const arg of args) {
+      if (!/^[a-zA-Z_][a-zA-Z0-9_.]*$/.test(arg)) {
+        return `Argumento inválido em derived_formula: '${arg}'. Use caminhos de contexto (ex: tenant.cpf) ou nomes de placeholder.`;
+      }
+      // Dotted args must have a known namespace prefix.
+      if (arg.includes(".")) {
+        const ns = arg.split(".")[0];
+        if (!CONTEXT_NAMESPACES.has(ns)) {
+          return `Namespace de contexto inválido em derived_formula: '${ns}'. Use: ${
+            [...CONTEXT_NAMESPACES].join(", ")
+          }.`;
+        }
+      }
+    }
+    return null;
+  }
+
+  // Bare token: context path or sibling placeholder name.
+  if (/^[a-zA-Z_][a-zA-Z0-9_.]*$/.test(trimmed)) {
+    if (trimmed.includes(".")) {
+      const ns = trimmed.split(".")[0];
+      if (!CONTEXT_NAMESPACES.has(ns)) {
+        return `Namespace de contexto inválido em derived_formula: '${ns}'. Use: ${
+          [...CONTEXT_NAMESPACES].join(", ")
+        }.`;
+      }
+    }
+    return null;
+  }
+
+  return `derived_formula inválida: '${formula}'. Use null, um campo de contexto (ex: tenant.cpf), um nome de placeholder, ou uma chamada de função (ex: cpf_format(tenant.cpf)).`;
+}
+
 export async function handlePlaceholders(req: Request): Promise<Response> {
   // Handle CORS preflight.
   if (req.method === "OPTIONS") {
@@ -101,7 +175,6 @@ async function handleCreatePlaceholder(req: Request): Promise<Response> {
     format: string;
     case: string | null;
     default: string | null;
-    derived_from: string | null;
     derived_formula: string | null;
     options: string[] | null;
   }> = [];
@@ -118,6 +191,15 @@ async function handleCreatePlaceholder(req: Request): Promise<Response> {
       options,
     } = (item ?? {}) as Record<string, unknown>;
 
+    // Reject the legacy field — callers must migrate to derived_formula (ADR-0017).
+    if (derived_from !== undefined && derived_from !== null) {
+      return errorResponse(
+        400,
+        "LEGACY_FIELD",
+        "O campo 'derived_from' foi removido. Use 'derived_formula' com a gramática fechada (ex: tenant.cpf ou cpf_format(tenant.cpf)).",
+      );
+    }
+
     if (typeof name !== "string" || name.trim() === "") {
       return errorResponse(
         400,
@@ -133,6 +215,15 @@ async function handleCreatePlaceholder(req: Request): Promise<Response> {
           String(format)
         }'. Use text, date, cpf, integer ou currency.`,
       );
+    }
+
+    // Validate derived_formula against the closed grammar (ADR-0017).
+    const formulaValue = (derived_formula ?? null) as string | null;
+    if (formulaValue !== null) {
+      const formulaError = validateDerivedFormula(formulaValue);
+      if (formulaError !== null) {
+        return errorResponse(400, "INVALID_FORMULA", formulaError);
+      }
     }
 
     // Validate options: must be an array of strings when provided.
@@ -162,8 +253,7 @@ async function handleCreatePlaceholder(req: Request): Promise<Response> {
       format: format as string,
       case: (caseField ?? null) as string | null,
       default: (defaultField ?? null) as string | null,
-      derived_from: (derived_from ?? null) as string | null,
-      derived_formula: (derived_formula ?? null) as string | null,
+      derived_formula: formulaValue,
       options: optionsValue,
     });
   }
@@ -284,7 +374,7 @@ async function regeneratePlaceholderList(
     const { data: placeholders } = await db
       .from("placeholders")
       .select(
-        "name, required, format, case, default, derived_from, derived_formula, options",
+        "name, required, format, case, default, derived_formula, options",
       )
       .order("name");
 
@@ -298,7 +388,6 @@ async function regeneratePlaceholderList(
         format: string;
         case?: string | null;
         default?: string | null;
-        derived_from?: string | null;
         derived_formula?: string | null;
         options?: string[] | null;
       }>,

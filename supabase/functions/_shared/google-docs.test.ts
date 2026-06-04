@@ -18,6 +18,7 @@ import {
   buildPlaceholderListContent,
   createPlaceholderGuide,
   createSampleContract,
+  formatFormulaForDisplay,
   upsertPlaceholderList,
 } from "./google.ts";
 
@@ -52,17 +53,19 @@ Deno.test("unit: buildPlaceholderListContent — required=false renders 'não'",
   assertStringIncludes(md, "não");
 });
 
-Deno.test("unit: buildPlaceholderListContent — null optional fields render as em-dash", () => {
+Deno.test("unit: buildPlaceholderListContent — null optional fields render as em-dash or Perguntado", () => {
   const md = buildPlaceholderListContent([{
     name: "nome",
     required: true,
     format: "text",
     case: null,
     default: null,
-    derived_from: null,
+    derived_formula: null,
   }]);
+  // case and default render as "—"; derived_formula null renders as "Perguntado"
+  assertStringIncludes(md, "Perguntado");
   const dashes = (md.match(/—/g) ?? []).length;
-  assertEquals(dashes >= 3, true);
+  assertEquals(dashes >= 2, true);
 });
 
 Deno.test("unit: buildPlaceholderListContent — provided optional fields are included", () => {
@@ -72,11 +75,49 @@ Deno.test("unit: buildPlaceholderListContent — provided optional fields are in
     format: "date",
     case: "minúsculas",
     default: "hoje",
-    derived_from: "data_inicio",
+    derived_formula: "end_date(data_inicio, duracao_meses)",
   }]);
   assertStringIncludes(md, "minúsculas");
   assertStringIncludes(md, "hoje");
-  assertStringIncludes(md, "data_inicio");
+  assertStringIncludes(md, "end_date(data_inicio, duracao_meses)");
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// formatFormulaForDisplay — pure unit tests
+// ═══════════════════════════════════════════════════════════════════════════
+
+Deno.test("unit: formatFormulaForDisplay — null renders as 'Perguntado'", () => {
+  assertEquals(formatFormulaForDisplay(null), "Perguntado");
+});
+
+Deno.test("unit: formatFormulaForDisplay — undefined renders as 'Perguntado'", () => {
+  assertEquals(formatFormulaForDisplay(undefined), "Perguntado");
+});
+
+Deno.test("unit: formatFormulaForDisplay — empty string renders as 'Perguntado'", () => {
+  assertEquals(formatFormulaForDisplay(""), "Perguntado");
+});
+
+Deno.test("unit: formatFormulaForDisplay — bare context path renders as-is", () => {
+  assertEquals(formatFormulaForDisplay("tenant.name"), "tenant.name");
+});
+
+Deno.test("unit: formatFormulaForDisplay — bare sibling placeholder name renders as-is", () => {
+  assertEquals(formatFormulaForDisplay("data_inicio"), "data_inicio");
+});
+
+Deno.test("unit: formatFormulaForDisplay — function call renders as-is", () => {
+  assertEquals(
+    formatFormulaForDisplay("cpf_format(tenant.cpf)"),
+    "cpf_format(tenant.cpf)",
+  );
+});
+
+Deno.test("unit: formatFormulaForDisplay — multi-arg function call renders as-is", () => {
+  assertEquals(
+    formatFormulaForDisplay("end_date(data_inicio, duracao_meses)"),
+    "end_date(data_inicio, duracao_meses)",
+  );
 });
 
 Deno.test("unit: buildPlaceholderListContent — sorts placeholders alphabetically", () => {
