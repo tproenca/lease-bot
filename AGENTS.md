@@ -21,7 +21,7 @@ gpt/
   SYSTEM_PROMPT.md — GPT system prompt source of truth
   GPT_CONFIG.md    — GPT name, description, conversation starters
 specs/             — approved design documents (do not edit without updating specs)
-adr/               — Architecture Decision Records
+specs/adr/         — Architecture Decision Records
 scripts/
   check.sh         — format, lint, typecheck
   test-unit.sh     — unit tests
@@ -92,7 +92,7 @@ supabase db push --project-ref <project-ref>           # DB migrations
 - Autentique webhook authenticity is verified via HMAC-SHA256 on the `x-autentique-signature` header
 - pg_cron triggers payment reminders; failures are logged to `cron_errors` and surfaced in `GET /context`
 
-See `specs/ARCHITECTURE.md` for the full system diagram and `adr/` for the decisions behind these choices.
+See `specs/ARCHITECTURE.md` for the full system diagram and `specs/adr/` for the decisions behind these choices.
 
 ---
 
@@ -100,7 +100,7 @@ See `specs/ARCHITECTURE.md` for the full system diagram and `adr/` for the decis
 
 - Work only within the files and folders relevant to your assigned issue.
 - Every implementation decision must conform to the approved specs in `specs/`. If you find a conflict between the spec and what is practical, stop and escalate — do not silently deviate.
-- If you make a non-obvious architectural decision not already captured in `adr/`, create a new ADR before merging. See [When to Write an ADR](#when-to-write-an-adr).
+- If you make a non-obvious architectural decision not already captured in `specs/adr/`, create a new ADR before merging. See [When to Write an ADR](#when-to-write-an-adr).
 
 ---
 
@@ -211,13 +211,13 @@ Do not guess or work around blockers silently.
 
 ## When to Write an ADR
 
-Create a new ADR in `adr/` whenever you make a decision that:
+Create a new ADR in `specs/adr/` whenever you make a decision that:
 - Chooses one of several viable technical approaches
 - Selects or changes a third-party dependency
 - Introduces a new integration pattern
 - Deviates from a decision already documented in an existing ADR
 
-Name format: `adr/NNNN-short-title.md`. Use the next available number.
+Name format: `specs/adr/NNNN-short-title.md`. Use the next available number.
 
 Template:
 ```markdown

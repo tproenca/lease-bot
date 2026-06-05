@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Added
+- `docs/MILESTONE-GATES.md`: milestone-specific manual release-gate guide covering M2-M7, with gate rules, Pass/Fail/Blocked logging, and links back to the full manual runbook. (issue 237)
 - Deterministic derivation engine in `workflow/derivation/`: closed-grammar recursive-descent parser for `derived_formula` expressions, closed formula registry (`amount_in_words`, `full_date_text`, `end_date`), and topological resolver with sibling dependency support. `amount_in_words` produces deterministic Portuguese *por extenso* with no external dependencies. Structured errors: `UNKNOWN_FORMULA`, `UNRESOLVABLE_INPUT`, `CIRCULAR_DEPENDENCY`. ADR-0020 documents the design; `identity` and `cpf_format` excluded (see ADR-0020). (issue 198)
 - `POST /workflow/next` — flow engine: `FlowDefinition.steps` may now be a function `(values) => FlowStep[]` resolved on every turn, enabling placeholder-driven dynamic step lists. Each `FlowStep` may declare an async `load(values, deps)` hook that fires once after `validate()` succeeds; the returned record is shallow-merged into values before the next step is resolved, supporting lazy data fetching between steps. Unit tests cover dynamic step resolution, load-hook timing, and load-hook result carry-forward. (issue 199)
 
@@ -13,6 +14,7 @@
 - `placeholders.derived_from` column dropped via migration `20260604213556_drop-derived-from.sql` (ADR-0017). Backfill: rows where `derived_from` was set and `derived_formula` was null have `derived_formula` populated with the bare-token identity value before the column is dropped. `POST /placeholders` now rejects payloads containing `derived_from` with `400 LEGACY_FIELD`. `derived_formula` is validated at write time against the closed grammar: bare context paths (e.g. `tenant.cpf`), sibling placeholder names, and function calls from the registry (`amount_in_words`, `full_date_text`, `end_date`); invalid expressions return `400 INVALID_FORMULA`. `buildPlaceholderListContent` in `google.ts` now derives the "Campo base" display column from `derived_formula` via `formatFormulaForDisplay` (null → "Perguntado"; bare tokens and function calls rendered as-is). `specs/openapi.yaml` already documents `derived_from` as removed. (issue 197)
 
 ### Changed
+- Deleted `review-direction.md` — design decisions now fully captured in issues #199–#210 and ADRs 0016–0020.
 - `POST /workflow/next`: cleaned up `WorkflowRequest`/`WorkflowResponse` contracts. Request: `collected` → `values`, `stage` removed. Response: `assistant_message` → `message`, `collected` → `values`, `stage`/`status` removed, `step` added (inferred from values present). `_machine_stage` and `_properties` no longer stored in values. Both `gpt/openapi.yaml` and `specs/openapi.yaml` updated. `gpt/SYSTEM_PROMPT.md` Flow 7 and `docs/GPT-FLOWS.md` updated to match. (issue 144)
 
 ### Fixed

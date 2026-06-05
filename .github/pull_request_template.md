@@ -21,4 +21,4 @@ Fixes #
 - [ ] Approach makes sense given the overall architecture
 - [ ] No obvious logic errors or missing edge cases
 - [ ] Comfortable merging this to main
-- [ ] If a new technical decision was made, ADR created in adr/
+- [ ] If a new technical decision was made, ADR created in specs/adr/
