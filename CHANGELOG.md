@@ -4,6 +4,7 @@
 
 ### Added
 - Deterministic derivation engine in `workflow/derivation/`: closed-grammar recursive-descent parser for `derived_formula` expressions, closed formula registry (`amount_in_words`, `full_date_text`, `end_date`), and topological resolver with sibling dependency support. `amount_in_words` produces deterministic Portuguese *por extenso* with no external dependencies. Structured errors: `UNKNOWN_FORMULA`, `UNRESOLVABLE_INPUT`, `CIRCULAR_DEPENDENCY`. ADR-0020 documents the design; `identity` and `cpf_format` excluded (see ADR-0020). (issue 198)
+- `POST /workflow/next` — flow engine: `FlowDefinition.steps` may now be a function `(values) => FlowStep[]` resolved on every turn, enabling placeholder-driven dynamic step lists. Each `FlowStep` may declare an async `load(values, deps)` hook that fires once after `validate()` succeeds; the returned record is shallow-merged into values before the next step is resolved, supporting lazy data fetching between steps. Unit tests cover dynamic step resolution, load-hook timing, and load-hook result carry-forward. (issue 199)
 
 ### Fixed
 - `GET /placeholders` (Lista de Placeholders Google Doc): fixed header row being rendered as a data row due to an extra blank line in table concatenation; reordered columns to Nome | Formato | Transformação | Padrão | Notas | Obrigatório; renamed "Campo base" to "Notas" and populated it with `derived_formula` for derived placeholders (em-dash otherwise). (issue 128)

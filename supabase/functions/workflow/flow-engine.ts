@@ -8,6 +8,18 @@
 //   ask_{step.key}  — waiting for the user to supply that step's value
 //   confirm         — all steps collected; awaiting "Sim"
 //   done            — execute() succeeded
+//
+// Dynamic steps:
+//   FlowDefinition.steps may be a function (values) => FlowStep[] resolved on
+//   every engine entry point (find, next, confirm). This allows the step list to
+//   depend on previously collected values (e.g. placeholder-union-driven steps).
+//
+// Load hook:
+//   Each FlowStep may declare an optional async load(values, deps) hook that fires
+//   after validate() on the same step succeeds. The hook returns a
+//   Record<string, unknown> whose keys are merged into values before resolving the
+//   next step. Use this to lazily fetch data needed by subsequent steps without
+//   calling the full /context snapshot.
 
 import type {
   ContextPayload,
@@ -39,6 +51,23 @@ export interface FlowStep {
     values: Record<string, unknown>,
     context: ContextPayload,
   ) => { ok: true; value: unknown } | { ok: false; error: string };
+  /**
+   * Optional async hook fired after validate() succeeds for this step.
+   * The returned record is merged into values before the engine resolves the
+   * next step. Use this to lazily fetch data needed by downstream steps
+   * (e.g. load the placeholder union after a property is selected).
+   *
+   * Contract:
+   * - Fires exactly once per step, immediately after validate() returns ok.
+   * - Receives the *post-validate* values (the step's own key already set).
+   * - Must return a plain Record<string, unknown>; keys are shallow-merged into values.
+   * - Must not duplicate keys that are FlowStep keys — only carry-through/display data.
+   * - Errors thrown here propagate as engine errors and surface to the caller.
+   */
+  load?: (
+    values: Record<string, unknown>,
+    deps: WorkflowDeps,
+  ) => Promise<Record<string, unknown>>;
   optional?: boolean; // "pular"/"skip" → null
   /** When this returns true the step is skipped automatically (value stays absent in values). */
   skip?: (values: Record<string, unknown>) => boolean;
@@ -51,7 +80,19 @@ export interface FlowStep {
 export interface FlowDefinition {
   intent: string;
   confirmationTitle: string;
-  steps: FlowStep[];
+  /**
+   * The step list for this flow.
+   *
+   * - Static form (backward-compatible): `FlowStep[]` — the same steps are used on
+   *   every engine pass. All existing flows (add_tenant, add_property, send_signature,
+   *   generate_document) use this form.
+   * - Dynamic form: `(values: Record<string, unknown>) => FlowStep[]` — resolved on
+   *   every engine entry point (find, next, confirm). Enables flows whose step list
+   *   depends on previously collected values (e.g. a variable-length placeholder
+   *   collection phase). The function must be pure and fast — it is called multiple
+   *   times per turn.
+   */
+  steps: FlowStep[] | ((values: Record<string, unknown>) => FlowStep[]);
   execute: (
     values: Record<string, unknown>,
     jwt: string,
@@ -78,6 +119,31 @@ function stripInternalKeys(
       !isDisplayOnly(k) && !ENGINE_KEYS.has(k)
     ),
   );
+}
+
+/**
+ * Resolve the step list from a FlowDefinition.
+ * Handles both the static (FlowStep[]) and dynamic ((values) => FlowStep[]) forms.
+ * Called on every engine entry point so that dynamic flows can change the step set
+ * between turns as values are collected.
+ *
+ * Exported so that callers (e.g. unit tests inspecting intent definitions) can
+ * resolve the step list without type-narrowing the union themselves.
+ */
+export function resolveFlowSteps(
+  def: FlowDefinition,
+  values: Record<string, unknown> = {},
+): FlowStep[] {
+  return typeof def.steps === "function" ? def.steps(values) : def.steps;
+}
+
+// Internal alias — avoids passing an unused `values` arg at every call site inside
+// the engine where `values` is always available.
+function resolveSteps(
+  def: FlowDefinition,
+  values: Record<string, unknown>,
+): FlowStep[] {
+  return resolveFlowSteps(def, values);
 }
 
 /** Find the first step whose key is not yet present in values and is not skipped. */
@@ -151,7 +217,10 @@ export async function runFlowEngine(
   const values: Record<string, unknown> = req.values ?? {};
   const message = (req.message ?? "").trim();
 
-  const pending = findPendingStep(def.steps, values);
+  // Resolve steps dynamically on every engine entry — handles both static arrays
+  // and dynamic (values) => FlowStep[] functions.
+  const steps = resolveSteps(def, values);
+  const pending = findPendingStep(steps, values);
 
   // ── Collect phase ──────────────────────────────────────────────────────────
   if (pending) {
@@ -180,9 +249,11 @@ export async function runFlowEngine(
     if (pending.optional) {
       const lower = message.toLowerCase();
       if (lower === "pular" || lower === "skip" || lower === "pular") {
-        const updatedValues = { ...values, [pending.key]: null };
-        const nextPending = findPendingStep(def.steps, updatedValues);
-        return nextStep(def, intent, updatedValues, nextPending, context);
+        const skippedValues = { ...values, [pending.key]: null };
+        // Re-resolve steps after skip (dynamic flows may change the set).
+        const nextSteps = resolveSteps(def, skippedValues);
+        const nextPending = findPendingStep(nextSteps, skippedValues);
+        return nextStep(def, intent, skippedValues, nextPending, context);
       }
     }
 
@@ -200,16 +271,34 @@ export async function runFlowEngine(
           ...(options ? { options } : {}),
         };
       }
-      // Valid — store and advance.
-      const updatedValues = { ...values, [pending.key]: result.value };
-      const nextPending = findPendingStep(def.steps, updatedValues);
+      // Valid — store the validated value.
+      let updatedValues = { ...values, [pending.key]: result.value };
+
+      // Fire load hook if declared on this step.
+      if (pending.load) {
+        const loaded = await pending.load(updatedValues, deps);
+        updatedValues = { ...updatedValues, ...loaded };
+      }
+
+      // Re-resolve steps after the value (and any load data) is recorded.
+      const nextSteps = resolveSteps(def, updatedValues);
+      const nextPending = findPendingStep(nextSteps, updatedValues);
       return nextStep(def, intent, updatedValues, nextPending, context);
     }
 
     // No validator — store raw and advance.
-    const updatedValues = { ...values, [pending.key]: message };
-    const nextPending = findPendingStep(def.steps, updatedValues);
-    return nextStep(def, intent, updatedValues, nextPending, context);
+    let rawValues = { ...values, [pending.key]: message };
+
+    // Fire load hook even when there is no validator.
+    if (pending.load) {
+      const loaded = await pending.load(rawValues, deps);
+      rawValues = { ...rawValues, ...loaded };
+    }
+
+    // Re-resolve steps after storing the raw value and any load data.
+    const nextStepsRaw = resolveSteps(def, rawValues);
+    const nextPendingRaw = findPendingStep(nextStepsRaw, rawValues);
+    return nextStep(def, intent, rawValues, nextPendingRaw, context);
   }
 
   // ── Confirmation phase ────────────────────────────────────────────────────
@@ -291,7 +380,10 @@ function nextStep(
   }
 
   // All steps collected — show confirmation.
-  const confirmMsg = buildConfirmationMessage(def, values, def.steps);
+  // Re-resolve steps with the current values so dynamic flows produce the correct
+  // summary (includes all steps that were active when values were collected).
+  const resolvedSteps = resolveSteps(def, values);
+  const confirmMsg = buildConfirmationMessage(def, values, resolvedSteps);
   return {
     message: confirmMsg,
     intent,
