@@ -47,7 +47,9 @@ coverage/
 NOTES.md
 
 # Claude Code local state
-.claude/
+.claude/*
+!.claude/prompts/
+!.claude/prompts/*
 
 app-idea.md
 scratch.md
