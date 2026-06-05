@@ -4,6 +4,15 @@
 //   - arity: expected number of arguments
 //   - fn: the deterministic implementation
 //
+// Supported formulas: amount_in_words, full_date_text, end_date.
+//
+// CPF formatting is handled via the placeholder `format: "cpf"` field applied at
+// render time, not through a registry formula. Use `derived_formula: "tenant.cpf"`
+// (a bare context path) combined with `format: "cpf"` on the placeholder instead.
+//
+// `identity` is not registered because a bare token (`tenant.name`) already covers
+// the passthrough case — the function call form adds no value.
+//
 // Adding a new formula requires a code change and a new ADR (ADR-0016, ADR-0017).
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -194,30 +203,6 @@ export function amountInWords(amountStr: string): string {
 // ─── Registry ─────────────────────────────────────────────────────────────────
 
 export const FORMULA_REGISTRY: Map<string, FormulaSpec> = new Map([
-  [
-    "identity",
-    {
-      arity: 1,
-      fn: (value: string) => value,
-    },
-  ],
-  [
-    "cpf_format",
-    {
-      arity: 1,
-      fn: (cpf: string): string => {
-        const digits = cpf.replace(/\D/g, "");
-        if (digits.length !== 11) {
-          throw new RangeError(
-            `cpf_format: expected 11 digits, got ${digits.length} in '${cpf}'`,
-          );
-        }
-        return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${
-          digits.slice(6, 9)
-        }-${digits.slice(9, 11)}`;
-      },
-    },
-  ],
   [
     "amount_in_words",
     {

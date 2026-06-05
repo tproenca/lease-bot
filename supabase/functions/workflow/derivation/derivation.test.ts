@@ -3,7 +3,7 @@
 // Covers:
 //   - parseFormula: all grammar forms, error cases
 //   - siblingDeps: extraction from each formula kind
-//   - registry functions: identity, cpf_format, amount_in_words, full_date_text, end_date
+//   - registry functions: amount_in_words, full_date_text, end_date
 //   - amount_in_words: boundary values (zero, decimals, large numbers)
 //   - resolvePlaceholders: asked, context, derived, sibling chain, default
 //   - topoSort: linear chain, multi-sibling, circular dependency error
@@ -62,15 +62,15 @@ Deno.test("unit: parseFormula — bare sibling name returns sibling", () => {
 });
 
 Deno.test("unit: parseFormula — fn_call with one context arg", () => {
-  const result = parseFormula("cpf_format(tenant.cpf)");
+  const result = parseFormula("full_date_text(tenant.start_date)");
   assertEquals(result.kind, "fn_call");
   if (result.kind === "fn_call") {
-    assertEquals(result.fn, "cpf_format");
+    assertEquals(result.fn, "full_date_text");
     assertEquals(result.args.length, 1);
     assertEquals(result.args[0].kind, "context_path");
     if (result.args[0].kind === "context_path") {
       assertEquals(result.args[0].namespace, "tenant");
-      assertEquals(result.args[0].field, "cpf");
+      assertEquals(result.args[0].field, "start_date");
     }
   }
 });
@@ -115,7 +115,7 @@ Deno.test("unit: parseFormula — fn_call with context path + sibling args", () 
 });
 
 Deno.test("unit: parseFormula — fn_call with landlord namespace", () => {
-  const result = parseFormula("identity(landlord.name)");
+  const result = parseFormula("full_date_text(landlord.start_date)");
   assertEquals(result.kind, "fn_call");
   if (result.kind === "fn_call") {
     assertEquals(result.args[0].kind, "context_path");
@@ -126,7 +126,7 @@ Deno.test("unit: parseFormula — fn_call with landlord namespace", () => {
 });
 
 Deno.test("unit: parseFormula — fn_call with building namespace", () => {
-  const result = parseFormula("identity(building.address)");
+  const result = parseFormula("full_date_text(building.construction_date)");
   assertEquals(result.kind, "fn_call");
   if (result.kind === "fn_call") {
     assertEquals(result.args[0].kind, "context_path");
@@ -169,7 +169,7 @@ Deno.test("unit: parseFormula — trailing content after context path throws Syn
 
 Deno.test("unit: parseFormula — trailing content after fn_call throws SyntaxError", () => {
   assertThrows(
-    () => parseFormula("identity(tenant.name) extra"),
+    () => parseFormula("amount_in_words(tenant.name) extra"),
     SyntaxError,
   );
 });
@@ -213,37 +213,9 @@ Deno.test("unit: siblingDeps — fn_call with sibling args returns all sibling n
 });
 
 Deno.test("unit: siblingDeps — fn_call with context args returns empty set", () => {
-  const formula = parseFormula("cpf_format(tenant.cpf)");
+  const formula = parseFormula("full_date_text(tenant.start_date)");
   const deps = siblingDeps(formula);
   assertEquals(deps.size, 0);
-});
-
-// ─── Registry: identity ───────────────────────────────────────────────────────
-
-Deno.test("unit: registry identity — returns input unchanged", () => {
-  const spec = FORMULA_REGISTRY.get("identity")!;
-  assertEquals(spec.arity, 1);
-  assertEquals(spec.fn("hello"), "hello");
-  assertEquals(spec.fn(""), "");
-  assertEquals(spec.fn("123.456.789-09"), "123.456.789-09");
-});
-
-// ─── Registry: cpf_format ─────────────────────────────────────────────────────
-
-Deno.test("unit: registry cpf_format — formats 11 digits correctly", () => {
-  const spec = FORMULA_REGISTRY.get("cpf_format")!;
-  assertEquals(spec.arity, 1);
-  assertEquals(spec.fn("12345678909"), "123.456.789-09");
-});
-
-Deno.test("unit: registry cpf_format — strips non-digit characters before formatting", () => {
-  const spec = FORMULA_REGISTRY.get("cpf_format")!;
-  assertEquals(spec.fn("123.456.789-09"), "123.456.789-09");
-});
-
-Deno.test("unit: registry cpf_format — throws RangeError for wrong digit count", () => {
-  const spec = FORMULA_REGISTRY.get("cpf_format")!;
-  assertThrows(() => spec.fn("1234"), RangeError, "11 digits");
 });
 
 // ─── Registry: amount_in_words ────────────────────────────────────────────────
@@ -445,8 +417,8 @@ Deno.test("unit: topoSort — multi-sibling chain: a → b → c", () => {
 
 Deno.test("unit: topoSort — two independent chains resolved correctly", () => {
   const placeholders = [
-    { name: "x2", derived_formula: "identity(x1)", default: null },
-    { name: "y2", derived_formula: "identity(y1)", default: null },
+    { name: "x2", derived_formula: "amount_in_words(x1)", default: null },
+    { name: "y2", derived_formula: "amount_in_words(y1)", default: null },
     { name: "x1", derived_formula: null, default: null },
     { name: "y1", derived_formula: null, default: null },
   ];
@@ -458,8 +430,8 @@ Deno.test("unit: topoSort — two independent chains resolved correctly", () => 
 
 Deno.test("unit: topoSort — circular dependency throws CIRCULAR_DEPENDENCY error", () => {
   const placeholders = [
-    { name: "a", derived_formula: "identity(b)", default: null },
-    { name: "b", derived_formula: "identity(a)", default: null },
+    { name: "a", derived_formula: "amount_in_words(b)", default: null },
+    { name: "b", derived_formula: "amount_in_words(a)", default: null },
   ];
   assertThrows(
     () => topoSort(placeholders),
@@ -474,9 +446,9 @@ Deno.test("unit: topoSort — circular dependency throws CIRCULAR_DEPENDENCY err
 
 Deno.test("unit: topoSort — three-way cycle throws CIRCULAR_DEPENDENCY error", () => {
   const placeholders = [
-    { name: "a", derived_formula: "identity(c)", default: null },
-    { name: "b", derived_formula: "identity(a)", default: null },
-    { name: "c", derived_formula: "identity(b)", default: null },
+    { name: "a", derived_formula: "amount_in_words(c)", default: null },
+    { name: "b", derived_formula: "amount_in_words(a)", default: null },
+    { name: "c", derived_formula: "amount_in_words(b)", default: null },
   ];
   assertThrows(
     () => topoSort(placeholders),
@@ -560,17 +532,17 @@ Deno.test("unit: resolvePlaceholders — context path missing field throws UNRES
 Deno.test("unit: resolvePlaceholders — registry fn resolves with context arg", () => {
   const placeholders = [
     {
-      name: "cpf_formatado",
-      derived_formula: "cpf_format(tenant.cpf)",
+      name: "data_texto",
+      derived_formula: "full_date_text(tenant.start_date)",
       default: null,
     },
   ];
   const result = resolvePlaceholders(
     placeholders,
     {},
-    { tenant: { cpf: "12345678909" } },
+    { tenant: { start_date: "2025-03-15" } },
   );
-  assertEquals(result.get("cpf_formatado"), "123.456.789-09");
+  assertEquals(result.get("data_texto"), "15 de março de 2025");
 });
 
 Deno.test("unit: resolvePlaceholders — registry fn resolves with sibling arg", () => {
@@ -592,25 +564,31 @@ Deno.test("unit: resolvePlaceholders — registry fn resolves with sibling arg",
 
 Deno.test("unit: resolvePlaceholders — sibling dependency chain resolved in order", () => {
   const placeholders = [
-    { name: "valor", derived_formula: null, default: null },
+    { name: "data_inicio", derived_formula: null, default: null },
+    { name: "duracao_meses", derived_formula: null, default: null },
+    {
+      name: "data_fim",
+      derived_formula: "end_date(data_inicio, duracao_meses)",
+      default: null,
+    },
+    {
+      name: "valor",
+      derived_formula: null,
+      default: null,
+    },
     {
       name: "valor_extenso",
       derived_formula: "amount_in_words(valor)",
       default: null,
     },
-    {
-      name: "valor_final",
-      derived_formula: "identity(valor_extenso)",
-      default: null,
-    },
   ];
   const result = resolvePlaceholders(
     placeholders,
-    { valor: "500" },
+    { data_inicio: "2025-01-01", duracao_meses: "6", valor: "500" },
     {},
   );
+  assertEquals(result.get("data_fim"), "2025-07-01");
   assertEquals(result.get("valor_extenso"), "quinhentos reais");
-  assertEquals(result.get("valor_final"), "quinhentos reais");
 });
 
 Deno.test("unit: resolvePlaceholders — end_date with two sibling inputs", () => {
@@ -689,28 +667,28 @@ Deno.test("unit: resolvePlaceholders — multiple placeholders resolved in one c
   const placeholders = [
     { name: "nome", derived_formula: "tenant.name", default: null },
     { name: "cpf", derived_formula: "tenant.cpf", default: null },
-    {
-      name: "cpf_fmt",
-      derived_formula: "cpf_format(tenant.cpf)",
-      default: null,
-    },
     { name: "aluguel", derived_formula: null, default: null },
     {
       name: "aluguel_extenso",
       derived_formula: "amount_in_words(aluguel)",
       default: null,
     },
+    {
+      name: "data_texto",
+      derived_formula: "full_date_text(tenant.start_date)",
+      default: null,
+    },
   ];
   const result = resolvePlaceholders(
     placeholders,
     { aluguel: "1000" },
-    { tenant: { name: "Maria Silva", cpf: "12345678909" } },
+    { tenant: { name: "Maria Silva", cpf: "12345678909", start_date: "2025-03-15" } },
   );
   assertEquals(result.get("nome"), "Maria Silva");
   assertEquals(result.get("cpf"), "12345678909");
-  assertEquals(result.get("cpf_fmt"), "123.456.789-09");
   assertEquals(result.get("aluguel"), "1000");
   assertEquals(result.get("aluguel_extenso"), "mil reais");
+  assertEquals(result.get("data_texto"), "15 de março de 2025");
 });
 
 Deno.test("unit: resolvePlaceholders — context path missing field uses default if present", () => {

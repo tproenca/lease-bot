@@ -12,9 +12,9 @@ ADR-0016 (deterministic derivation over GPT) and ADR-0017 (single `derived_formu
 
 Implement a deterministic server-side derivation engine in `workflow/derivation/` with three components:
 
-1. **Closed-grammar recursive-descent parser** (`parser.ts`): parses `derived_formula` strings into an AST. Grammar handles: `null` (asked), bare context paths (`tenant.name`), bare sibling references (`valor_aluguel`), and function calls (`cpf_format(tenant.cpf)`, `end_date(data_inicio, duracao_meses)`). Disambiguation: a dotted token whose first segment is a known namespace (`tenant`, `property`, `landlord`, `building`) is a context path; otherwise it is a sibling placeholder name.
+1. **Closed-grammar recursive-descent parser** (`parser.ts`): parses `derived_formula` strings into an AST. Grammar handles: `null` (asked), bare context paths (`tenant.name`), bare sibling references (`valor_aluguel`), and function calls (`amount_in_words(valor_aluguel)`, `end_date(data_inicio, duracao_meses)`). Disambiguation: a dotted token whose first segment is a known namespace (`tenant`, `property`, `landlord`, `building`) is a context path; otherwise it is a sibling placeholder name.
 
-2. **Closed formula registry** (`registry.ts`): a `Map<string, FormulaSpec>` keyed by function name. Each entry declares arity and a deterministic implementation. Initial set: `identity`, `cpf_format`, `amount_in_words`, `full_date_text`, `end_date`. The `amount_in_words` function is a fully deterministic Portuguese *por extenso* implementation with no external dependencies. Adding a formula requires a code change and a new ADR.
+2. **Closed formula registry** (`registry.ts`): a `Map<string, FormulaSpec>` keyed by function name. Each entry declares arity and a deterministic implementation. Final set: `amount_in_words`, `full_date_text`, `end_date`. The `amount_in_words` function is a fully deterministic Portuguese *por extenso* implementation with no external dependencies. Adding a formula requires a code change and a new ADR.
 
 3. **Topological resolver** (`resolver.ts`): uses Kahn's algorithm to sort placeholders by sibling dependency order, then resolves each in order: asked → context path → formula call. Raises structured `DerivationError` with codes `UNKNOWN_FORMULA`, `UNRESOLVABLE_INPUT`, and `CIRCULAR_DEPENDENCY`.
 
@@ -24,6 +24,8 @@ Implement a deterministic server-side derivation engine in `workflow/derivation/
 - **Arbitrary expression DSL** (arithmetic, string ops): deferred. Only the closed registry is supported; anything outside the registry becomes an *asked* field or a new registry entry (code + ADR). Prevents formula injection and keeps the surface area small.
 - **Eval-based parser**: rejected. Security risk; the closed grammar makes a recursive-descent parser straightforward and safe.
 - **Storing pre-resolved values at config time**: rejected. Values depend on tenant/property context loaded at flow time; they can only be resolved at document-generation time.
+- **`cpf_format` registry function**: excluded. Placeholders already have a `format` field (e.g. `format: "cpf"`) applied by the render layer. `derived_formula: "cpf_format(tenant.cpf)"` and `derived_formula: "tenant.cpf"` with `format: "cpf"` on the placeholder produce identical output. The function call form is redundant — callers must use the bare context path with a `format` field instead.
+- **`identity` registry function**: excluded. A bare context path token (`tenant.name`) already covers the passthrough case. `identity(tenant.name)` and `tenant.name` produce the same output. `identity` existed only as a grammar validation artifact during development; it has no semantic value in the final design and was dropped to keep the registry surface minimal.
 
 ## Consequences
 
@@ -32,3 +34,4 @@ Implement a deterministic server-side derivation engine in `workflow/derivation/
 - `amount_in_words` is deterministic Portuguese *por extenso*: no GPT, no external service, no locale dependency.
 - The topological resolver guarantees sibling dependencies are resolved before their dependents. Circular dependencies are detected at resolution time and surfaced as `CIRCULAR_DEPENDENCY` errors.
 - Config-time validation at `POST /placeholders` can use the same parser to reject unknown functions or unresolvable inputs before they are stored.
+- CPF formatting is handled exclusively via the `format: "cpf"` placeholder field, applied at render time. Attempting to use `cpf_format(...)` in a `derived_formula` will fail at resolution time with `UNKNOWN_FORMULA`.
