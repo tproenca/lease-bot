@@ -682,7 +682,13 @@ Deno.test("unit: resolvePlaceholders — multiple placeholders resolved in one c
   const result = resolvePlaceholders(
     placeholders,
     { aluguel: "1000" },
-    { tenant: { name: "Maria Silva", cpf: "12345678909", start_date: "2025-03-15" } },
+    {
+      tenant: {
+        name: "Maria Silva",
+        cpf: "12345678909",
+        start_date: "2025-03-15",
+      },
+    },
   );
   assertEquals(result.get("nome"), "Maria Silva");
   assertEquals(result.get("cpf"), "12345678909");
