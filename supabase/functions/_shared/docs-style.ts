@@ -256,7 +256,7 @@ async function docsBatch(
 
 /**
  * Clears a Google Doc and rewrites it from markdown content, applying the
- * style defined in docs/docs-style.md.
+ * style (Google Docs named styles — HEADING_1, HEADING_2, NORMAL_TEXT).
  */
 export async function applyDocStyle(
   docId: string,
