@@ -2365,3 +2365,264 @@ Deno.test("unit: SEND_SIGNATURE — tenant_id options maps tenants to label/valu
   assertEquals(opts[0].value, MOCK_TENANT_1.id);
   assertStringIncludes(opts[0].label, "Maria Silva");
 });
+
+// ─── Dynamic step resolution ──────────────────────────────────────────────────
+//
+// Verifies that FlowDefinition.steps as a function is resolved on every engine
+// turn with the current values, producing a different step list as values grow.
+
+Deno.test("unit: engine — dynamic steps: step list is resolved from current values", async () => {
+  // The flow starts with a "mode" step. Once mode is collected it injects an
+  // extra step only when mode === "advanced".
+  const dynamicFlow: FlowDefinition = {
+    intent: "dynamic_test",
+    confirmationTitle: "Dynamic Summary",
+    steps: (values) => {
+      const base = [
+        {
+          key: "mode",
+          prompt: "Choose mode (simple/advanced):",
+          validate: (input: string) => {
+            const v = input.trim().toLowerCase();
+            return v === "simple" || v === "advanced"
+              ? { ok: true as const, value: v }
+              : { ok: false as const, error: "Invalid mode." };
+          },
+        },
+      ];
+      if (values.mode === "advanced") {
+        base.push({
+          key: "detail",
+          prompt: "Provide detail:",
+          validate: (input: string) => {
+            const v = input.trim();
+            return v.length > 0
+              ? { ok: true as const, value: v }
+              : { ok: false as const, error: "Detail required." };
+          },
+        });
+      }
+      return base;
+    },
+    execute: async (_values) => ({ ok: true, message: "Dynamic done!" }),
+  };
+
+  // Turn 1: empty values → step list has only "mode"; engine asks for it.
+  const res1 = await runFlowEngine(
+    dynamicFlow,
+    { intent: "dynamic_test", values: {}, message: "" },
+    EMPTY_CONTEXT,
+    MOCK_DEPS_ENGINE,
+    "jwt",
+  );
+  assertEquals(res1.step, "ask_mode");
+
+  // Turn 2: provide mode = "simple" → only "mode" in list, all collected →
+  // engine should go straight to confirm (no "detail" step injected).
+  const res2 = await runFlowEngine(
+    dynamicFlow,
+    { intent: "dynamic_test", values: {}, message: "simple" },
+    EMPTY_CONTEXT,
+    MOCK_DEPS_ENGINE,
+    "jwt",
+  );
+  assertEquals(res2.step, "confirm");
+  assertEquals((res2.values as Record<string, unknown>).mode, "simple");
+  assertEquals("detail" in (res2.values as Record<string, unknown>), false);
+
+  // Turn 3: provide mode = "advanced" → "detail" is injected; engine should ask for it.
+  const res3 = await runFlowEngine(
+    dynamicFlow,
+    { intent: "dynamic_test", values: {}, message: "advanced" },
+    EMPTY_CONTEXT,
+    MOCK_DEPS_ENGINE,
+    "jwt",
+  );
+  assertEquals(res3.step, "ask_detail");
+  assertEquals((res3.values as Record<string, unknown>).mode, "advanced");
+
+  // Turn 4: provide detail with mode already set → all steps done → confirm.
+  const res4 = await runFlowEngine(
+    dynamicFlow,
+    {
+      intent: "dynamic_test",
+      values: { mode: "advanced" },
+      message: "extra info",
+    },
+    EMPTY_CONTEXT,
+    MOCK_DEPS_ENGINE,
+    "jwt",
+  );
+  assertEquals(res4.step, "confirm");
+  assertEquals(
+    (res4.values as Record<string, unknown>).detail,
+    "extra info",
+  );
+});
+
+Deno.test("unit: engine — dynamic steps: resolveFlowSteps passes values to the step function", () => {
+  const dynamicFlow: FlowDefinition = {
+    intent: "dyn2",
+    confirmationTitle: "Dyn2",
+    steps: (values) =>
+      values.flag === true
+        ? [{ key: "extra", prompt: "Extra?" }]
+        : [{ key: "base", prompt: "Base?" }],
+    execute: async () => ({ ok: true, message: "done" }),
+  };
+
+  const withoutFlag = resolveFlowSteps(dynamicFlow, {});
+  assertEquals(withoutFlag.length, 1);
+  assertEquals(withoutFlag[0].key, "base");
+
+  const withFlag = resolveFlowSteps(dynamicFlow, { flag: true });
+  assertEquals(withFlag.length, 1);
+  assertEquals(withFlag[0].key, "extra");
+});
+
+// ─── Load hook timing ─────────────────────────────────────────────────────────
+//
+// Verifies that:
+//   1. load fires after validate() succeeds.
+//   2. load does NOT fire when validate() fails (invalid re-ask).
+//   3. load fires exactly once per step, not on the confirm turn.
+
+Deno.test("unit: engine — load hook fires after validate() succeeds, not on failure", async () => {
+  let loadCallCount = 0;
+
+  const hookFlow: FlowDefinition = {
+    intent: "hook_timing",
+    confirmationTitle: "Hook Timing",
+    steps: [
+      {
+        key: "token",
+        prompt: "Enter token (min 4 chars):",
+        validate: (input) => {
+          const v = input.trim();
+          return v.length >= 4
+            ? { ok: true, value: v }
+            : { ok: false, error: "Too short." };
+        },
+        load: async (values) => {
+          loadCallCount++;
+          return { _loaded_token: `enriched_${values.token}` };
+        },
+      },
+    ],
+    execute: async () => ({ ok: true, message: "done" }),
+  };
+
+  // Turn 1: invalid input — load must NOT fire.
+  await runFlowEngine(
+    hookFlow,
+    { intent: "hook_timing", values: {}, message: "ab" },
+    EMPTY_CONTEXT,
+    MOCK_DEPS_ENGINE,
+    "jwt",
+  );
+  assertEquals(loadCallCount, 0);
+
+  // Turn 2: valid input — load must fire exactly once.
+  const res = await runFlowEngine(
+    hookFlow,
+    { intent: "hook_timing", values: {}, message: "abcd" },
+    EMPTY_CONTEXT,
+    MOCK_DEPS_ENGINE,
+    "jwt",
+  );
+  assertEquals(loadCallCount, 1);
+  assertEquals(res.step, "confirm");
+
+  // Turn 3: confirm turn — load must NOT fire again.
+  await runFlowEngine(
+    hookFlow,
+    {
+      intent: "hook_timing",
+      values: { token: "abcd", _loaded_token: "enriched_abcd" },
+      message: "Sim",
+    },
+    EMPTY_CONTEXT,
+    MOCK_DEPS_ENGINE,
+    "jwt",
+  );
+  assertEquals(loadCallCount, 1); // still 1 — no extra call on confirm
+});
+
+// ─── Load hook carry-forward ──────────────────────────────────────────────────
+//
+// Verifies that the record returned by load is merged into values and available
+// to subsequent steps' validate and options callbacks.
+
+Deno.test("unit: engine — load hook result is merged into values for subsequent steps", async () => {
+  const carryFlow: FlowDefinition = {
+    intent: "carry_forward",
+    confirmationTitle: "Carry Forward",
+    steps: [
+      {
+        key: "category",
+        prompt: "Pick category (A/B):",
+        validate: (input) => {
+          const v = input.trim().toUpperCase();
+          return v === "A" || v === "B"
+            ? { ok: true, value: v }
+            : { ok: false, error: "Must be A or B." };
+        },
+        // load enriches values with _category_label for the next step to use.
+        load: async (values) => ({
+          _category_label: values.category === "A"
+            ? "Category Alpha"
+            : "Category Beta",
+        }),
+      },
+      {
+        key: "item",
+        prompt: (values) =>
+          `Pick item for ${values._category_label ?? "unknown"}:`,
+        validate: (input, values) => {
+          // The validate callback can see load-injected _category_label.
+          const label = values._category_label as string | undefined;
+          const v = input.trim();
+          return v.length > 0 && label !== undefined
+            ? { ok: true, value: v }
+            : {
+              ok: false,
+              error: "Item required and category label must be present.",
+            };
+        },
+      },
+    ],
+    execute: async () => ({ ok: true, message: "carry done" }),
+  };
+
+  // Turn 1: collect category "A" → load should fire and set _category_label.
+  const res1 = await runFlowEngine(
+    carryFlow,
+    { intent: "carry_forward", values: {}, message: "A" },
+    EMPTY_CONTEXT,
+    MOCK_DEPS_ENGINE,
+    "jwt",
+  );
+  assertEquals(res1.step, "ask_item");
+  const vals1 = res1.values as Record<string, unknown>;
+  assertEquals(vals1.category, "A");
+  assertEquals(vals1._category_label, "Category Alpha");
+  // The item prompt must reference the loaded label.
+  assertStringIncludes(res1.message, "Category Alpha");
+
+  // Turn 2: collect item with _category_label present → validate should succeed.
+  const res2 = await runFlowEngine(
+    carryFlow,
+    {
+      intent: "carry_forward",
+      values: { category: "A", _category_label: "Category Alpha" },
+      message: "widget",
+    },
+    EMPTY_CONTEXT,
+    MOCK_DEPS_ENGINE,
+    "jwt",
+  );
+  assertEquals(res2.step, "confirm");
+  const vals2 = res2.values as Record<string, unknown>;
+  assertEquals(vals2.item, "widget");
+  assertEquals(vals2._category_label, "Category Alpha");
+});
