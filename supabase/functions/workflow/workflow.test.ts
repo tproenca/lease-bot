@@ -1104,28 +1104,32 @@ Deno.test("unit: workflow/next — add_tenant intent without state (Enter phase)
 import { ADD_TENANT } from "./intents/add-tenant.ts";
 
 Deno.test("unit: ADD_TENANT — has 4 steps: property_id, name, cpf, whatsapp", () => {
-  const keys = ADD_TENANT.steps.map((s) => s.key);
+  const keys = resolveFlowSteps(ADD_TENANT).map((s) => s.key);
   assertEquals(keys, ["property_id", "name", "cpf", "whatsapp"]);
 });
 
 Deno.test("unit: ADD_TENANT — whatsapp step is optional", () => {
-  const whatsapp = ADD_TENANT.steps.find((s) => s.key === "whatsapp");
+  const whatsapp = resolveFlowSteps(ADD_TENANT).find((s) =>
+    s.key === "whatsapp"
+  );
   assertEquals(whatsapp?.optional, true);
 });
 
 Deno.test("unit: ADD_TENANT — property_id step has options builder", () => {
-  const step = ADD_TENANT.steps.find((s) => s.key === "property_id");
+  const step = resolveFlowSteps(ADD_TENANT).find((s) =>
+    s.key === "property_id"
+  );
   assertEquals(typeof step?.options, "function");
 });
 
 Deno.test("unit: ADD_TENANT — name validate rejects empty string", () => {
-  const step = ADD_TENANT.steps.find((s) => s.key === "name")!;
+  const step = resolveFlowSteps(ADD_TENANT).find((s) => s.key === "name")!;
   const result = step.validate!("", {}, { properties: [] } as ContextPayload);
   assertEquals(result.ok, false);
 });
 
 Deno.test("unit: ADD_TENANT — cpf validate accepts valid format", () => {
-  const step = ADD_TENANT.steps.find((s) => s.key === "cpf")!;
+  const step = resolveFlowSteps(ADD_TENANT).find((s) => s.key === "cpf")!;
   const result = step.validate!(
     "123.456.789-09",
     {},
@@ -1136,7 +1140,7 @@ Deno.test("unit: ADD_TENANT — cpf validate accepts valid format", () => {
 });
 
 Deno.test("unit: ADD_TENANT — cpf validate accepts unformatted digits and formats them", () => {
-  const step = ADD_TENANT.steps.find((s) => s.key === "cpf")!;
+  const step = resolveFlowSteps(ADD_TENANT).find((s) => s.key === "cpf")!;
   const result = step.validate!(
     "12345678909",
     {},
@@ -1147,7 +1151,7 @@ Deno.test("unit: ADD_TENANT — cpf validate accepts unformatted digits and form
 });
 
 Deno.test("unit: ADD_TENANT — cpf validate rejects invalid check digits", () => {
-  const step = ADD_TENANT.steps.find((s) => s.key === "cpf")!;
+  const step = resolveFlowSteps(ADD_TENANT).find((s) => s.key === "cpf")!;
   const result = step.validate!(
     "12345678900",
     {},
@@ -1163,7 +1167,11 @@ Deno.test("unit: ADD_TENANT — cpf validate rejects invalid check digits", () =
 //   collect → invalid re-ask → advance → optional "pular" → confirm → Sim → done
 //   confirm non-Sim → re-opens
 
-import { type FlowDefinition, runFlowEngine } from "./flow-engine.ts";
+import {
+  type FlowDefinition,
+  resolveFlowSteps,
+  runFlowEngine,
+} from "./flow-engine.ts";
 import type { WorkflowRequest } from "./index.ts";
 
 const EMPTY_CONTEXT: ContextPayload = {
@@ -1611,17 +1619,21 @@ Deno.test("unit: generate_document — execute failure with unknown code falls b
 // ─── GENERATE_DOCUMENT definition assertions ──────────────────────────────────
 
 Deno.test("unit: GENERATE_DOCUMENT — has 1 step: tenant_id", () => {
-  const keys = GENERATE_DOCUMENT.steps.map((s) => s.key);
+  const keys = resolveFlowSteps(GENERATE_DOCUMENT).map((s) => s.key);
   assertEquals(keys, ["tenant_id"]);
 });
 
 Deno.test("unit: GENERATE_DOCUMENT — tenant_id step has options builder", () => {
-  const step = GENERATE_DOCUMENT.steps.find((s) => s.key === "tenant_id");
+  const step = resolveFlowSteps(GENERATE_DOCUMENT).find((s) =>
+    s.key === "tenant_id"
+  );
   assertEquals(typeof step?.options, "function");
 });
 
 Deno.test("unit: GENERATE_DOCUMENT — tenant_id options returns empty array when no tenants", () => {
-  const step = GENERATE_DOCUMENT.steps.find((s) => s.key === "tenant_id")!;
+  const step = resolveFlowSteps(GENERATE_DOCUMENT).find((s) =>
+    s.key === "tenant_id"
+  )!;
   const ctx: ContextPayload = { properties: [], tenants: [] };
   const opts = step.options!(
     {},
@@ -1631,7 +1643,9 @@ Deno.test("unit: GENERATE_DOCUMENT — tenant_id options returns empty array whe
 });
 
 Deno.test("unit: GENERATE_DOCUMENT — tenant_id options maps tenants to label/value pairs", () => {
-  const step = GENERATE_DOCUMENT.steps.find((s) => s.key === "tenant_id")!;
+  const step = resolveFlowSteps(GENERATE_DOCUMENT).find((s) =>
+    s.key === "tenant_id"
+  )!;
   const ctx: ContextPayload = {
     properties: [],
     tenants: [MOCK_TENANT_1, MOCK_TENANT_2],
@@ -1646,12 +1660,14 @@ Deno.test("unit: GENERATE_DOCUMENT — tenant_id options maps tenants to label/v
 import { ADD_PROPERTY } from "./intents/add-property.ts";
 
 Deno.test("unit: ADD_PROPERTY — has 4 steps: type, building_id, address, name", () => {
-  const keys = ADD_PROPERTY.steps.map((s) => s.key);
+  const keys = resolveFlowSteps(ADD_PROPERTY).map((s) => s.key);
   assertEquals(keys, ["type", "building_id", "address", "name"]);
 });
 
 Deno.test("unit: ADD_PROPERTY — building_id step has skip fn that skips for non-apartment", () => {
-  const step = ADD_PROPERTY.steps.find((s) => s.key === "building_id")!;
+  const step = resolveFlowSteps(ADD_PROPERTY).find((s) =>
+    s.key === "building_id"
+  )!;
   assertEquals(typeof step.skip, "function");
   assertEquals(step.skip!({ type: "house" }), true);
   assertEquals(step.skip!({ type: "office_unit" }), true);
@@ -1659,7 +1675,7 @@ Deno.test("unit: ADD_PROPERTY — building_id step has skip fn that skips for no
 });
 
 Deno.test("unit: ADD_PROPERTY — address step has skip fn that skips for apartment", () => {
-  const step = ADD_PROPERTY.steps.find((s) => s.key === "address")!;
+  const step = resolveFlowSteps(ADD_PROPERTY).find((s) => s.key === "address")!;
   assertEquals(typeof step.skip, "function");
   assertEquals(step.skip!({ type: "apartment" }), true);
   assertEquals(step.skip!({ type: "house" }), false);
@@ -1667,7 +1683,7 @@ Deno.test("unit: ADD_PROPERTY — address step has skip fn that skips for apartm
 });
 
 Deno.test("unit: ADD_PROPERTY — type validate accepts numeric '1'/'2'/'3'", () => {
-  const step = ADD_PROPERTY.steps.find((s) => s.key === "type")!;
+  const step = resolveFlowSteps(ADD_PROPERTY).find((s) => s.key === "type")!;
   const ctx: ContextPayload = { properties: [] };
 
   const r1 = step.validate!("1", {}, ctx);
@@ -1684,7 +1700,7 @@ Deno.test("unit: ADD_PROPERTY — type validate accepts numeric '1'/'2'/'3'", ()
 });
 
 Deno.test("unit: ADD_PROPERTY — type validate accepts text labels (case insensitive)", () => {
-  const step = ADD_PROPERTY.steps.find((s) => s.key === "type")!;
+  const step = resolveFlowSteps(ADD_PROPERTY).find((s) => s.key === "type")!;
   const ctx: ContextPayload = { properties: [] };
 
   const ra = step.validate!("Apartamento", {}, ctx);
@@ -1697,7 +1713,7 @@ Deno.test("unit: ADD_PROPERTY — type validate accepts text labels (case insens
 });
 
 Deno.test("unit: ADD_PROPERTY — type validate rejects invalid input", () => {
-  const step = ADD_PROPERTY.steps.find((s) => s.key === "type")!;
+  const step = resolveFlowSteps(ADD_PROPERTY).find((s) => s.key === "type")!;
   const ctx: ContextPayload = { properties: [] };
   const r = step.validate!("studio", {}, ctx);
   assertEquals(r.ok, false);
@@ -1705,7 +1721,7 @@ Deno.test("unit: ADD_PROPERTY — type validate rejects invalid input", () => {
 });
 
 Deno.test("unit: ADD_PROPERTY — name validate rejects empty string", () => {
-  const step = ADD_PROPERTY.steps.find((s) => s.key === "name")!;
+  const step = resolveFlowSteps(ADD_PROPERTY).find((s) => s.key === "name")!;
   const ctx: ContextPayload = { properties: [] };
   const r = step.validate!("", {}, ctx);
   assertEquals(r.ok, false);
@@ -1949,7 +1965,7 @@ Deno.test("unit: workflow/next — add_property GOOGLE_REAUTH_REQUIRED error map
 // ─── ADD_PROPERTY confirm summary: address visibility ────────────────────────
 
 Deno.test("unit: ADD_PROPERTY — address step skip fn also gates confirm summary for apartment", () => {
-  const step = ADD_PROPERTY.steps.find((s) => s.key === "address")!;
+  const step = resolveFlowSteps(ADD_PROPERTY).find((s) => s.key === "address")!;
   assertEquals(typeof step.skip, "function");
   assertEquals(step.skip!({ type: "apartment" }), true);
   assertEquals(step.skip!({ type: "house" }), false);
@@ -2316,24 +2332,30 @@ Deno.test("unit: send_signature — AUTENTIQUE_SUBMISSION_FAILED error maps to f
 // ─── SEND_SIGNATURE definition assertions ─────────────────────────────────────
 
 Deno.test("unit: SEND_SIGNATURE — has 1 step: tenant_id", () => {
-  const keys = SEND_SIGNATURE.steps.map((s) => s.key);
+  const keys = resolveFlowSteps(SEND_SIGNATURE).map((s) => s.key);
   assertEquals(keys, ["tenant_id"]);
 });
 
 Deno.test("unit: SEND_SIGNATURE — tenant_id step has options builder", () => {
-  const step = SEND_SIGNATURE.steps.find((s) => s.key === "tenant_id");
+  const step = resolveFlowSteps(SEND_SIGNATURE).find((s) =>
+    s.key === "tenant_id"
+  );
   assertEquals(typeof step?.options, "function");
 });
 
 Deno.test("unit: SEND_SIGNATURE — tenant_id options returns empty array when no tenants", () => {
-  const step = SEND_SIGNATURE.steps.find((s) => s.key === "tenant_id")!;
+  const step = resolveFlowSteps(SEND_SIGNATURE).find((s) =>
+    s.key === "tenant_id"
+  )!;
   const ctx: ContextPayload = { properties: [], tenants: [] };
   const opts = step.options!({}, ctx);
   assertEquals(opts, []);
 });
 
 Deno.test("unit: SEND_SIGNATURE — tenant_id options maps tenants to label/value pairs", () => {
-  const step = SEND_SIGNATURE.steps.find((s) => s.key === "tenant_id")!;
+  const step = resolveFlowSteps(SEND_SIGNATURE).find((s) =>
+    s.key === "tenant_id"
+  )!;
   const ctx: ContextPayload = {
     properties: [],
     tenants: [MOCK_TENANT_1, MOCK_TENANT_2],
