@@ -4,5 +4,3 @@ Placeholders registrados nos seus modelos de contrato. Atualizado automaticament
 
 ## Placeholders disponíveis
 
-| Nome | Formato | Transformação | Padrão | Notas | Obrigatório |
-|------|---------|---------------|--------|-------|-------------|
