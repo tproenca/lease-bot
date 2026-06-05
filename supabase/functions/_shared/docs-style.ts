@@ -256,7 +256,7 @@ async function docsBatch(
 
 /**
  * Clears a Google Doc and rewrites it from markdown content, applying the
- * style defined in docs/docs-style.md (via the generated docs-style-constants.ts).
+ * style defined in docs/docs-style.md.
  */
 export async function applyDocStyle(
   docId: string,
