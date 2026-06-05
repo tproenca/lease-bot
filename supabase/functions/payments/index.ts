@@ -227,11 +227,12 @@ async function handleGetPayments(req: Request): Promise<Response> {
     );
   }
 
-  // 4. Query active tenants (currently assigned to a property).
+  // 4. Query active tenants via the properties.current_tenant_id FK (ADR-0019).
+  //    This replaces the previous Drive folder string-matching approach.
   const { data: properties, error: propertiesError } = await db
     .from("properties")
-    .select("current_tenant_folder_id")
-    .not("current_tenant_folder_id", "is", null);
+    .select("current_tenant_id")
+    .not("current_tenant_id", "is", null);
 
   if (propertiesError) {
     return errorResponse(
@@ -241,17 +242,17 @@ async function handleGetPayments(req: Request): Promise<Response> {
     );
   }
 
-  const activeFolderIds = properties?.map(
-    (p: { current_tenant_folder_id: string }) => p.current_tenant_folder_id,
+  const activeTenantIds = properties?.map(
+    (p: { current_tenant_id: string }) => p.current_tenant_id,
   ) ?? [];
 
-  // Only query tenants if there are active folder IDs to avoid an empty .in() call.
+  // Only query tenants if there are active tenant IDs to avoid an empty .in() call.
   let activeTenants: Array<{ id: string; name: string }> = [];
-  if (activeFolderIds.length > 0) {
+  if (activeTenantIds.length > 0) {
     const { data: tenants, error: tenantsError } = await db
       .from("tenants")
       .select("id, name")
-      .in("drive_folder_id", activeFolderIds);
+      .in("id", activeTenantIds);
 
     if (tenantsError) {
       return errorResponse(

@@ -36,17 +36,21 @@ const MOCK_PROPERTY_ID = "prop-uuid-1";
 const MOCK_PROPERTY_DRIVE_FOLDER = "prop-drive-folder-1";
 const MOCK_PREV_TENANT_FOLDER = "prev-tenant-drive-folder";
 
+const MOCK_PREV_TENANT_ID = "prev-tenant-uuid";
+
 const MOCK_PROPERTY = {
   id: MOCK_PROPERTY_ID,
   type: "house",
   building_id: null,
   drive_folder_id: MOCK_PROPERTY_DRIVE_FOLDER,
   current_tenant_folder_id: null,
+  current_tenant_id: null,
 };
 
 const MOCK_PROPERTY_WITH_PREV_TENANT = {
   ...MOCK_PROPERTY,
   current_tenant_folder_id: MOCK_PREV_TENANT_FOLDER,
+  current_tenant_id: MOCK_PREV_TENANT_ID,
 };
 
 const MOCK_PROPERTY_APARTMENT = {
@@ -55,6 +59,7 @@ const MOCK_PROPERTY_APARTMENT = {
   building_id: "bldg-uuid-1",
   drive_folder_id: "apt-prop-drive-folder",
   current_tenant_folder_id: null,
+  current_tenant_id: null,
 };
 
 const NEW_TENANT_FOLDER_ID = "new-tenant-drive-folder";
@@ -96,6 +101,8 @@ type MockFetchOpts = {
 function buildMockFetch(opts: MockFetchOpts) {
   // Track PATCH calls to Drive to detect star/unstar
   const drivePatchedFileIds: string[] = [];
+  // Track the last properties PATCH body to verify atomic write
+  let lastPropertiesPatchBody: Record<string, unknown> | null = null;
 
   const mockFetch = async function (
     input: string | URL | Request,
@@ -144,6 +151,19 @@ function buildMockFetch(opts: MockFetchOpts) {
         );
       }
       if (method === "PATCH") {
+        // Capture the request body for assertion in atomic-write tests.
+        try {
+          const rawBody = (init as RequestInit | undefined)?.body;
+          if (rawBody) {
+            lastPropertiesPatchBody = JSON.parse(
+              typeof rawBody === "string"
+                ? rawBody
+                : await new Response(rawBody).text(),
+            ) as Record<string, unknown>;
+          }
+        } catch {
+          // ignore parse failures in mock
+        }
         if (opts.dbUpdateFail) {
           return new Response(
             JSON.stringify({ message: "db error", code: "PGRST000" }),
@@ -254,6 +274,11 @@ function buildMockFetch(opts: MockFetchOpts) {
   // Expose the list so tests can inspect which files were starred/unstarred.
   (mockFetch as unknown as Record<string, unknown>)["patchedFileIds"] =
     drivePatchedFileIds;
+
+  // Expose the last properties PATCH body so tests can verify atomic write.
+  Object.defineProperty(mockFetch, "lastPropertiesPatchBody", {
+    get: () => lastPropertiesPatchBody,
+  });
 
   return mockFetch;
 }
@@ -1028,4 +1053,94 @@ Deno.test("unit: tenants — 405 when DELETE is used on /tenants", async () => {
     (body.error as Record<string, string>).code,
     "METHOD_NOT_ALLOWED",
   );
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Atomic write: current_tenant_id + current_tenant_folder_id (ADR-0019)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ─── atomic write: both columns updated together (new tenant on vacant property)
+
+Deno.test("unit: POST /tenants — writes current_tenant_id and current_tenant_folder_id atomically", async () => {
+  const originalFetch = globalThis.fetch;
+  const mockFetch = buildMockFetch({});
+  globalThis.fetch = mockFetch as typeof fetch;
+  try {
+    const res = await handleTenants(
+      makePostRequest(
+        {
+          property_id: MOCK_PROPERTY_ID,
+          name: "Maria Souza",
+          cpf: "123.456.789-00",
+        },
+        "valid.jwt",
+      ),
+    );
+    assertEquals(res.status, 201);
+    // Verify the PATCH to properties included both columns.
+    const patchBody = (
+      mockFetch as unknown as Record<string, Record<string, unknown>>
+    )["lastPropertiesPatchBody"];
+    assertEquals(
+      typeof patchBody?.current_tenant_id,
+      "string",
+      "current_tenant_id must be written",
+    );
+    assertEquals(
+      typeof patchBody?.current_tenant_folder_id,
+      "string",
+      "current_tenant_folder_id must be written",
+    );
+    assertEquals(
+      patchBody?.current_tenant_id,
+      MOCK_TENANT_INSERT.id,
+      "current_tenant_id must equal the newly created tenant id",
+    );
+    assertEquals(
+      patchBody?.current_tenant_folder_id,
+      NEW_TENANT_FOLDER_ID,
+      "current_tenant_folder_id must equal the new Drive folder id",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// ─── atomic write: both columns updated when replacing an existing tenant
+
+Deno.test("unit: POST /tenants — replaces both current_tenant_id and current_tenant_folder_id atomically when replacing tenant", async () => {
+  const originalFetch = globalThis.fetch;
+  const mockFetch = buildMockFetch({
+    property: MOCK_PROPERTY_WITH_PREV_TENANT,
+  });
+  globalThis.fetch = mockFetch as typeof fetch;
+  try {
+    const res = await handleTenants(
+      makePostRequest(
+        {
+          property_id: MOCK_PROPERTY_ID,
+          name: "Ana Lima",
+          cpf: "123.456.789-00",
+        },
+        "valid.jwt",
+      ),
+    );
+    assertEquals(res.status, 201);
+    const patchBody = (
+      mockFetch as unknown as Record<string, Record<string, unknown>>
+    )["lastPropertiesPatchBody"];
+    // Both columns must be updated atomically.
+    assertEquals(
+      patchBody?.current_tenant_id,
+      MOCK_TENANT_INSERT.id,
+      "current_tenant_id must be updated to new tenant on replacement",
+    );
+    assertEquals(
+      patchBody?.current_tenant_folder_id,
+      NEW_TENANT_FOLDER_ID,
+      "current_tenant_folder_id must be updated to new folder on replacement",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

@@ -45,6 +45,7 @@ const MOCK_PROPERTY: ContextProperty = {
   id: "prop-uuid-1",
   name: "Casa 1",
   display_name: "Prédio A - Apto 101",
+  current_tenant_id: null,
   current_tenant_folder_id: null,
 };
 
@@ -52,6 +53,7 @@ const MOCK_PROPERTY_WITH_TENANT: ContextProperty = {
   id: "prop-uuid-2",
   name: "Casa 2",
   display_name: "Prédio B - Apto 202",
+  current_tenant_id: "tenant-uuid-existing",
   current_tenant_folder_id: "tenant-folder-existing",
 };
 

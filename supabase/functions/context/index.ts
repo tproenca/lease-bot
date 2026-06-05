@@ -86,7 +86,9 @@ export async function handleContext(req: Request): Promise<Response> {
       .maybeSingle(),
     db
       .from("properties")
-      .select("id, type, name, address, building_id, current_tenant_folder_id")
+      .select(
+        "id, type, name, address, building_id, current_tenant_folder_id, current_tenant_id",
+      )
       .order("name"),
     db
       .from("buildings")
@@ -141,21 +143,20 @@ export async function handleContext(req: Request): Promise<Response> {
     }
   }
 
-  // 4b. Fetch only active tenants — those whose drive_folder_id matches one of
-  //     the properties' current_tenant_folder_id values. This avoids returning
-  //     historical tenants that the GPT doesn't need.
-  const activeFolderIds = (propertiesResult.data ?? [])
-    .map((p: Record<string, unknown>) => p.current_tenant_folder_id)
+  // 4b. Fetch only active tenants — those referenced by properties.current_tenant_id
+  //     (ADR-0019). This uses the FK directly instead of Drive folder string-matching.
+  const activeTenantIds = (propertiesResult.data ?? [])
+    .map((p: Record<string, unknown>) => p.current_tenant_id)
     .filter((id): id is string => typeof id === "string" && id.length > 0);
 
   let tenantsResult: { data: unknown[] | null; error: unknown };
-  if (activeFolderIds.length === 0) {
+  if (activeTenantIds.length === 0) {
     tenantsResult = { data: [], error: null };
   } else {
     tenantsResult = await db
       .from("tenants")
       .select("id, property_id, name, cpf, whatsapp, drive_folder_id")
-      .in("drive_folder_id", activeFolderIds)
+      .in("id", activeTenantIds)
       .order("name");
   }
 
@@ -229,6 +230,7 @@ export async function handleContext(req: Request): Promise<Response> {
       address: string | null;
       building_id: string | null;
       current_tenant_folder_id: string | null;
+      current_tenant_id: string | null;
     }>
   ).map((p) => {
     if (p.type === "apartment" && p.building_id) {
