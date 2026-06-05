@@ -8,6 +8,4 @@ Placeholders registrados nos seus modelos de contrato. Atualizado automaticament
 
 ## Placeholders disponíveis
 
-| Nome | Formato | Obrigatório | Transformação | Campo base | Padrão |
-|------|---------|-------------|---------------|------------|--------|
 `;

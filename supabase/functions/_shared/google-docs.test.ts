@@ -32,28 +32,28 @@ Deno.test("unit: buildPlaceholderListContent — empty list returns just templat
   assertEquals(md.includes("{{"), false);
 });
 
-Deno.test("unit: buildPlaceholderListContent — wraps name in {{double braces}}", () => {
+Deno.test("unit: buildPlaceholderListContent — wraps name in {{double braces}} as H3", () => {
   const md = buildPlaceholderListContent([
     { name: "cpf_inquilino", required: true, format: "cpf" },
   ]);
-  assertStringIncludes(md, "{{cpf_inquilino}}");
+  assertStringIncludes(md, "### {{cpf_inquilino}}");
 });
 
-Deno.test("unit: buildPlaceholderListContent — required=true renders 'sim'", () => {
+Deno.test("unit: buildPlaceholderListContent — required=true renders 'Obrigatório'", () => {
   const md = buildPlaceholderListContent([
     { name: "nome", required: true, format: "text" },
   ]);
-  assertStringIncludes(md, "sim");
+  assertStringIncludes(md, "Obrigatório");
 });
 
-Deno.test("unit: buildPlaceholderListContent — required=false renders 'não'", () => {
+Deno.test("unit: buildPlaceholderListContent — required=false omits 'Obrigatório'", () => {
   const md = buildPlaceholderListContent([
     { name: "obs", required: false, format: "text" },
   ]);
-  assertStringIncludes(md, "não");
+  assertEquals(md.includes("Obrigatório"), false);
 });
 
-Deno.test("unit: buildPlaceholderListContent — null optional fields render as em-dash or Perguntado", () => {
+Deno.test("unit: buildPlaceholderListContent — null optional fields are omitted", () => {
   const md = buildPlaceholderListContent([{
     name: "nome",
     required: true,
@@ -62,10 +62,9 @@ Deno.test("unit: buildPlaceholderListContent — null optional fields render as 
     default: null,
     derived_formula: null,
   }]);
-  // case and default render as "—"; derived_formula null renders as "Perguntado"
-  assertStringIncludes(md, "Perguntado");
-  const dashes = (md.match(/—/g) ?? []).length;
-  assertEquals(dashes >= 2, true);
+  // Null fields produce no label — only format and Obrigatório appear on the attrs line
+  const attrsLine = md.split("\n").find((l) => l.includes("text"))!;
+  assertEquals(attrsLine.trim(), "text · Obrigatório");
 });
 
 Deno.test("unit: buildPlaceholderListContent — provided optional fields are included", () => {
@@ -77,9 +76,74 @@ Deno.test("unit: buildPlaceholderListContent — provided optional fields are in
     default: "hoje",
     derived_formula: "end_date(data_inicio, duracao_meses)",
   }]);
-  assertStringIncludes(md, "minúsculas");
-  assertStringIncludes(md, "hoje");
-  assertStringIncludes(md, "end_date(data_inicio, duracao_meses)");
+  assertStringIncludes(md, "Transformação: minúsculas");
+  assertStringIncludes(md, "Padrão: hoje");
+  assertStringIncludes(md, "Derivado: end_date(data_inicio, duracao_meses)");
+});
+
+Deno.test("unit: buildPlaceholderListContent — options are included when present", () => {
+  const md = buildPlaceholderListContent([{
+    name: "tipo_contrato",
+    required: true,
+    format: "text",
+    options: ["residencial", "comercial"],
+  }]);
+  assertStringIncludes(md, "Opções: residencial, comercial");
+});
+
+Deno.test("unit: buildPlaceholderListContent — attrs order is format · Transformação · Padrão · Derivado · Opções · Obrigatório", () => {
+  const md = buildPlaceholderListContent([{
+    name: "data_fim",
+    required: true,
+    format: "date",
+    case: "minúsculas",
+    default: "hoje",
+    derived_formula: "data_inicio + prazo_meses",
+  }]);
+  const attrsLine = md.split("\n").find((l) => l.includes("date"))!;
+  const idxFormat = attrsLine.indexOf("date");
+  const idxTransf = attrsLine.indexOf("Transformação");
+  const idxPadrao = attrsLine.indexOf("Padrão");
+  const idxDerivado = attrsLine.indexOf("Derivado");
+  const idxObrig = attrsLine.indexOf("Obrigatório");
+  assertEquals(idxFormat < idxTransf, true);
+  assertEquals(idxTransf < idxPadrao, true);
+  assertEquals(idxPadrao < idxDerivado, true);
+  assertEquals(idxDerivado < idxObrig, true);
+});
+
+Deno.test("unit: buildPlaceholderListContent — derived_formula shown; omitted when absent", () => {
+  const md = buildPlaceholderListContent([
+    {
+      name: "aluguel",
+      required: true,
+      format: "currency",
+      derived_formula: null,
+    },
+    {
+      name: "data_fim",
+      required: false,
+      format: "date",
+      derived_formula: "data_inicio + prazo_meses",
+    },
+  ]);
+  const aluguelLine = md.split("\n").find((l) => l.includes("currency"))!;
+  assertEquals(aluguelLine.includes("Derivado"), false);
+  const dataFimLine = md.split("\n").find((l) =>
+    l.includes("data_inicio + prazo_meses")
+  )!;
+  assertStringIncludes(dataFimLine, "Derivado: data_inicio + prazo_meses");
+});
+
+Deno.test("unit: buildPlaceholderListContent — each entry uses ### heading followed by attrs line", () => {
+  const md = buildPlaceholderListContent([
+    { name: "aluguel", required: true, format: "currency" },
+  ]);
+  const lines = md.split("\n");
+  const headingIdx = lines.findIndex((l) => l === "### {{aluguel}}");
+  assertEquals(headingIdx >= 0, true, "H3 heading must exist");
+  const attrsLine = lines[headingIdx + 1];
+  assertStringIncludes(attrsLine, "currency");
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -133,13 +197,13 @@ Deno.test("unit: buildPlaceholderListContent — sorts placeholders alphabetical
   assertEquals(idxNome < idxValor, true);
 });
 
-Deno.test("unit: buildPlaceholderListContent — multiple placeholders produce multiple rows", () => {
+Deno.test("unit: buildPlaceholderListContent — multiple placeholders produce multiple entries", () => {
   const md = buildPlaceholderListContent([
     { name: "nome", required: true, format: "text" },
     { name: "cpf", required: true, format: "cpf" },
   ]);
-  const rowCount = (md.match(/\| \{\{/g) ?? []).length;
-  assertEquals(rowCount, 2);
+  const headingCount = (md.match(/^### \{\{/gm) ?? []).length;
+  assertEquals(headingCount, 2);
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
