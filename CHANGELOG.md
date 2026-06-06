@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Changed
+- Moved the pure document-substitution helpers `applyCase` and `substituteTokens` out of the 661-line `documents/generate/index.ts` handler into a focused `supabase/functions/_shared/format.ts` module; `generate/index.ts` now imports them. Their unit tests moved alongside into `_shared/format.test.ts` (10 `applyCase` + 8 `substituteTokens` cases). Pure relocation — no behaviour change.
+
 ### Added
 - `docs/MILESTONE-GATES.md`: milestone-specific manual release-gate guide covering M2-M7, with gate rules, Pass/Fail/Blocked logging, and links back to the full manual runbook. (issue 237)
 
