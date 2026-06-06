@@ -41,6 +41,7 @@ const MOCK_PROPERTIES = [
     address: "Rua A, 1",
     building_id: "bldg-uuid-1",
     current_tenant_folder_id: "drive-folder-123",
+    current_tenant_id: "tenant-uuid-1",
   },
 ];
 
@@ -196,11 +197,9 @@ function buildMockFetch(opts: {
       return new Response(JSON.stringify(MOCK_WITNESSES), { status: 200 });
     }
 
-    // PostgREST: tenants — the handler now uses .in("drive_folder_id", [...])
-    // so the URL will contain "drive_folder_id=in.(...)". Return MOCK_TENANTS
-    // when a non-empty filter is present; return [] when the caller passes an
-    // empty list (edge-case guarded in the handler itself, so this path is
-    // only reached if the guard is somehow bypassed).
+    // PostgREST: tenants — the handler now uses .in("id", [...]) with the
+    // active tenant IDs from properties.current_tenant_id (ADR-0019).
+    // The URL will contain "id=in.(...)". Return MOCK_TENANTS when reached.
     if (url.includes("/rest/v1/tenants")) {
       return new Response(JSON.stringify(MOCK_TENANTS), { status: 200 });
     }
@@ -680,9 +679,10 @@ Deno.test("unit: GET /context — returns tenants array with expected fields", a
 // ─── Active tenants filter ────────────────────────────────────────────────
 
 Deno.test(
-  "unit: GET /context — inactive tenant (drive_folder_id not matching any property) is excluded",
+  "unit: GET /context — inactive tenant (not referenced by properties.current_tenant_id) is excluded",
   async () => {
-    // This tenant's drive_folder_id does NOT match MOCK_PROPERTIES[0].current_tenant_folder_id.
+    // MOCK_PROPERTIES[0].current_tenant_id = "tenant-uuid-1".
+    // This tenant has a different id and is therefore NOT active.
     const inactiveTenant = {
       id: "tenant-uuid-inactive",
       property_id: "prop-uuid-1",
@@ -693,9 +693,10 @@ Deno.test(
     };
 
     const originalFetch = globalThis.fetch;
-    // Override only the tenants stub so we can simulate PostgREST filtering:
-    // return the inactive tenant when no filter is applied but return [] when
-    // the drive_folder_id filter does not include "drive-folder-OLD".
+    // Override only the tenants stub so we can simulate PostgREST FK filtering:
+    // return the inactive tenant only when the filter does NOT include its id.
+    // The handler uses .in("id", activeTenantIds) where activeTenantIds = ["tenant-uuid-1"].
+    // "tenant-uuid-inactive" is not in that set, so PostgREST would return [].
     globalThis.fetch =
       (async (input: string | URL | Request, init?: RequestInit) => {
         const url = typeof input === "string"
@@ -705,11 +706,10 @@ Deno.test(
           : (input as Request).url;
 
         if (url.includes("/rest/v1/tenants")) {
-          // The handler filters by drive_folder_id=in.(<activeFolderIds>).
-          // MOCK_PROPERTIES[0].current_tenant_folder_id = "drive-folder-123".
-          // "drive-folder-OLD" is not in that set, so PostgREST would return [].
-          // We simulate that by checking whether the URL contains the active id.
-          const hasActiveFilter = url.includes("drive-folder-123");
+          // The handler queries tenants by id FK (ADR-0019).
+          // MOCK_PROPERTIES[0].current_tenant_id = "tenant-uuid-1".
+          // "tenant-uuid-inactive" is not in the active set — PostgREST returns [].
+          const hasActiveFilter = url.includes("tenant-uuid-1");
           return new Response(
             JSON.stringify(hasActiveFilter ? [] : [inactiveTenant]),
             { status: 200 },
@@ -743,6 +743,7 @@ Deno.test("unit: GET /context — house property has no display_name", async () 
     address: "Rua B, 10",
     building_id: null,
     current_tenant_folder_id: null,
+    current_tenant_id: null,
   }];
   globalThis.fetch = buildMockFetch({});
   // Override the properties stub to return a house

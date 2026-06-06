@@ -50,6 +50,7 @@ const MOCK_PROPERTIES_LIST = [
     address: "Rua A, 1",
     building_id: "bldg-uuid-1",
     current_tenant_folder_id: null,
+    current_tenant_id: null,
   },
   {
     id: "prop-uuid-2",
@@ -58,6 +59,7 @@ const MOCK_PROPERTIES_LIST = [
     address: "Av. Mar, 10",
     building_id: null,
     current_tenant_folder_id: null,
+    current_tenant_id: null,
   },
 ];
 
@@ -73,7 +75,7 @@ function buildMockFetch(opts: {
   googleTokenServerError?: boolean;
   driveFolderFail?: boolean;
   dbInsertFail?: boolean;
-  propertiesList?: typeof MOCK_PROPERTIES_LIST;
+  propertiesList?: Record<string, unknown>[];
   existingDriveFolder?: string | null;
 }) {
   return async function mockFetch(
@@ -244,6 +246,41 @@ Deno.test("unit: GET /properties — 200 returns all properties for landlord", a
     assertEquals(res.status, 200);
     const body = await jsonBody(res) as unknown[];
     assertEquals(body.length, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// ─── 200 — response includes current_tenant_id (ADR-0019) ────────────────
+
+Deno.test("unit: GET /properties — 200 response includes current_tenant_id field", async () => {
+  const originalFetch = globalThis.fetch;
+  const mockWithTenant = [
+    {
+      ...MOCK_PROPERTIES_LIST[0],
+      current_tenant_id: "tenant-uuid-active",
+      current_tenant_folder_id: "drive-folder-active",
+    },
+  ];
+  globalThis.fetch = buildMockFetch({
+    propertiesList: mockWithTenant,
+  }) as typeof fetch;
+  try {
+    const res = await handleProperties(
+      makeRequest(undefined, "valid.jwt", "GET"),
+    );
+    assertEquals(res.status, 200);
+    const body = await jsonBody(res) as Array<Record<string, unknown>>;
+    assertEquals(body.length, 1);
+    assertEquals(
+      body[0].current_tenant_id,
+      "tenant-uuid-active",
+      "current_tenant_id must be present in GET /properties response",
+    );
+    assertEquals(
+      body[0].current_tenant_folder_id,
+      "drive-folder-active",
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }

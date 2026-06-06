@@ -81,7 +81,9 @@ async function handleGetProperties(req: Request): Promise<Response> {
   const db = userClient(jwt);
   const { data, error } = await db
     .from("properties")
-    .select("id, type, name, address, building_id, current_tenant_folder_id")
+    .select(
+      "id, type, name, address, building_id, current_tenant_folder_id, current_tenant_id",
+    )
     .order("name");
 
   if (error) {

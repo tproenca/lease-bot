@@ -43,11 +43,11 @@ const MOCK_PAYMENTS = [
   },
 ];
 
-// Active properties/tenants for overdue calculation
+// Active properties/tenants for overdue calculation (uses current_tenant_id FK — ADR-0019)
 const MOCK_PROPERTIES = [
-  { current_tenant_folder_id: "folder-tenant-1" },
-  { current_tenant_folder_id: "folder-tenant-2" },
-  { current_tenant_folder_id: "folder-tenant-3" },
+  { current_tenant_id: MOCK_TENANT_ID },
+  { current_tenant_id: MOCK_TENANT_ID_2 },
+  { current_tenant_id: MOCK_TENANT_ID_3 },
 ];
 
 const MOCK_ACTIVE_TENANTS = [

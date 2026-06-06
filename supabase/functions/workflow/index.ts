@@ -91,6 +91,7 @@ export interface ContextProperty {
   id: string;
   name: string;
   display_name?: string;
+  current_tenant_id: string | null;
   current_tenant_folder_id: string | null;
   [key: string]: unknown;
 }

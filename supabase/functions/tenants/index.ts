@@ -1,6 +1,7 @@
 // POST /tenants — creates a new tenant folder in Drive, stars it, unstars the
 //   previous tenant folder if one exists, inserts the tenant row, and updates
-//   properties.current_tenant_folder_id atomically.
+//   properties.current_tenant_folder_id AND properties.current_tenant_id
+//   atomically in the same DB statement (ADR-0019).
 //
 // GET /tenants/:id — returns tenant data; 404 if not found or belongs to
 //   another landlord.
@@ -16,7 +17,7 @@
 //   1. Create Drive folder (pure creation — always safe to retry)
 //   2. Star new folder
 //   3. Insert tenant row
-//   4. Update properties.current_tenant_folder_id
+//   4. Update properties.current_tenant_id AND current_tenant_folder_id (same statement)
 //   5. Unstar previous folder (best-effort last — not critical)
 // If steps 3–4 fail after Drive operations have already run, the Drive folder
 // is orphaned but DB state remains unchanged (no partial update). The landlord
@@ -168,7 +169,9 @@ async function handleCreateTenant(req: Request): Promise<Response> {
   // 4. Load the property (RLS ensures it belongs to this landlord).
   const { data: property, error: propertyError } = await db
     .from("properties")
-    .select("id, type, building_id, drive_folder_id, current_tenant_folder_id")
+    .select(
+      "id, type, building_id, drive_folder_id, current_tenant_folder_id, current_tenant_id",
+    )
     .eq("id", property_id as string)
     .maybeSingle();
 
@@ -186,6 +189,7 @@ async function handleCreateTenant(req: Request): Promise<Response> {
     building_id: string | null;
     drive_folder_id: string;
     current_tenant_folder_id: string | null;
+    current_tenant_id: string | null;
   };
 
   // 5. Obtain a fresh Google access token.
@@ -264,12 +268,17 @@ async function handleCreateTenant(req: Request): Promise<Response> {
     );
   }
 
-  // 9. Update properties.current_tenant_folder_id.
+  // 9. Update properties.current_tenant_id AND current_tenant_folder_id
+  //    in the same statement (ADR-0019 atomic write requirement).
   //    If this fails, roll back by deleting the just-inserted tenant row so
   //    DB state remains consistent (no orphaned tenant without a linked property).
+  const tenantId = (tenant as Record<string, unknown>).id as string;
   const { error: updateError } = await db
     .from("properties")
-    .update({ current_tenant_folder_id: driveFolderId })
+    .update({
+      current_tenant_id: tenantId,
+      current_tenant_folder_id: driveFolderId,
+    })
     .eq("id", property_id as string);
 
   if (updateError) {
@@ -277,7 +286,7 @@ async function handleCreateTenant(req: Request): Promise<Response> {
     await db
       .from("tenants")
       .delete()
-      .eq("id", (tenant as Record<string, unknown>).id as string);
+      .eq("id", tenantId);
 
     return errorResponse(
       500,
@@ -302,7 +311,7 @@ async function handleCreateTenant(req: Request): Promise<Response> {
 
   return new Response(
     JSON.stringify({
-      id: (tenant as Record<string, unknown>).id,
+      id: tenantId,
       drive_folder_id: (tenant as Record<string, unknown>).drive_folder_id,
     }),
     {
