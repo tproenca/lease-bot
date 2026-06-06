@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Added
+- `flow_sessions` table for identity-keyed server-side workflow sessions (migration `20260606000000_flow_sessions.sql`), replacing the GPT-relayed opaque `state` token. Columns: `landlord_id`, `intent`, `step`, `resolved_values` (jsonb), `history` (jsonb), `version`, `status`, `expires_at`, timestamps. A unique partial index `(landlord_id) where status='active'` enforces one active session per landlord; RLS scopes rows to `landlord_id = auth.uid()`; a `sweep_expired_flow_sessions()` SECURITY DEFINER function runs every 15 minutes via pg_cron to delete expired rows. ADR-0021 records the decision (supersedes the token-relay approach from ADR-0018) and the parallel-conversation trade-off. `specs/openapi.yaml` `/workflow/next` updated to the new `{ intent, answer, control }` request and `status`-discriminated response (drops `state`). Handler refactor and GPT-facing contract follow in subsequent PRs. (issue 245)
 - `docs/MILESTONE-GATES.md`: milestone-specific manual release-gate guide covering M2-M7, with gate rules, Pass/Fail/Blocked logging, and links back to the full manual runbook. (issue 237)
 
 ### Added

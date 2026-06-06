@@ -1235,71 +1235,97 @@ paths:
   /workflow/next:
     post:
       operationId: workflowNext
-      summary: Advance the stateless backend workflow state machine one step
+      summary: Advance the identity-keyed workflow session one step
       description: >
-        Stateless round-trip orchestrator. The GPT sends the current
-        `intent/values` it received last turn plus the user's latest
-        `message`. The backend infers the current step from the values
-        present, validates inputs, and returns the next `message`, updated
-        `values`, and the current `step`. On `step:"done"` the flow is complete.
+        Single-endpoint slot-filling orchestrator. Flow state lives server-side
+        in a `flow_sessions` row keyed by the landlord's identity
+        (landlord_id = jwt.sub) — the GPT carries no state token and no session
+        id. Each turn the backend resolves the landlord's single active session
+        from the verified JWT: absence of an active session means *start* the
+        `intent`; presence means *advance* it. The response `status` field
+        discriminates what to do next. See ADR-0021.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [message]
+              required: [intent]
               properties:
                 intent:
                   type: string
-                  nullable: true
-                  description: Intent returned by the previous response, or null on first turn.
+                  description: >
+                    Selects the flow on session start; used to detect an
+                    intent-switch mid-session. Always sent.
                   example: add_tenant
-                values:
-                  type: object
-                  nullable: true
-                  additionalProperties: true
-                  description: Collected values returned by the previous response, or null on first turn.
-                message:
+                answer:
                   type: string
-                  description: The user's latest reply to relay to the backend.
+                  nullable: true
+                  description: >
+                    The user's latest reply. Null on the first turn of a new
+                    session, or whenever `control` is set.
+                control:
+                  type: string
+                  nullable: true
+                  enum: [back, menu]
+                  description: >
+                    `back` — undo to the previous slot (answer must be null).
+                    `menu` — cancel / return to menu (answer must be null).
+                    Omit or null otherwise. The GPT normalizes natural language
+                    ("volta", "cancela") into this; the backend never parses
+                    loose language.
       responses:
         '200':
-          description: Next step in the workflow
+          description: Next state of the workflow session
           content:
             application/json:
               schema:
                 type: object
-                required: [message, intent, values, step]
+                required: [status]
                 properties:
-                  message:
+                  status:
                     type: string
-                    description: Message to relay verbatim to the user.
-                  intent:
-                    type: string
-                    nullable: true
-                    description: Current intent — echo this back on the next turn. Null for menu and reauth responses.
-                  values:
-                    type: object
-                    additionalProperties: true
-                    description: Current collected values — echo this back on the next turn.
-                  step:
-                    type: string
+                    enum: [pending, confirm, complete, chained, error]
                     description: >
-                      Current workflow step, inferred from values present.
-                      `ask_property` | `ask_name` | `ask_cpf` | `ask_whatsapp` | `confirm` | `done`.
-                      `done` — flow complete, return to menu.
-                  options:
-                    type: array
+                      `pending` — collecting a slot (see `question`).
+                      `confirm` — all slots filled, awaiting "Sim" or a field edit
+                      (see `confirm_table`).
+                      `complete` — flow done (see `result`).
+                      `chained` — flow done, next flow queued (see `result` +
+                      `next_intent`); the GPT announces the transition then fires
+                      a fresh request `{ intent: next_intent, answer: null,
+                      control: null }`.
+                      `error` — validation or backend error (see `error`);
+                      validation errors also include `question` to re-ask.
+                  question:
+                    type: object
                     nullable: true
-                    items:
-                      type: object
-                      properties:
-                        label:
+                    description: The slot to ask next.
+                    properties:
+                      field:
+                        type: string
+                      prompt:
+                        type: string
+                      options:
+                        type: array
+                        nullable: true
+                        items:
                           type: string
-                        value:
-                          type: string
-                    description: Numbered options to present to the user, if applicable.
+                  confirm_table:
+                    type: object
+                    nullable: true
+                    additionalProperties:
+                      type: string
+                    description: Collected field → display-value map for confirmation.
+                  result:
+                    type: object
+                    nullable: true
+                    additionalProperties: true
+                    description: Flow-specific result payload on completion.
+                  next_intent:
+                    type: string
+                    nullable: true
+                    description: The chained flow to start next (status `chained`).
                   error:
                     type: object
                     nullable: true
