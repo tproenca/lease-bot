@@ -22,6 +22,7 @@
 
 import { PDFDocument } from "https://esm.sh/pdf-lib@1.17.1";
 import { refreshGoogleAccessToken } from "../../_shared/google.ts";
+import { retryWithBackoff } from "../../_shared/retry.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -72,19 +73,10 @@ async function fetchWithRetry(
   url: string | URL,
   init: RequestInit,
 ): Promise<Response> {
-  let last: Response | undefined;
-  for (let attempt = 0; attempt < DRIVE_MAX_ATTEMPTS; attempt++) {
-    if (attempt > 0) {
-      await new Promise((resolve) =>
-        setTimeout(resolve, 1000 * Math.pow(2, attempt - 1))
-      );
-    }
-    last = await fetch(url, init);
-    if (!DRIVE_RETRYABLE_STATUSES.has(last.status)) {
-      return last;
-    }
-  }
-  return last!;
+  return retryWithBackoff(() => fetch(url, init), {
+    maxAttempts: DRIVE_MAX_ATTEMPTS,
+    shouldRetry: (res) => DRIVE_RETRYABLE_STATUSES.has(res.status),
+  });
 }
 
 // ─── URL builders ─────────────────────────────────────────────────────────

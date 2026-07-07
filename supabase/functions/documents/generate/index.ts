@@ -29,6 +29,7 @@ import {
 } from "../../_shared/google.ts";
 import { isNonEmptyString } from "../../_shared/validation.ts";
 import { applyCase, substituteTokens } from "../../_shared/format.ts";
+import { retryWithBackoff } from "../../_shared/retry.ts";
 
 // ─── Drive API constants ───────────────────────────────────────────────────
 
@@ -44,23 +45,11 @@ async function driveRequestWithRetry(
   input: string | URL,
   init: RequestInit,
 ): Promise<Response> {
-  const MAX_ATTEMPTS = 3;
   const RETRYABLE_STATUSES = new Set([429, 500]);
-
-  let lastRes: Response | undefined;
-  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    if (attempt > 0) {
-      // Exponential backoff: 1000 ms, 2000 ms, …
-      await new Promise((resolve) =>
-        setTimeout(resolve, 1000 * Math.pow(2, attempt - 1))
-      );
-    }
-    lastRes = await fetch(input, init);
-    if (!RETRYABLE_STATUSES.has(lastRes.status)) {
-      return lastRes;
-    }
-  }
-  return lastRes!;
+  return retryWithBackoff(() => fetch(input, init), {
+    maxAttempts: 3,
+    shouldRetry: (res) => RETRYABLE_STATUSES.has(res.status),
+  });
 }
 
 // ─── Drive helpers (document-generation specific) ──────────────────────────
