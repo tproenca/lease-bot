@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Changed
+- Moved the pure document-substitution helpers `applyCase` and `substituteTokens` out of the 661-line `documents/generate/index.ts` handler into a focused `supabase/functions/_shared/format.ts` module; `generate/index.ts` now imports them. Their unit tests moved alongside into `_shared/format.test.ts` (10 `applyCase` + 8 `substituteTokens` cases). Pure relocation — no behaviour change.
 - Extracted a shared `retryWithBackoff()` helper into `supabase/functions/_shared/retry.ts`, replacing three near-identical retry-with-exponential-backoff loops: `fetchWithRetry` (`documents/export`), `driveRequestWithRetry` (`documents/generate`), and `submitWithRetry` (`signatures/send`). The helper supports result-based retry (`shouldRetry`, used for Drive 429/500 responses) and exception-based retry (`retryOnThrow`, used for Autentique submission). Behaviour at each call site is preserved exactly (same attempt counts, same backoff schedule; Drive still does not retry on network throw, Autentique still does). Unit tests cover both retry modes, exhaustion, and the default attempt count.
 
 ### Added
