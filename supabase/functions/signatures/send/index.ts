@@ -42,6 +42,7 @@ import {
   type ExportResult,
 } from "../../documents/export/index.ts";
 import { detectSignaturePositions } from "../../documents/signatures/detect.ts";
+import { retryWithBackoff } from "../../_shared/retry.ts";
 
 // ─── UUID validation ──────────────────────────────────────────────────────
 
@@ -60,18 +61,10 @@ async function submitWithRetry(
   apiKey: string,
   params: Parameters<typeof submitDocument>[1],
 ): Promise<{ documentId: string }> {
-  let lastError: Error | undefined;
-  for (let attempt = 0; attempt < AUTENTIQUE_MAX_ATTEMPTS; attempt++) {
-    if (attempt > 0) {
-      await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
-    }
-    try {
-      return await submitDocument(apiKey, params);
-    } catch (err) {
-      lastError = err instanceof Error ? err : new Error(String(err));
-    }
-  }
-  throw lastError ?? new Error("autentique_submission_failed");
+  return retryWithBackoff(() => submitDocument(apiKey, params), {
+    maxAttempts: AUTENTIQUE_MAX_ATTEMPTS,
+    retryOnThrow: true,
+  });
 }
 
 // ─── Role to signer mapping ───────────────────────────────────────────────

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Changed
+- Extracted a shared `retryWithBackoff()` helper into `supabase/functions/_shared/retry.ts`, replacing three near-identical retry-with-exponential-backoff loops: `fetchWithRetry` (`documents/export`), `driveRequestWithRetry` (`documents/generate`), and `submitWithRetry` (`signatures/send`). The helper supports result-based retry (`shouldRetry`, used for Drive 429/500 responses) and exception-based retry (`retryOnThrow`, used for Autentique submission). Behaviour at each call site is preserved exactly (same attempt counts, same backoff schedule; Drive still does not retry on network throw, Autentique still does). Unit tests cover both retry modes, exhaustion, and the default attempt count.
+
 ### Added
 - `docs/MILESTONE-GATES.md`: milestone-specific manual release-gate guide covering M2-M7, with gate rules, Pass/Fail/Blocked logging, and links back to the full manual runbook. (issue 237)
 
